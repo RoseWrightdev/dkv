@@ -13,10 +13,10 @@ type SnapShotService struct {
 	ch       chan struct{}
 	file     *os.File
 	interval time.Duration
-	wal      *Wal
+	wal      Waler
 }
 
-func NewSnapshotService(snapShotPath string, interval time.Duration, wal *Wal) (*SnapShotService, error) {
+func NewSnapshotService(snapShotPath string, interval time.Duration, wal Waler) (*SnapShotService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	file, err := os.OpenFile(snapShotPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

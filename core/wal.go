@@ -11,6 +11,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type Waler interface {
+	Publish(msg proto.Message) error
+	Replay() (*map[Key]Value, error)
+	flush() error
+}
+
 type Wal struct {
 	file *os.File
 	path string
