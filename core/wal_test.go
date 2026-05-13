@@ -80,7 +80,7 @@ func TestReplay(t *testing.T) {
 	assert.ElementsMatch(t, exceptedKeys, gotKeys)
 }
 
-func TestFlush(t *testing.T) {
+func TestClear(t *testing.T) {
 	defer cleanupWalMock(t)
 
 	wal, err := newWal(MOCK_WAL_PATH)
