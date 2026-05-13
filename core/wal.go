@@ -3,6 +3,7 @@ package core
 import (
 	"bufio"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -21,21 +22,39 @@ type Wal struct {
 	file *os.File
 	path string
 	mu   sync.Mutex
+	wrt  *bufio.Writer
 }
 
 func newWal(path string) (*Wal, error) {
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
 	}
-	return &Wal{file, path, sync.Mutex{}}, nil
+	return &Wal{
+		file: file,
+		path: path,
+		mu:   sync.Mutex{},
+		wrt:  bufio.NewWriter(file),
+	}, nil
 }
 
 func (w *Wal) Publish(msg proto.Message) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	data, err := proto.Marshal(msg)
+	var entry *pb.WalEntry
+	switch m := msg.(type) {
+	case *pb.WalEntry:
+		entry = m
+	case *pb.SetRequest:
+		entry = &pb.WalEntry{Entry: &pb.WalEntry_Set{Set: m}}
+	case *pb.DeleteRequest:
+		entry = &pb.WalEntry{Entry: &pb.WalEntry_Delete{Delete: m}}
+	default:
+		return fmt.Errorf("unsupported message type: %T", msg)
+	}
+
+	data, err := proto.Marshal(entry)
 	if err != nil {
 		return err
 	}
@@ -43,14 +62,23 @@ func (w *Wal) Publish(msg proto.Message) error {
 	header := make([]byte, 4)
 	binary.BigEndian.PutUint32(header, uint32(len(data)))
 
-	if _, err := w.file.Write(header); err != nil {
+	if _, err := w.wrt.Write(header); err != nil {
 		return err
 	}
 
-	if _, err := w.file.Write(data); err != nil {
+	if _, err := w.wrt.Write(data); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (w *Wal) Sync() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.wrt.Flush(); err != nil {
+		return err
+	}
 	return w.file.Sync()
 }
 
@@ -63,6 +91,10 @@ func (w *Wal) Close() {
 func (w *Wal) Replay() (*map[Key]Value, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	if err := w.wrt.Flush(); err != nil {
+		return nil, err
+	}
 
 	results := make(map[Key]Value)
 
