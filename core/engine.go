@@ -33,10 +33,10 @@ func newEngine(walPath string, sssPath string, sssInterval time.Duration) (*Engi
 	}, nil
 }
 
-func (eng *Engine) Marshal() (SnapShotData, error) {
-	hm := make(map[any]any)
+func (eng *Engine) Marshal() ([]byte, error) {
+	hm := make(map[Key]Value)
 	eng.hm.Range(func(key any, val any) bool {
-		hm[key] = val
+		hm[key.(Key)] = val.(Value)
 		return true
 	})
 	return json.Marshal(hm)

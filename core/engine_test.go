@@ -1,7 +1,9 @@
 package core
 
 import (
+	"encoding/json"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -74,4 +76,40 @@ func TestEngineOpperations(t *testing.T) {
 	assert.False(t, exists)
 
 	cleanup(t)
+}
+
+func TestEngineMarshalling(t *testing.T) {
+	ints := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	n := len(ints)
+	values := make([][]byte, n)
+	keys := make([]string, n)
+	hm := make(map[Key]Value)
+
+	for i, v := range ints {
+		values[i] = []byte{byte(v)}
+		keys[i] = strconv.Itoa(v)
+	}
+
+	for i := range n {
+		hm[keys[i]] = values[i]
+	}
+
+	marshalledControl, err := json.Marshal(hm)
+	assert.Nil(t, err)
+
+	eb := NewEngineBuilder()
+	eb.SetSssInterval(SSS_INTERVAL)
+	eb.SetSssPath(SSS_PATH)
+	eb.SetWalPath(WAL_PATH)
+	eng, _ := eb.GetEngine()
+	defer cleanup(t)
+
+	for i := range n {
+		eng.Set(keys[i], values[i])
+	}
+
+	marshalledActual, err := eng.Marshal()
+	assert.Nil(t, err)
+
+	assert.ElementsMatch(t, marshalledControl, marshalledActual)
 }

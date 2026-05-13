@@ -16,8 +16,6 @@ type SnapShotService struct {
 	wal      *Wal
 }
 
-type SnapShotData = []byte
-
 func NewSnapshotService(snapShotPath string, interval time.Duration, wal *Wal) (*SnapShotService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
