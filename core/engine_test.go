@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const SSS_PATH = "mock_sss_path.txt"
-const WAL_PATH = "mock_wal_path.txt"
-const SSS_INTERVAL = time.Duration(3) * time.Minute
+const MOCK_SSS_PATH = "mock_sss_path.txt"
+const MOCK_WAL_PATH = "mock_wal_path.txt"
+const MOCK_SSS_INTERVAL = time.Duration(3) * time.Minute
 
 func cleanupEngine(t *testing.T) {
-	err := os.Remove(SSS_PATH)
+	err := os.Remove(MOCK_SSS_PATH)
 	assert.Nil(t, err)
-	err = os.Remove(WAL_PATH)
+	err = os.Remove(MOCK_WAL_PATH)
 	assert.Nil(t, err)
 }
 
@@ -26,32 +26,32 @@ func TestEngineBuilder(t *testing.T) {
 	assert.Equal(t, eb, &EngineBuilder{})
 
 	eb = NewEngineBuilder()
-	eb.SetSssInterval(SSS_INTERVAL)
-	assert.Equal(t, eb.sssInterval, SSS_INTERVAL)
+	eb.SetSssInterval(MOCK_SSS_INTERVAL)
+	assert.Equal(t, eb.sssInterval, MOCK_SSS_INTERVAL)
 
 	eb = NewEngineBuilder()
-	eb.SetSssPath(SSS_PATH)
-	assert.Equal(t, eb.sssPath, SSS_PATH)
+	eb.SetSssPath(MOCK_SSS_PATH)
+	assert.Equal(t, eb.sssPath, MOCK_SSS_PATH)
 
 	eb = NewEngineBuilder()
-	eb.SetWalPath(WAL_PATH)
-	assert.Equal(t, eb.walPath, WAL_PATH)
+	eb.SetWalPath(MOCK_WAL_PATH)
+	assert.Equal(t, eb.walPath, MOCK_WAL_PATH)
 
 	eb = NewEngineBuilder()
-	eb.SetSssInterval(SSS_INTERVAL)
-	eb.SetSssPath(SSS_PATH)
-	eb.SetWalPath(WAL_PATH)
+	eb.SetSssInterval(MOCK_SSS_INTERVAL)
+	eb.SetSssPath(MOCK_SSS_PATH)
+	eb.SetWalPath(MOCK_WAL_PATH)
 	eng, err := eb.GetEngine()
 	assert.Nil(t, err)
-	assert.Equal(t, eng.sss.interval, SSS_INTERVAL)
-	assert.Equal(t, eng.sss.file.Name(), SSS_PATH)
-	assert.Equal(t, eng.Wal.file.Name(), WAL_PATH)
+	assert.Equal(t, eng.sss.interval, MOCK_SSS_INTERVAL)
+	assert.Equal(t, eng.sss.file.Name(), MOCK_SSS_PATH)
+	assert.Equal(t, eng.Wal.file.Name(), MOCK_WAL_PATH)
 
 	cleanupEngine(t)
 }
 
 func TestEngineOpperations(t *testing.T) {
-	eng, err := newEngine(WAL_PATH, SSS_PATH, SSS_INTERVAL)
+	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_SSS_INTERVAL)
 	assert.Nil(t, err)
 	bytes := make([]byte, 1)
 	bytes = append(bytes, byte(10))
@@ -98,9 +98,9 @@ func TestEngineMarshalling(t *testing.T) {
 	assert.Nil(t, err)
 
 	eb := NewEngineBuilder()
-	eb.SetSssInterval(SSS_INTERVAL)
-	eb.SetSssPath(SSS_PATH)
-	eb.SetWalPath(WAL_PATH)
+	eb.SetSssInterval(MOCK_SSS_INTERVAL)
+	eb.SetSssPath(MOCK_SSS_PATH)
+	eb.SetWalPath(MOCK_WAL_PATH)
 	eng, _ := eb.GetEngine()
 	defer cleanupEngine(t)
 
