@@ -41,6 +41,7 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SetWalPath(MOCK_WAL_PATH)
 	eng, err := eb.GetEngine()
 	assert.Nil(t, err)
+	defer eng.Stop()
 	assert.Equal(t, eng.sss.interval, MOCK_SSS_INTERVAL)
 	assert.Equal(t, eng.sss.file.Name(), MOCK_SSS_PATH)
 	assert.Equal(t, eng.Wal.file.Name(), MOCK_WAL_PATH)
@@ -51,6 +52,7 @@ func TestEngineBuilder(t *testing.T) {
 func TestEngineOpperations(t *testing.T) {
 	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_SSS_INTERVAL)
 	assert.Nil(t, err)
+	defer eng.Stop()
 	bytes := make([]byte, 1)
 	bytes = append(bytes, byte(10))
 

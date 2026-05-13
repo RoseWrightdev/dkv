@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -17,6 +18,7 @@ type SnapShotService struct {
 	interval    time.Duration
 	wal         Waler
 	engCallBack func() *map[Key]Value
+	wg          sync.WaitGroup
 }
 
 func newSnapshotService(path string, interval time.Duration, wal Waler, engCallBack func() *map[Key]Value) (*SnapShotService, error) {
@@ -30,47 +32,54 @@ func newSnapshotService(path string, interval time.Duration, wal Waler, engCallB
 
 	ch := make(chan struct{}, 1)
 	sss := &SnapShotService{
-		ctx,
-		cancel,
-		ch,
-		file,
-		path,
-		interval,
-		wal,
-		engCallBack,
+		ctx:         ctx,
+		cancel:      cancel,
+		ch:          ch,
+		file:        file,
+		path:        path,
+		interval:    interval,
+		wal:         wal,
+		engCallBack: engCallBack,
 	}
-
-	sss.Start()
 
 	return sss, nil
 }
 
 func (sss *SnapShotService) Start() {
+	sss.wg.Add(2)
 	go sss.producer(sss.ctx)
 	go sss.consumer(sss.ctx)
 }
 
 func (sss *SnapShotService) Stop() {
 	sss.cancel()
+	sss.wg.Wait()
 }
 
 func (sss *SnapShotService) producer(ctx context.Context) {
+	defer sss.wg.Done()
+	ticker := time.NewTicker(sss.interval)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(sss.interval):
+		case <-ticker.C:
 			sss.queueSnapShot()
 		}
 	}
 }
 
 func (sss *SnapShotService) consumer(ctx context.Context) {
-	for range sss.ch {
+	defer sss.wg.Done()
+	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
+		case _, ok := <-sss.ch:
+			if !ok {
+				return
+			}
 			if err := sss.createNewSnapShot(); err != nil {
 				slog.Error("Failed to create snapshot", "error", err)
 			}
@@ -79,7 +88,11 @@ func (sss *SnapShotService) consumer(ctx context.Context) {
 }
 
 func (sss *SnapShotService) queueSnapShot() {
-	sss.ch <- struct{}{}
+	select {
+	case sss.ch <- struct{}{}:
+	default:
+		// Snapshot already queued, skip
+	}
 }
 
 func (sss *SnapShotService) createNewSnapShot() error {
@@ -101,7 +114,9 @@ func (sss *SnapShotService) createNewSnapShot() error {
 
 	newFile, err := os.OpenFile(sss.path, os.O_CREATE|os.O_RDWR, 0644)
 	if err == nil {
-		sss.file.Close()
+		if sss.file != nil {
+			sss.file.Close()
+		}
 		sss.file = newFile
 	}
 

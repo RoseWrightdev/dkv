@@ -30,6 +30,7 @@ func newEngine(walPath string, sssPath string, sssInterval time.Duration) (*Engi
 		return nil, err
 	}
 	eng.sss = sss
+	eng.sss.Start()
 
 	return eng, nil
 }

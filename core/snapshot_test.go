@@ -50,7 +50,6 @@ func TestCreateNewSnapShot(t *testing.T) {
 		"user:2": []byte("bob"),
 	}
 	callBack := func() *map[Key]Value { return &mockData }
-
 	sss, _ := newSnapshotService(MOCK_SSS_PATH, MOCK_SSS_INTERVAL, mw, callBack)
 
 	err := sss.createNewSnapShot()
@@ -75,13 +74,14 @@ func TestPeriodicSnapshots(t *testing.T) {
 	callBack := func() *map[Key]Value { return &mockData }
 
 	interval := 50 * time.Millisecond
-	sss, _ := newSnapshotService(MOCK_SSS_PATH, interval, mw, callBack)
+	sss, err := newSnapshotService(MOCK_SSS_PATH, interval, mw, callBack)
+	assert.NoError(t, err)
 
 	sss.Start()
 	defer sss.Stop()
 
 	time.Sleep(150 * time.Millisecond)
 
-	_, err := os.Stat(MOCK_SSS_PATH)
+	_, err = os.Stat(MOCK_SSS_PATH)
 	assert.NoError(t, err, "Snapshot file should have been created by background task")
 }
