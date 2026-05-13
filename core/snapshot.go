@@ -82,10 +82,10 @@ func (sss *SnapShotService) queueSnapShot() {
 // If there is an existing snapshot of the database, it uses the snapshot as a starting point.
 // todo: impl
 func (sss *SnapShotService) createNewSnapShot() error {
-	state, err := sss.wal.Replay()
-	if err != nil {
-		return err
-	}
+	// state, err := sss.wal.Replay()
+	// if err != nil {
+	// 	return err
+	// }
 
 	return sss.wal.flush()
 }
