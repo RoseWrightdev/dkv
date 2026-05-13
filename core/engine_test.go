@@ -14,7 +14,7 @@ const SSS_PATH = "mock_sss_path.txt"
 const WAL_PATH = "mock_wal_path.txt"
 const SSS_INTERVAL = time.Duration(3) * time.Minute
 
-func cleanup(t *testing.T) {
+func cleanupEngine(t *testing.T) {
 	err := os.Remove(SSS_PATH)
 	assert.Nil(t, err)
 	err = os.Remove(WAL_PATH)
@@ -47,7 +47,7 @@ func TestEngineBuilder(t *testing.T) {
 	assert.Equal(t, eng.sss.file.Name(), SSS_PATH)
 	assert.Equal(t, eng.Wal.file.Name(), WAL_PATH)
 
-	cleanup(t)
+	cleanupEngine(t)
 }
 
 func TestEngineOpperations(t *testing.T) {
@@ -58,7 +58,7 @@ func TestEngineOpperations(t *testing.T) {
 
 	eng.hm.Store("key", bytes)
 	val, ok := eng.Get("key")
-	assert.Equal(t, bytes, val)
+	assert.Equal(t, val, bytes)
 	assert.True(t, ok)
 
 	exists := eng.Exists("key")
@@ -69,13 +69,13 @@ func TestEngineOpperations(t *testing.T) {
 	eng.Set("key", bytes)
 	rawVal, _ := eng.hm.Load(Key("key"))
 	val = rawVal.(Value)
-	assert.Equal(t, bytes, val)
+	assert.Equal(t, val, bytes)
 
 	eng.Delete("key")
 	exists = eng.Exists("key")
 	assert.False(t, exists)
 
-	cleanup(t)
+	cleanupEngine(t)
 }
 
 func TestEngineMarshalling(t *testing.T) {
@@ -94,7 +94,7 @@ func TestEngineMarshalling(t *testing.T) {
 		hm[keys[i]] = values[i]
 	}
 
-	marshalledControl, err := json.Marshal(hm)
+	marshalledExcepted, err := json.Marshal(hm)
 	assert.Nil(t, err)
 
 	eb := NewEngineBuilder()
@@ -102,14 +102,14 @@ func TestEngineMarshalling(t *testing.T) {
 	eb.SetSssPath(SSS_PATH)
 	eb.SetWalPath(WAL_PATH)
 	eng, _ := eb.GetEngine()
-	defer cleanup(t)
+	defer cleanupEngine(t)
 
 	for i := range n {
 		eng.Set(keys[i], values[i])
 	}
 
-	marshalledActual, err := eng.Marshal()
+	marshalledGot, err := eng.Marshal()
 	assert.Nil(t, err)
 
-	assert.ElementsMatch(t, marshalledControl, marshalledActual)
+	assert.ElementsMatch(t, marshalledGot, marshalledExcepted)
 }
