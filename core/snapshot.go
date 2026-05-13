@@ -13,12 +13,12 @@ type SnapShotService struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	ch          chan struct{}
+	wg          sync.WaitGroup
 	file        *os.File
 	path        string
 	interval    time.Duration
 	wal         Waler
 	engCallBack func() *map[Key]Value
-	wg          sync.WaitGroup
 }
 
 func newSnapshotService(path string, interval time.Duration, wal Waler, engCallBack func() *map[Key]Value) (*SnapShotService, error) {
