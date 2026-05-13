@@ -2,31 +2,36 @@ syntax = "proto3";
 
 option go_package = "./";
 
-service dkv {
-    rpc Get (GetRequest) returns (GetResponse) {};
-    rpc Set (SetRequest) returns (SetResponse) {};
-    rpc Delete (DeleteRequest) returns (DeleteResponse) {};
+service DkvService {
+  rpc Get(GetRequest) returns (GetResponse) {}
+  rpc Set(SetRequest) returns (SetResponse) {}
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+}
+
+message WalEntry {
+  oneof entry {
+    SetRequest set = 1;
+    DeleteRequest delete = 2;
+  }
 }
 
 message GetRequest {
-    string key = 1;
+  string key = 1;
 }
 
 message GetResponse {
-    bytes value = 1;
-    bool exists = 2;
+  bytes value = 1;
+  bool exists = 2;
 }
 
 message SetRequest {
-    string key = 1;
-    bytes value = 2;
+  string key = 1;
+  bytes value = 2;
 }
 
 message SetResponse {}
 
 message DeleteRequest {
-    string key = 1;
+  string key = 1;
 }
-message DeleteResponse {
-    bool existed = 1;
-}
+message DeleteResponse {}

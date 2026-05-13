@@ -2,9 +2,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.34.1
-// source: proto/dkv.proto
+// source: api/proto/dkv.proto
 
-package api
+package __
 
 import (
 	context "context"
@@ -19,179 +19,179 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Dkv_Get_FullMethodName    = "/dkv/Get"
-	Dkv_Set_FullMethodName    = "/dkv/Set"
-	Dkv_Delete_FullMethodName = "/dkv/Delete"
+	DkvService_Get_FullMethodName    = "/DkvService/Get"
+	DkvService_Set_FullMethodName    = "/DkvService/Set"
+	DkvService_Delete_FullMethodName = "/DkvService/Delete"
 )
 
-// DkvClient is the client API for Dkv service.
+// DkvServiceClient is the client API for DkvService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type DkvClient interface {
+type DkvServiceClient interface {
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
 	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 }
 
-type dkvClient struct {
+type dkvServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewDkvClient(cc grpc.ClientConnInterface) DkvClient {
-	return &dkvClient{cc}
+func NewDkvServiceClient(cc grpc.ClientConnInterface) DkvServiceClient {
+	return &dkvServiceClient{cc}
 }
 
-func (c *dkvClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error) {
+func (c *dkvServiceClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetResponse)
-	err := c.cc.Invoke(ctx, Dkv_Get_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, DkvService_Get_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *dkvClient) Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error) {
+func (c *dkvServiceClient) Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetResponse)
-	err := c.cc.Invoke(ctx, Dkv_Set_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, DkvService_Set_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *dkvClient) Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error) {
+func (c *dkvServiceClient) Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteResponse)
-	err := c.cc.Invoke(ctx, Dkv_Delete_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, DkvService_Delete_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// DkvServer is the server API for Dkv service.
-// All implementations must embed UnimplementedDkvServer
+// DkvServiceServer is the server API for DkvService service.
+// All implementations must embed UnimplementedDkvServiceServer
 // for forward compatibility.
-type DkvServer interface {
+type DkvServiceServer interface {
 	Get(context.Context, *GetRequest) (*GetResponse, error)
 	Set(context.Context, *SetRequest) (*SetResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
-	mustEmbedUnimplementedDkvServer()
+	mustEmbedUnimplementedDkvServiceServer()
 }
 
-// UnimplementedDkvServer must be embedded to have
+// UnimplementedDkvServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedDkvServer struct{}
+type UnimplementedDkvServiceServer struct{}
 
-func (UnimplementedDkvServer) Get(context.Context, *GetRequest) (*GetResponse, error) {
+func (UnimplementedDkvServiceServer) Get(context.Context, *GetRequest) (*GetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Get not implemented")
 }
-func (UnimplementedDkvServer) Set(context.Context, *SetRequest) (*SetResponse, error) {
+func (UnimplementedDkvServiceServer) Set(context.Context, *SetRequest) (*SetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Set not implemented")
 }
-func (UnimplementedDkvServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
+func (UnimplementedDkvServiceServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
-func (UnimplementedDkvServer) mustEmbedUnimplementedDkvServer() {}
-func (UnimplementedDkvServer) testEmbeddedByValue()             {}
+func (UnimplementedDkvServiceServer) mustEmbedUnimplementedDkvServiceServer() {}
+func (UnimplementedDkvServiceServer) testEmbeddedByValue()                    {}
 
-// UnsafeDkvServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to DkvServer will
+// UnsafeDkvServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to DkvServiceServer will
 // result in compilation errors.
-type UnsafeDkvServer interface {
-	mustEmbedUnimplementedDkvServer()
+type UnsafeDkvServiceServer interface {
+	mustEmbedUnimplementedDkvServiceServer()
 }
 
-func RegisterDkvServer(s grpc.ServiceRegistrar, srv DkvServer) {
-	// If the following call panics, it indicates UnimplementedDkvServer was
+func RegisterDkvServiceServer(s grpc.ServiceRegistrar, srv DkvServiceServer) {
+	// If the following call panics, it indicates UnimplementedDkvServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&Dkv_ServiceDesc, srv)
+	s.RegisterService(&DkvService_ServiceDesc, srv)
 }
 
-func _Dkv_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _DkvService_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DkvServer).Get(ctx, in)
+		return srv.(DkvServiceServer).Get(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Dkv_Get_FullMethodName,
+		FullMethod: DkvService_Get_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DkvServer).Get(ctx, req.(*GetRequest))
+		return srv.(DkvServiceServer).Get(ctx, req.(*GetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Dkv_Set_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _DkvService_Set_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DkvServer).Set(ctx, in)
+		return srv.(DkvServiceServer).Set(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Dkv_Set_FullMethodName,
+		FullMethod: DkvService_Set_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DkvServer).Set(ctx, req.(*SetRequest))
+		return srv.(DkvServiceServer).Set(ctx, req.(*SetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Dkv_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _DkvService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(DkvServer).Delete(ctx, in)
+		return srv.(DkvServiceServer).Delete(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Dkv_Delete_FullMethodName,
+		FullMethod: DkvService_Delete_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DkvServer).Delete(ctx, req.(*DeleteRequest))
+		return srv.(DkvServiceServer).Delete(ctx, req.(*DeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// Dkv_ServiceDesc is the grpc.ServiceDesc for Dkv service.
+// DkvService_ServiceDesc is the grpc.ServiceDesc for DkvService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var Dkv_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "dkv",
-	HandlerType: (*DkvServer)(nil),
+var DkvService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "DkvService",
+	HandlerType: (*DkvServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Get",
-			Handler:    _Dkv_Get_Handler,
+			Handler:    _DkvService_Get_Handler,
 		},
 		{
 			MethodName: "Set",
-			Handler:    _Dkv_Set_Handler,
+			Handler:    _DkvService_Set_Handler,
 		},
 		{
 			MethodName: "Delete",
-			Handler:    _Dkv_Delete_Handler,
+			Handler:    _DkvService_Delete_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/dkv.proto",
+	Metadata: "api/proto/dkv.proto",
 }
