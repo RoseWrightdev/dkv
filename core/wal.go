@@ -2,11 +2,13 @@ package core
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"google.golang.org/protobuf/proto"
@@ -15,27 +17,51 @@ import (
 type Waler interface {
 	Publish(msg proto.Message) error
 	Replay() (*map[Key]Value, error)
-	flush() error
+	clear() error
 }
 
 type Wal struct {
-	file *os.File
-	path string
-	mu   sync.Mutex
-	wrt  *bufio.Writer
+	file   *os.File
+	path   string
+	mu     sync.Mutex
+	wrt    *bufio.Writer
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func newWal(path string) (*Wal, error) {
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
 	}
-	return &Wal{
-		file: file,
-		path: path,
-		mu:   sync.Mutex{},
-		wrt:  bufio.NewWriter(file),
-	}, nil
+
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &Wal{
+		file:   file,
+		path:   path,
+		mu:     sync.Mutex{},
+		wrt:    bufio.NewWriter(file),
+		ctx:    ctx,
+		cancel: cancel,
+	}
+
+	go w.backgroundSync()
+
+	return w, nil
+}
+
+func (w *Wal) backgroundSync() {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			w.Sync()
+		case <-w.ctx.Done():
+			return
+		}
+	}
 }
 
 func (w *Wal) Publish(msg proto.Message) error {
@@ -85,6 +111,9 @@ func (w *Wal) Sync() error {
 func (w *Wal) Close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.cancel()
+	w.wrt.Flush()
+	w.file.Sync()
 	w.file.Close()
 }
 
@@ -133,6 +162,15 @@ func (w *Wal) Replay() (*map[Key]Value, error) {
 	return &results, nil
 }
 
-func (w *Wal) flush() error {
-	return w.file.Truncate(0)
+func (w *Wal) clear() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.file.Truncate(0); err != nil {
+		return err
+	}
+	if _, err := w.file.Seek(0, 0); err != nil {
+		return err
+	}
+	w.wrt.Reset(w.file)
+	return nil
 }

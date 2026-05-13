@@ -14,7 +14,7 @@ func (mw *MockWal) Publish(msg proto.Message) error {
 func (mw *MockWal) Replay() (*map[Key]Value, error) {
 	return nil, nil
 }
-func (mw *MockWal) flush() error {
+func (mw *MockWal) clear() error {
 	return nil
 }
 func newMockWal() *MockWal {

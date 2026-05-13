@@ -33,6 +33,11 @@ func (s *server) Set(_ context.Context, in *pb.SetRequest) (*pb.SetResponse, err
 }
 
 func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+	err := s.eng.Wal.Publish(in)
+	if err != nil {
+		return &pb.DeleteResponse{}, err
+	}
+	s.eng.Delete(in.Key)
 	return &pb.DeleteResponse{}, nil
 }
 
@@ -43,8 +48,9 @@ type Grpc struct {
 
 func NewGrpc(eng *core.Engine) *Grpc {
 	s := grpc.NewServer()
-	pb.RegisterDkvServiceServer(s, &server{eng: eng})
-	return &Grpc{inner: s}
+	h := &server{eng: eng}
+	pb.RegisterDkvServiceServer(s, h)
+	return &Grpc{inner: s, handlers: h}
 }
 
 func (s *Grpc) Run(listener net.Listener) error {

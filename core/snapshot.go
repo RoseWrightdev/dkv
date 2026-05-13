@@ -2,24 +2,27 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"time"
 )
 
 type SnapShotService struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	ch       chan struct{}
-	file     *os.File
-	interval time.Duration
-	wal      Waler
+	ctx         context.Context
+	cancel      context.CancelFunc
+	ch          chan struct{}
+	file        *os.File
+	path        string
+	interval    time.Duration
+	wal         Waler
+	engCallBack func() *map[Key]Value
 }
 
-func NewSnapshotService(snapShotPath string, interval time.Duration, wal Waler) (*SnapShotService, error) {
+func NewSnapshotService(path string, interval time.Duration, wal Waler, engCallBack func() *map[Key]Value) (*SnapShotService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	file, err := os.OpenFile(snapShotPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -31,8 +34,10 @@ func NewSnapshotService(snapShotPath string, interval time.Duration, wal Waler) 
 		cancel,
 		ch,
 		file,
+		path,
 		interval,
 		wal,
+		engCallBack,
 	}
 
 	return sss, nil
@@ -66,8 +71,9 @@ func (sss *SnapShotService) consumer(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			err := sss.createNewSnapShot()
-			slog.Error(err.Error())
+			if err := sss.createNewSnapShot(); err != nil {
+				slog.Error("Failed to create snapshot", "error", err)
+			}
 		}
 	}
 }
@@ -76,14 +82,32 @@ func (sss *SnapShotService) queueSnapShot() {
 	sss.ch <- struct{}{}
 }
 
-// Creates a snapshot of the database. If no existing snapshot exists, it generates one from the WAL.
-// If there is an existing snapshot of the database, it uses the snapshot as a starting point.
-// todo: impl
 func (sss *SnapShotService) createNewSnapShot() error {
-	// state, err := sss.wal.Replay()
-	// if err != nil {
-	// 	return err
-	// }
+	state := sss.engCallBack()
 
-	return sss.wal.flush()
+	data, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+
+	tmpPath := sss.path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, sss.path); err != nil {
+		return err
+	}
+
+	newFile, err := os.OpenFile(sss.path, os.O_CREATE|os.O_RDWR, 0644)
+	if err == nil {
+		sss.file.Close()
+		sss.file = newFile
+	}
+
+	if err := sss.wal.clear(); err != nil {
+		return err
+	}
+
+	return nil
 }

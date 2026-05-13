@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"sync"
 	"time"
 )
@@ -21,25 +20,18 @@ func newEngine(walPath string, sssPath string, sssInterval time.Duration) (*Engi
 		return nil, err
 	}
 
-	sss, err := NewSnapshotService(sssPath, sssInterval, wal)
+	eng := &Engine{
+		hm:  &sync.Map{},
+		Wal: wal,
+	}
+
+	sss, err := NewSnapshotService(sssPath, sssInterval, wal, eng.toMap)
 	if err != nil {
 		return nil, err
 	}
+	eng.sss = sss
 
-	return &Engine{
-		hm:  &sync.Map{},
-		Wal: wal,
-		sss: sss,
-	}, nil
-}
-
-func (eng *Engine) Marshal() ([]byte, error) {
-	hm := make(map[Key]Value)
-	eng.hm.Range(func(key any, val any) bool {
-		hm[key.(Key)] = val.(Value)
-		return true
-	})
-	return json.Marshal(hm)
+	return eng, nil
 }
 
 func (eng *Engine) Get(key Key) (Value, bool) {
@@ -58,6 +50,15 @@ func (eng *Engine) Delete(key Key) {
 func (eng *Engine) Exists(key Key) bool {
 	_, ok := eng.hm.Load(key)
 	return ok
+}
+
+func (eng *Engine) toMap() *map[Key]Value {
+	hm := make(map[Key]Value)
+	eng.hm.Range(func(key any, val any) bool {
+		hm[key.(Key)] = val.(Value)
+		return true
+	})
+	return &hm
 }
 
 type EngineBuilder struct {

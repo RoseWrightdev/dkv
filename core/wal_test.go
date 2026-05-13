@@ -85,7 +85,7 @@ func TestFlush(t *testing.T) {
 
 	wal, err := newWal(MOCK_WAL_PATH)
 	assert.Nil(t, err)
-	wal.flush()
+	wal.clear()
 	content, err := os.ReadFile(MOCK_WAL_PATH)
 	assert.Equal(t, 0, len(content))
 }
