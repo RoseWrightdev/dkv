@@ -11,7 +11,7 @@ import (
 func main() {
 	eb := core.NewEngineBuilder()
 	eb.SetSssInterval(time.Duration(3) * time.Minute)
-	eb.SetSssPath("sss.binpb")
+	eb.SetSssPath("sss.json")
 	eb.SetWalPath("wal.binpb")
 
 	eng, err := eb.GetEngine()

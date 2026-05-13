@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const MOCK_SSS_PATH = "mock_sss_path.txt"
+const MOCK_SSS_PATH = "test_snapshot.json"
 const MOCK_WAL_PATH = "mock_wal_path.txt"
-const MOCK_SSS_INTERVAL = time.Duration(3) * time.Minute
+const MOCK_SSS_INTERVAL = 100 * time.Millisecond
 
 func cleanupEngineMocks(t *testing.T) {
 	err := os.Remove(MOCK_SSS_PATH)

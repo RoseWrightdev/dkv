@@ -19,7 +19,7 @@ type SnapShotService struct {
 	engCallBack func() *map[Key]Value
 }
 
-func NewSnapshotService(path string, interval time.Duration, wal Waler, engCallBack func() *map[Key]Value) (*SnapShotService, error) {
+func newSnapshotService(path string, interval time.Duration, wal Waler, engCallBack func() *map[Key]Value) (*SnapShotService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
@@ -40,17 +40,18 @@ func NewSnapshotService(path string, interval time.Duration, wal Waler, engCallB
 		engCallBack,
 	}
 
+	sss.Start()
+
 	return sss, nil
 }
 
 func (sss *SnapShotService) Start() {
 	go sss.producer(sss.ctx)
-	sss.consumer(sss.ctx)
+	go sss.consumer(sss.ctx)
 }
 
 func (sss *SnapShotService) Stop() {
 	sss.cancel()
-	close(sss.ch)
 }
 
 func (sss *SnapShotService) producer(ctx context.Context) {
@@ -58,8 +59,7 @@ func (sss *SnapShotService) producer(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-			time.Sleep(sss.interval)
+		case <-time.After(sss.interval):
 			sss.queueSnapShot()
 		}
 	}

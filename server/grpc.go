@@ -60,6 +60,6 @@ func (s *Grpc) Run(listener net.Listener) error {
 }
 
 func (s *Grpc) Stop() {
-	s.handlers.eng.Wal.Close()
+	s.handlers.eng.Stop()
 	s.inner.GracefulStop()
 }

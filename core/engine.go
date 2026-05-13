@@ -25,13 +25,18 @@ func newEngine(walPath string, sssPath string, sssInterval time.Duration) (*Engi
 		Wal: wal,
 	}
 
-	sss, err := NewSnapshotService(sssPath, sssInterval, wal, eng.toMap)
+	sss, err := newSnapshotService(sssPath, sssInterval, wal, eng.toMap)
 	if err != nil {
 		return nil, err
 	}
 	eng.sss = sss
 
 	return eng, nil
+}
+
+func (eng *Engine) Stop() {
+	eng.sss.Stop()
+	eng.Wal.Close()
 }
 
 func (eng *Engine) Get(key Key) (Value, bool) {

@@ -36,7 +36,7 @@ func newWal(path string) (*Wal, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	w := &Wal{
+	wal := &Wal{
 		file:   file,
 		path:   path,
 		mu:     sync.Mutex{},
@@ -45,9 +45,9 @@ func newWal(path string) (*Wal, error) {
 		cancel: cancel,
 	}
 
-	go w.backgroundSync()
+	go wal.backgroundSync()
 
-	return w, nil
+	return wal, nil
 }
 
 func (w *Wal) backgroundSync() {
