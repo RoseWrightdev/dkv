@@ -14,7 +14,7 @@ const MOCK_SSS_PATH = "mock_sss_path.txt"
 const MOCK_WAL_PATH = "mock_wal_path.txt"
 const MOCK_SSS_INTERVAL = time.Duration(3) * time.Minute
 
-func cleanupEngine(t *testing.T) {
+func cleanupEngineMocks(t *testing.T) {
 	err := os.Remove(MOCK_SSS_PATH)
 	assert.Nil(t, err)
 	err = os.Remove(MOCK_WAL_PATH)
@@ -47,7 +47,7 @@ func TestEngineBuilder(t *testing.T) {
 	assert.Equal(t, eng.sss.file.Name(), MOCK_SSS_PATH)
 	assert.Equal(t, eng.Wal.file.Name(), MOCK_WAL_PATH)
 
-	cleanupEngine(t)
+	cleanupEngineMocks(t)
 }
 
 func TestEngineOpperations(t *testing.T) {
@@ -75,7 +75,7 @@ func TestEngineOpperations(t *testing.T) {
 	exists = eng.Exists("key")
 	assert.False(t, exists)
 
-	cleanupEngine(t)
+	cleanupEngineMocks(t)
 }
 
 func TestEngineMarshalling(t *testing.T) {
@@ -102,7 +102,7 @@ func TestEngineMarshalling(t *testing.T) {
 	eb.SetSssPath(MOCK_SSS_PATH)
 	eb.SetWalPath(MOCK_WAL_PATH)
 	eng, _ := eb.GetEngine()
-	defer cleanupEngine(t)
+	defer cleanupEngineMocks(t)
 
 	for i := range n {
 		eng.Set(keys[i], values[i])
