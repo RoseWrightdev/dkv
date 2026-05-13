@@ -9,7 +9,12 @@ import (
 )
 
 func main() {
-	eb := core.NewEngineBuilder().SetSssInterval(time.Duration(3) * time.Minute).SetSssPath().SetWalPath()
+	eb := core.NewEngineBuilder()
+	eb.SetSssInterval(time.Duration(3) * time.Minute)
+	eb.SetSssPath("sss.binpb")
+	eb.SetWalPath("wal.binpb")
+
+	eng, err := eb.GetEngine()
 	if err != nil {
 		panic(err)
 	}
