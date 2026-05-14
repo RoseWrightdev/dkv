@@ -21,12 +21,12 @@ type Waler interface {
 }
 
 type Wal struct {
-	file   *os.File
-	path   string
-	mu     sync.Mutex
-	wrt    *bufio.Writer
 	ctx    context.Context
 	cancel context.CancelFunc
+	mu     sync.Mutex
+	wrt    *bufio.Writer
+	file   *os.File
+	path   string
 }
 
 func newWal(path string) (*Wal, error) {
@@ -37,15 +37,13 @@ func newWal(path string) (*Wal, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wal := &Wal{
-		file:   file,
-		path:   path,
-		mu:     sync.Mutex{},
-		wrt:    bufio.NewWriter(file),
 		ctx:    ctx,
 		cancel: cancel,
+		mu:     sync.Mutex{},
+		wrt:    bufio.NewWriter(file),
+		file:   file,
+		path:   path,
 	}
-
-	go wal.backgroundSync()
 
 	return wal, nil
 }
@@ -108,7 +106,11 @@ func (w *Wal) Sync() error {
 	return w.file.Sync()
 }
 
-func (w *Wal) Close() {
+func (w *Wal) Start() {
+	go w.backgroundSync()
+}
+
+func (w *Wal) Stop() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.cancel()

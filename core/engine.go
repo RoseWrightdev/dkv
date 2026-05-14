@@ -19,6 +19,7 @@ func newEngine(walPath string, sssPath string, sssInterval time.Duration) (*Engi
 	if err != nil {
 		return nil, err
 	}
+	wal.Start()
 
 	eng := &Engine{
 		hm:  &sync.Map{},
@@ -37,7 +38,7 @@ func newEngine(walPath string, sssPath string, sssInterval time.Duration) (*Engi
 
 func (eng *Engine) Stop() {
 	eng.sss.Stop()
-	eng.Wal.Close()
+	eng.Wal.Stop()
 }
 
 func (eng *Engine) Get(key Key) (Value, bool) {

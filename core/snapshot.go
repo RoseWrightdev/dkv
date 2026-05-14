@@ -80,8 +80,11 @@ func (sss *SnapShotService) consumer(ctx context.Context) {
 			if !ok {
 				return
 			}
+			slog.Info("Creating database snapshot...")
 			if err := sss.createNewSnapShot(); err != nil {
 				slog.Error("Failed to create snapshot", "error", err)
+			} else {
+				slog.Info("Database snapshot created.")
 			}
 		}
 	}
