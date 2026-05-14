@@ -23,15 +23,16 @@ type Waler interface {
 }
 
 type Wal struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	mu     sync.Mutex
-	wrt    *bufio.Writer
-	file   *os.File
-	path   string
+	ctx          context.Context
+	cancel       context.CancelFunc
+	mu           sync.Mutex
+	syncInterval time.Duration
+	wrt          *bufio.Writer
+	file         *os.File
+	path         string
 }
 
-func newWal(path string) (*Wal, error) {
+func newWal(path string, syncInterval time.Duration) (*Wal, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
@@ -45,12 +46,13 @@ func newWal(path string) (*Wal, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	wal := &Wal{
-		ctx:    ctx,
-		cancel: cancel,
-		mu:     sync.Mutex{},
-		wrt:    bufio.NewWriterSize(file, 1024*64),
-		file:   file,
-		path:   path,
+		ctx:          ctx,
+		cancel:       cancel,
+		mu:           sync.Mutex{},
+		syncInterval: syncInterval,
+		wrt:          bufio.NewWriterSize(file, 1024*64),
+		file:         file,
+		path:         path,
 	}
 
 	return wal, nil
@@ -114,7 +116,7 @@ func (w *Wal) sync() error {
 }
 
 func (w *Wal) backgroundSync() {
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(w.syncInterval)
 	defer ticker.Stop()
 
 	for {

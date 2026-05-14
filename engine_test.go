@@ -28,22 +28,26 @@ func TestEngineBuilder(t *testing.T) {
 	assert.Equal(t, eb, &EngineBuilder{})
 
 	eb = NewEngineBuilder()
-	eb.SetSssInterval(MOCK_SSS_INTERVAL)
-	assert.Equal(t, eb.sssInterval, MOCK_SSS_INTERVAL)
+	eb.SetWalPath(MOCK_WAL_PATH)
+	assert.Equal(t, eb.walPath, MOCK_WAL_PATH)
 
 	eb = NewEngineBuilder()
 	eb.SetSssPath(MOCK_SSS_PATH)
 	assert.Equal(t, eb.sssPath, MOCK_SSS_PATH)
 
 	eb = NewEngineBuilder()
-	eb.SetWalPath(MOCK_WAL_PATH)
-	assert.Equal(t, eb.walPath, MOCK_WAL_PATH)
+	eb.SetWalSyncInterval(MOCK_WAL_SYNC_INTERVAL)
+	assert.Equal(t, eb.walSyncInterval, MOCK_WAL_SYNC_INTERVAL)
 
 	eb = NewEngineBuilder()
 	eb.SetSssInterval(MOCK_SSS_INTERVAL)
-	eb.SetSssPath(MOCK_SSS_PATH)
-	eb.SetWalPath(MOCK_WAL_PATH)
+	assert.Equal(t, eb.sssInterval, MOCK_SSS_INTERVAL)
 
+	eb = NewEngineBuilder()
+	eb.SetWalPath(MOCK_WAL_PATH)
+	eb.SetSssInterval(MOCK_SSS_INTERVAL)
+	eb.SetSssPath(MOCK_SSS_PATH)
+	eb.SetWalSyncInterval(MOCK_WAL_SYNC_INTERVAL)
 	eng, err := eb.GetEngine()
 	assert.Nil(t, err)
 	defer eng.Stop()
@@ -56,7 +60,7 @@ func TestEngineBuilder(t *testing.T) {
 }
 
 func TestEngineOperations(t *testing.T) {
-	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_SSS_INTERVAL)
+	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_WAL_SYNC_INTERVAL, MOCK_SSS_INTERVAL)
 	assert.Nil(t, err)
 	eng.Start()
 	defer eng.Stop()
@@ -86,7 +90,7 @@ func TestEngineOperations(t *testing.T) {
 func TestEnginePersistence(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
-	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_SSS_INTERVAL)
+	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_WAL_SYNC_INTERVAL, MOCK_SSS_INTERVAL)
 	eng.Start()
 	assert.Nil(t, err)
 	key1, val1 := "persist1", []byte("value1")
@@ -104,7 +108,7 @@ func TestEnginePersistence(t *testing.T) {
 
 	eng.Stop()
 
-	eng2, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_SSS_INTERVAL)
+	eng2, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_WAL_SYNC_INTERVAL, MOCK_SSS_INTERVAL)
 	assert.Nil(t, err)
 	eng2.Start()
 	defer eng2.Stop()

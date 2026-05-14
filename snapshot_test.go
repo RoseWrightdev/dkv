@@ -17,8 +17,8 @@ type MockWal struct {
 func (mw *MockWal) publish(msg proto.Message) error { return nil }
 func (mw *MockWal) replay() (map[Key]Value, error)  { return nil, nil }
 func (mw *MockWal) clear() error                    { mw.clearCalled = true; return nil }
-func (mw *MockWal) stop()
-func (mw *MockWal) start()
+func (mw *MockWal) stop()                           {}
+func (mw *MockWal) start()                          {}
 
 func cleanupSnapshotMock(t *testing.T) {
 	err := os.Remove(MOCK_SSS_PATH)

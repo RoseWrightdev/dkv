@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"slices"
 
@@ -12,13 +13,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const MOCK_WAL_SYNC_INTERVAL = 500 * time.Microsecond
+
 func cleanupWalMock(t *testing.T) {
 	err := os.Remove(MOCK_WAL_PATH)
 	assert.Nil(t, err)
 }
 
 func TestNewWal(t *testing.T) {
-	_, err := newWal(MOCK_WAL_PATH)
+	_, err := newWal(MOCK_WAL_PATH, MOCK_WAL_SYNC_INTERVAL)
 	assert.Nil(t, err)
 
 	cleanupWalMock(t)
@@ -28,7 +31,7 @@ func TestPublish(t *testing.T) {
 	defer cleanupWalMock(t)
 
 	req := pb.SetRequest{Key: "key", Value: []byte{byte(32)}}
-	wal, err := newWal(MOCK_WAL_PATH)
+	wal, err := newWal(MOCK_WAL_PATH, MOCK_WAL_SYNC_INTERVAL)
 	assert.Nil(t, err)
 
 	err = wal.publish(&req)
@@ -62,7 +65,7 @@ func TestPublish(t *testing.T) {
 func TestReplay(t *testing.T) {
 	defer cleanupWalMock(t)
 
-	wal, err := newWal(MOCK_WAL_PATH)
+	wal, err := newWal(MOCK_WAL_PATH, MOCK_WAL_SYNC_INTERVAL)
 	exceptedValues := make([][]byte, 1000)
 	exceptedKeys := make([]string, 1000)
 	assert.Nil(t, err)
@@ -88,7 +91,7 @@ func TestReplay(t *testing.T) {
 func TestClear(t *testing.T) {
 	defer cleanupWalMock(t)
 
-	wal, err := newWal(MOCK_WAL_PATH)
+	wal, err := newWal(MOCK_WAL_PATH, MOCK_WAL_SYNC_INTERVAL)
 	assert.Nil(t, err)
 
 	wal.clear()

@@ -11,6 +11,7 @@ import (
 func main() {
 	eb := dkv.NewEngineBuilder()
 	eb.SetSssInterval(time.Duration(3) * time.Minute)
+	eb.SetWalSyncInterval(time.Duration(500) * time.Microsecond)
 	eb.SetSssPath("sss.json")
 	eb.SetWalPath("wal.binpb")
 
