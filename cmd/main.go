@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/server"
 )
 
 func main() {
@@ -20,7 +19,7 @@ func main() {
 		panic(err)
 	}
 
-	s := server.NewGrpc(eng)
+	s := dkv.NewServer(eng)
 	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		panic(err)
