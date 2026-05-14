@@ -9,14 +9,13 @@ import (
 )
 
 func main() {
-	eb := dkv.NewEngineBuilder()
-	eb.SetSssInterval(time.Duration(3) * time.Minute)
-	eb.SetWalSyncInterval(time.Duration(500) * time.Microsecond)
-	eb.SetSssPath("sss.json")
-	eb.SetWalPath("wal.binpb")
-	eb.SetWalBufferSize(64 * 1028)
-
-	eng, err := eb.GetEngine()
+	eng, err := dkv.NewEngineBuilder().
+		SetSssInterval(time.Duration(3) * time.Minute).
+		SetWalSyncInterval(time.Duration(500) * time.Microsecond).
+		SetSssPath("sss.json").
+		SetWalPath("wal.binpb").
+		SetWalBufferSize(64 * 1028).
+		GetEngine()
 	if err != nil {
 		panic(err)
 	}

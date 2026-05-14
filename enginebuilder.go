@@ -17,24 +17,29 @@ func NewEngineBuilder() *EngineBuilder {
 	return &EngineBuilder{}
 }
 
-func (eb *EngineBuilder) SetWalPath(path string) {
+func (eb *EngineBuilder) SetWalPath(path string) *EngineBuilder {
 	eb.walPath = path
+	return eb
 }
 
-func (eb *EngineBuilder) SetSssPath(path string) {
+func (eb *EngineBuilder) SetSssPath(path string) *EngineBuilder {
 	eb.sssPath = path
+	return eb
 }
 
-func (eb *EngineBuilder) SetSssInterval(interval time.Duration) {
+func (eb *EngineBuilder) SetSssInterval(interval time.Duration) *EngineBuilder {
 	eb.sssInterval = interval
+	return eb
 }
 
-func (eb *EngineBuilder) SetWalSyncInterval(interval time.Duration) {
+func (eb *EngineBuilder) SetWalSyncInterval(interval time.Duration) *EngineBuilder  {
 	eb.walSyncInterval = interval
+	return eb
 }
 
-func (eb *EngineBuilder) SetWalBufferSize(size uint32) {
+func (eb *EngineBuilder) SetWalBufferSize(size uint32) *EngineBuilder {
 	eb.walBufferSize = size
+	return eb
 }
 
 func (eb *EngineBuilder) GetEngine() (*Engine, error) {
