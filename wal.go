@@ -32,7 +32,7 @@ type Wal struct {
 	path         string
 }
 
-func newWal(path string, syncInterval time.Duration) (*Wal, error) {
+func newWal(path string, syncInterval time.Duration, bufferSize uint32) (*Wal, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func newWal(path string, syncInterval time.Duration) (*Wal, error) {
 		cancel:       cancel,
 		mu:           sync.Mutex{},
 		syncInterval: syncInterval,
-		wrt:          bufio.NewWriterSize(file, 1024*64),
+		wrt:          bufio.NewWriterSize(file, int(bufferSize)),
 		file:         file,
 		path:         path,
 	}

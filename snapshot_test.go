@@ -21,11 +21,11 @@ func (mw *MockWal) stop()                           {}
 func (mw *MockWal) start()                          {}
 
 func cleanupSnapshotMock(t *testing.T) {
-	err := os.Remove(MOCK_SSS_PATH)
+	err := os.Remove(mockConfig.sssPath)
 	if err != nil && !os.IsNotExist(err) {
 		assert.NoError(t, err)
 	}
-	err = os.Remove(MOCK_SSS_PATH + ".tmp")
+	err = os.Remove(mockConfig.sssPath + ".tmp")
 	if err != nil && !os.IsNotExist(err) {
 		assert.NoError(t, err)
 	}
@@ -37,10 +37,10 @@ func TestNewSnapShotService(t *testing.T) {
 	mw := &MockWal{}
 	callBack := func() map[Key]Value { return map[Key]Value{} }
 
-	sss, err := newSnapshotService(MOCK_SSS_PATH, MOCK_SSS_INTERVAL, mw, callBack)
+	sss, err := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
 	assert.NoError(t, err)
 	assert.NotNil(t, sss)
-	assert.Equal(t, MOCK_SSS_PATH, sss.path)
+	assert.Equal(t, mockConfig.sssPath, sss.path)
 }
 
 func TestCreateNewSnapShot(t *testing.T) {
@@ -52,12 +52,12 @@ func TestCreateNewSnapShot(t *testing.T) {
 		"user:2": []byte("bob"),
 	}
 	callBack := func() map[Key]Value { return mockData }
-	sss, _ := newSnapshotService(MOCK_SSS_PATH, MOCK_SSS_INTERVAL, mw, callBack)
+	sss, _ := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
 
 	err := sss.createNewSnapShot()
 	assert.NoError(t, err)
 
-	data, err := os.ReadFile(MOCK_SSS_PATH)
+	data, err := os.ReadFile(mockConfig.sssPath)
 	assert.NoError(t, err)
 
 	var decoded map[Key]Value
@@ -76,7 +76,7 @@ func TestPeriodicSnapshots(t *testing.T) {
 	callBack := func() map[Key]Value { return mockData }
 
 	interval := 50 * time.Millisecond
-	sss, err := newSnapshotService(MOCK_SSS_PATH, interval, mw, callBack)
+	sss, err := newSnapshotService(mockConfig.sssPath, interval, mw, callBack)
 	assert.NoError(t, err)
 
 	sss.start()
@@ -84,6 +84,6 @@ func TestPeriodicSnapshots(t *testing.T) {
 
 	time.Sleep(150 * time.Millisecond)
 
-	_, err = os.Stat(MOCK_SSS_PATH)
+	_, err = os.Stat(mockConfig.sssPath)
 	assert.NoError(t, err, "Snapshot file should have been created by background task")
 }

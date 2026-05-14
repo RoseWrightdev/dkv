@@ -14,6 +14,7 @@ func main() {
 	eb.SetWalSyncInterval(time.Duration(500) * time.Microsecond)
 	eb.SetSssPath("sss.json")
 	eb.SetWalPath("wal.binpb")
+	eb.SetWalBufferSize(64 * 1028)
 
 	eng, err := eb.GetEngine()
 	if err != nil {

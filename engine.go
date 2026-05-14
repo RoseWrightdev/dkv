@@ -2,7 +2,6 @@ package dkv
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"os"
 	"sync"
@@ -20,8 +19,16 @@ type Engine struct {
 	sss *SnapShotService
 }
 
-func newEngine(walPath string, sssPath string, walSyncInterval time.Duration, sssInterval time.Duration) (*Engine, error) {
-	wal, err := newWal(walPath, walSyncInterval)
+type EngineConfig struct {
+	walPath         string
+	sssPath         string
+	walSyncInterval time.Duration
+	sssInterval     time.Duration
+	walBufferSize   uint32
+}
+
+func newEngine(config EngineConfig) (*Engine, error) {
+	wal, err := newWal(config.walPath, config.walSyncInterval, config.walBufferSize)
 	if err != nil {
 		return nil, err
 	}
@@ -31,11 +38,11 @@ func newEngine(walPath string, sssPath string, walSyncInterval time.Duration, ss
 		wal: wal,
 	}
 
-	if err := eng.recover(sssPath); err != nil {
+	if err := eng.recover(config.sssPath); err != nil {
 		slog.Error("Failed to recover database state", "error", err)
 	}
 
-	sss, err := newSnapshotService(sssPath, sssInterval, wal, eng.toMap)
+	sss, err := newSnapshotService(config.sssPath, config.sssInterval, wal, eng.toMap)
 	if err != nil {
 		return nil, err
 	}
@@ -119,56 +126,4 @@ func (eng *Engine) recover(sssPath string) error {
 	}
 
 	return nil
-}
-
-type EngineBuilder struct {
-	walPath         string
-	sssPath         string
-	walSyncInterval time.Duration
-	sssInterval     time.Duration
-}
-
-func NewEngineBuilder() *EngineBuilder {
-	return &EngineBuilder{}
-}
-
-func (eb *EngineBuilder) SetWalPath(path string) {
-	eb.walPath = path
-}
-
-func (eb *EngineBuilder) SetSssPath(path string) {
-	eb.sssPath = path
-}
-
-func (eb *EngineBuilder) SetSssInterval(interval time.Duration) {
-	eb.sssInterval = interval
-}
-
-func (eb *EngineBuilder) SetWalSyncInterval(interval time.Duration) {
-	eb.walSyncInterval = interval
-}
-
-func (eb *EngineBuilder) GetEngine() (*Engine, error) {
-	if isUnit(eb.walPath) {
-		return nil, fmt.Errorf("required eb.walPath is unset cogfigure eb.walPath with SetWalPath(path string)")
-	}
-
-	if isUnit(eb.sssPath) {
-		return nil, fmt.Errorf("required eb.sssPath is unset cogfigure eb.sssPath with SetSssPath(path string)")
-	}
-
-	if isUnit(eb.walSyncInterval) {
-		return nil, fmt.Errorf("required eb.walSyncInterval is unset cogfigure eb.walSyncInterval with SetWalSyncInterval(interval time.Duration)")
-	}
-
-	if isUnit(eb.sssInterval) {
-		return nil, fmt.Errorf("required eb.sssInterval is unset cogfigure eb.sssInterval with SetSssInterval(interval time.Duration)")
-	}
-
-	return newEngine(eb.walPath, eb.sssPath, eb.walSyncInterval, eb.sssInterval)
-}
-
-func isUnit[T comparable](val T) bool {
-	var zero T
-	return zero == val
 }

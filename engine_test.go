@@ -8,59 +8,25 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	MOCK_SSS_PATH     = "test_snapshot.json"
-	MOCK_WAL_PATH     = "mock_wal_path.txt"
-	MOCK_SSS_INTERVAL = 100 * time.Millisecond
-)
-
-func cleanupEngineMocks(t *testing.T) {
-	if err := os.Remove(MOCK_SSS_PATH); err != nil && !os.IsNotExist(err) {
-		assert.Nil(t, err)
-	}
-	if err := os.Remove(MOCK_WAL_PATH); err != nil && !os.IsNotExist(err) {
-		assert.Nil(t, err)
-	}
+var mockConfig EngineConfig = EngineConfig{
+	walPath:         "mock_wal_path.txt",
+	sssPath:         "test_snapshot.json",
+	walSyncInterval: 100 * time.Millisecond,
+	sssInterval:     500 * time.Millisecond,
+	walBufferSize:   uint32(64 * 1024),
 }
 
-func TestEngineBuilder(t *testing.T) {
-	eb := NewEngineBuilder()
-	assert.Equal(t, eb, &EngineBuilder{})
-
-	eb = NewEngineBuilder()
-	eb.SetWalPath(MOCK_WAL_PATH)
-	assert.Equal(t, eb.walPath, MOCK_WAL_PATH)
-
-	eb = NewEngineBuilder()
-	eb.SetSssPath(MOCK_SSS_PATH)
-	assert.Equal(t, eb.sssPath, MOCK_SSS_PATH)
-
-	eb = NewEngineBuilder()
-	eb.SetWalSyncInterval(MOCK_WAL_SYNC_INTERVAL)
-	assert.Equal(t, eb.walSyncInterval, MOCK_WAL_SYNC_INTERVAL)
-
-	eb = NewEngineBuilder()
-	eb.SetSssInterval(MOCK_SSS_INTERVAL)
-	assert.Equal(t, eb.sssInterval, MOCK_SSS_INTERVAL)
-
-	eb = NewEngineBuilder()
-	eb.SetWalPath(MOCK_WAL_PATH)
-	eb.SetSssInterval(MOCK_SSS_INTERVAL)
-	eb.SetSssPath(MOCK_SSS_PATH)
-	eb.SetWalSyncInterval(MOCK_WAL_SYNC_INTERVAL)
-	eng, err := eb.GetEngine()
-	assert.Nil(t, err)
-	defer eng.Stop()
-
-	assert.Equal(t, eng.sss.interval, MOCK_SSS_INTERVAL)
-	assert.Equal(t, eng.sss.file.Name(), MOCK_SSS_PATH)
-	assert.Equal(t, eng.wal.file.Name(), MOCK_WAL_PATH)
-
-	cleanupEngineMocks(t)
+func cleanupEngineMocks(t *testing.T) {
+	if err := os.Remove(mockConfig.sssPath); err != nil && !os.IsNotExist(err) {
+		assert.Nil(t, err)
+	}
+	if err := os.Remove(mockConfig.walPath); err != nil && !os.IsNotExist(err) {
+		assert.Nil(t, err)
+	}
 }
 
 func TestEngineOperations(t *testing.T) {
-	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_WAL_SYNC_INTERVAL, MOCK_SSS_INTERVAL)
+	eng, err := newEngine(mockConfig)
 	assert.Nil(t, err)
 	eng.Start()
 	defer eng.Stop()
@@ -90,7 +56,7 @@ func TestEngineOperations(t *testing.T) {
 func TestEnginePersistence(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
-	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_WAL_SYNC_INTERVAL, MOCK_SSS_INTERVAL)
+	eng, err := newEngine(mockConfig)
 	eng.Start()
 	assert.Nil(t, err)
 	key1, val1 := "persist1", []byte("value1")
@@ -108,7 +74,7 @@ func TestEnginePersistence(t *testing.T) {
 
 	eng.Stop()
 
-	eng2, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_WAL_SYNC_INTERVAL, MOCK_SSS_INTERVAL)
+	eng2, err := newEngine(mockConfig)
 	assert.Nil(t, err)
 	eng2.Start()
 	defer eng2.Stop()
