@@ -4,12 +4,12 @@ import (
 	"net"
 	"time"
 
-	"github.com/rosewrightdev/dkv/core"
+	"github.com/rosewrightdev/dkv"
 	"github.com/rosewrightdev/dkv/server"
 )
 
 func main() {
-	eb := core.NewEngineBuilder()
+	eb := dkv.NewEngineBuilder()
 	eb.SetSssInterval(time.Duration(3) * time.Minute)
 	eb.SetSssPath("sss.json")
 	eb.SetWalPath("wal.binpb")

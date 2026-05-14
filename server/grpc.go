@@ -5,14 +5,14 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/rosewrightdev/dkv"
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/core"
 	"google.golang.org/grpc"
 )
 
 type server struct {
 	pb.UnimplementedDkvServiceServer
-	eng *core.Engine
+	eng *dkv.Engine
 }
 
 func (s *server) Get(_ context.Context, in *pb.GetRequest) (*pb.GetResponse, error) {
@@ -40,10 +40,10 @@ func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResp
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
-	eng      *core.Engine
+	eng      *dkv.Engine
 }
 
-func NewGrpc(eng *core.Engine) *Grpc {
+func NewGrpc(eng *dkv.Engine) *Grpc {
 	s := grpc.NewServer()
 	h := &server{eng: eng}
 	pb.RegisterDkvServiceServer(s, h)

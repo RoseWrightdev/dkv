@@ -1,4 +1,4 @@
-package core
+package dkv
 
 import (
 	"context"
@@ -45,13 +45,13 @@ func newSnapshotService(path string, interval time.Duration, wal Waler, engCallB
 	return sss, nil
 }
 
-func (sss *SnapShotService) Start() {
+func (sss *SnapShotService) start() {
 	sss.wg.Add(2)
 	go sss.producer(sss.ctx)
 	go sss.consumer(sss.ctx)
 }
 
-func (sss *SnapShotService) Stop() {
+func (sss *SnapShotService) stop() {
 	sss.cancel()
 	sss.wg.Wait()
 	if sss.file != nil {

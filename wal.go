@@ -1,4 +1,4 @@
-package core
+package dkv
 
 import (
 	"bufio"
@@ -18,6 +18,8 @@ type Waler interface {
 	publish(msg proto.Message) error
 	replay() (map[Key]Value, error)
 	clear() error
+	start()
+	stop()
 }
 
 type Wal struct {
@@ -54,11 +56,11 @@ func newWal(path string) (*Wal, error) {
 	return wal, nil
 }
 
-func (w *Wal) Start() {
+func (w *Wal) start() {
 	go w.backgroundSync()
 }
 
-func (w *Wal) Stop() {
+func (w *Wal) stop() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.cancel()

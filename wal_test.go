@@ -1,4 +1,4 @@
-package core
+package dkv
 
 import (
 	"maps"
@@ -20,6 +20,7 @@ func cleanupWalMock(t *testing.T) {
 func TestNewWal(t *testing.T) {
 	_, err := newWal(MOCK_WAL_PATH)
 	assert.Nil(t, err)
+
 	cleanupWalMock(t)
 }
 
@@ -29,8 +30,10 @@ func TestPublish(t *testing.T) {
 	req := pb.SetRequest{Key: "key", Value: []byte{byte(32)}}
 	wal, err := newWal(MOCK_WAL_PATH)
 	assert.Nil(t, err)
+
 	err = wal.publish(&req)
 	assert.Nil(t, err)
+
 	err = wal.sync()
 	assert.Nil(t, err)
 
@@ -39,7 +42,7 @@ func TestPublish(t *testing.T) {
 	//             Protobuf Tag 1 for the set feild        |
 	//                        Length of the set msg (8 bytes)
 	// 00001010 00000011 01101011 01100101 01111001 00010010
-	//     Tag 1^      3^     "k"^     "e"^     "y"^  Tag 2^
+	//   Tag 1^       3^     "k"^     "e"^     "y"^   Tag 2^
 	// 00000001 00100000
 	//        1^     32^
 
@@ -58,10 +61,12 @@ func TestPublish(t *testing.T) {
 
 func TestReplay(t *testing.T) {
 	defer cleanupWalMock(t)
+
 	wal, err := newWal(MOCK_WAL_PATH)
 	exceptedValues := make([][]byte, 1000)
 	exceptedKeys := make([]string, 1000)
 	assert.Nil(t, err)
+
 	for i := range 1000 {
 		key, val := strconv.Itoa(i), []byte{byte(i)}
 		exceptedValues[i] = val
@@ -85,6 +90,7 @@ func TestClear(t *testing.T) {
 
 	wal, err := newWal(MOCK_WAL_PATH)
 	assert.Nil(t, err)
+
 	wal.clear()
 	content, err := os.ReadFile(MOCK_WAL_PATH)
 	assert.Equal(t, 0, len(content))

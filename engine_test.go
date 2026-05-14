@@ -1,4 +1,4 @@
-package core
+package dkv
 
 import (
 	"os"
@@ -43,9 +43,11 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SetSssInterval(MOCK_SSS_INTERVAL)
 	eb.SetSssPath(MOCK_SSS_PATH)
 	eb.SetWalPath(MOCK_WAL_PATH)
+
 	eng, err := eb.GetEngine()
 	assert.Nil(t, err)
 	defer eng.Stop()
+
 	assert.Equal(t, eng.sss.interval, MOCK_SSS_INTERVAL)
 	assert.Equal(t, eng.sss.file.Name(), MOCK_SSS_PATH)
 	assert.Equal(t, eng.wal.file.Name(), MOCK_WAL_PATH)

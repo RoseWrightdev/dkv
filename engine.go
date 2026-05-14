@@ -1,4 +1,4 @@
-package core
+package dkv
 
 import (
 	"encoding/json"
@@ -44,13 +44,13 @@ func newEngine(walPath string, sssPath string, sssInterval time.Duration) (*Engi
 }
 
 func (eng *Engine) Start() {
-	eng.sss.Start()
-	eng.wal.Start()
+	eng.sss.start()
+	eng.wal.start()
 }
 
 func (eng *Engine) Stop() {
-	eng.sss.Stop()
-	eng.wal.Stop()
+	eng.sss.stop()
+	eng.wal.stop()
 }
 
 func (eng *Engine) Get(key Key) (Value, bool) {
