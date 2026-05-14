@@ -14,8 +14,8 @@ type MockWal struct {
 	clearCalled bool
 }
 
-func (mw *MockWal) Publish(msg proto.Message) error { return nil }
-func (mw *MockWal) Replay() (*map[Key]Value, error) { return nil, nil }
+func (mw *MockWal) publish(msg proto.Message) error { return nil }
+func (mw *MockWal) replay() (map[Key]Value, error)  { return nil, nil }
 func (mw *MockWal) clear() error                    { mw.clearCalled = true; return nil }
 
 func cleanupSnapshotMock(t *testing.T) {
@@ -33,7 +33,7 @@ func TestNewSnapShotService(t *testing.T) {
 	defer cleanupSnapshotMock(t)
 
 	mw := &MockWal{}
-	callBack := func() *map[Key]Value { return &map[Key]Value{} }
+	callBack := func() map[Key]Value { return map[Key]Value{} }
 
 	sss, err := newSnapshotService(MOCK_SSS_PATH, MOCK_SSS_INTERVAL, mw, callBack)
 	assert.NoError(t, err)
@@ -49,7 +49,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 		"user:1": []byte("alice"),
 		"user:2": []byte("bob"),
 	}
-	callBack := func() *map[Key]Value { return &mockData }
+	callBack := func() map[Key]Value { return mockData }
 	sss, _ := newSnapshotService(MOCK_SSS_PATH, MOCK_SSS_INTERVAL, mw, callBack)
 
 	err := sss.createNewSnapShot()
@@ -71,7 +71,7 @@ func TestPeriodicSnapshots(t *testing.T) {
 
 	mw := &MockWal{}
 	mockData := map[Key]Value{"count": []byte("1")}
-	callBack := func() *map[Key]Value { return &mockData }
+	callBack := func() map[Key]Value { return mockData }
 
 	interval := 50 * time.Millisecond
 	sss, err := newSnapshotService(MOCK_SSS_PATH, interval, mw, callBack)

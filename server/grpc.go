@@ -24,38 +24,36 @@ func (s *server) Get(_ context.Context, in *pb.GetRequest) (*pb.GetResponse, err
 }
 
 func (s *server) Set(_ context.Context, in *pb.SetRequest) (*pb.SetResponse, error) {
-	err := s.eng.Wal.Publish(in)
-	if err != nil {
+	if err := s.eng.Set(in.Key, in.Value); err != nil {
 		return &pb.SetResponse{}, err
 	}
-	s.eng.Set(in.Key, in.Value)
 	return &pb.SetResponse{}, nil
 }
 
 func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResponse, error) {
-	err := s.eng.Wal.Publish(in)
-	if err != nil {
+	if err := s.eng.Delete(in.Key); err != nil {
 		return &pb.DeleteResponse{}, err
 	}
-	s.eng.Delete(in.Key)
 	return &pb.DeleteResponse{}, nil
 }
 
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
+	eng      *core.Engine
 }
 
 func NewGrpc(eng *core.Engine) *Grpc {
 	s := grpc.NewServer()
 	h := &server{eng: eng}
 	pb.RegisterDkvServiceServer(s, h)
-	return &Grpc{inner: s, handlers: h}
+	return &Grpc{inner: s, handlers: h, eng: eng}
 }
 
 func (s *Grpc) Run(listener net.Listener) error {
 	slog.Info("Grpc server running on " + listener.Addr().String())
 	err := s.inner.Serve(listener)
+	s.eng.Start()
 	return err
 }
 

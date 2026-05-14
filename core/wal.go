@@ -15,8 +15,8 @@ import (
 )
 
 type Waler interface {
-	Publish(msg proto.Message) error
-	Replay() (*map[Key]Value, error)
+	publish(msg proto.Message) error
+	replay() (map[Key]Value, error)
 	clear() error
 }
 
@@ -30,8 +30,14 @@ type Wal struct {
 }
 
 func newWal(path string) (*Wal, error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
+		return nil, err
+	}
+
+	// Seek to end to ensure we don't overwrite if O_APPEND isn't respected by bufio
+	if _, err := file.Seek(0, io.SeekEnd); err != nil {
+		file.Close()
 		return nil, err
 	}
 
@@ -40,7 +46,7 @@ func newWal(path string) (*Wal, error) {
 		ctx:    ctx,
 		cancel: cancel,
 		mu:     sync.Mutex{},
-		wrt:    bufio.NewWriter(file),
+		wrt:    bufio.NewWriterSize(file, 1024*64),
 		file:   file,
 		path:   path,
 	}
@@ -55,14 +61,14 @@ func (w *Wal) backgroundSync() {
 	for {
 		select {
 		case <-ticker.C:
-			w.Sync()
+			w.sync()
 		case <-w.ctx.Done():
 			return
 		}
 	}
 }
 
-func (w *Wal) Publish(msg proto.Message) error {
+func (w *Wal) publish(msg proto.Message) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -97,7 +103,7 @@ func (w *Wal) Publish(msg proto.Message) error {
 	return nil
 }
 
-func (w *Wal) Sync() error {
+func (w *Wal) sync() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if err := w.wrt.Flush(); err != nil {
@@ -119,7 +125,7 @@ func (w *Wal) Stop() {
 	w.file.Close()
 }
 
-func (w *Wal) Replay() (*map[Key]Value, error) {
+func (w *Wal) replay() (map[Key]Value, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -158,10 +164,16 @@ func (w *Wal) Replay() (*map[Key]Value, error) {
 		case *pb.WalEntry_Set:
 			results[kv.Set.Key] = kv.Set.Value
 		case *pb.WalEntry_Delete:
-			delete(results, kv.Delete.Key)
+			results[kv.Delete.Key] = nil
 		}
 	}
-	return &results, nil
+
+	// Seek back to end for future writes
+	if _, err := w.file.Seek(0, io.SeekEnd); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func (w *Wal) clear() error {

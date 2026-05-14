@@ -18,10 +18,10 @@ type SnapShotService struct {
 	path        string
 	interval    time.Duration
 	wal         Waler
-	engCallBack func() *map[Key]Value
+	engCallBack func() map[Key]Value
 }
 
-func newSnapshotService(path string, interval time.Duration, wal Waler, engCallBack func() *map[Key]Value) (*SnapShotService, error) {
+func newSnapshotService(path string, interval time.Duration, wal Waler, engCallBack func() map[Key]Value) (*SnapShotService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
@@ -54,6 +54,9 @@ func (sss *SnapShotService) Start() {
 func (sss *SnapShotService) Stop() {
 	sss.cancel()
 	sss.wg.Wait()
+	if sss.file != nil {
+		sss.file.Close()
+	}
 }
 
 func (sss *SnapShotService) producer(ctx context.Context) {
@@ -80,7 +83,6 @@ func (sss *SnapShotService) consumer(ctx context.Context) {
 			if !ok {
 				return
 			}
-			slog.Info("Creating database snapshot...")
 			if err := sss.createNewSnapShot(); err != nil {
 				slog.Error("Failed to create snapshot", "error", err)
 			} else {

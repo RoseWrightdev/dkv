@@ -29,9 +29,9 @@ func TestPublish(t *testing.T) {
 	req := pb.SetRequest{Key: "key", Value: []byte{byte(32)}}
 	wal, err := newWal(MOCK_WAL_PATH)
 	assert.Nil(t, err)
-	err = wal.Publish(&req)
+	err = wal.publish(&req)
 	assert.Nil(t, err)
-	err = wal.Sync()
+	err = wal.sync()
 	assert.Nil(t, err)
 
 	// 00000000 00000000 00000000 00001010 00001010 00001000
@@ -67,14 +67,14 @@ func TestReplay(t *testing.T) {
 		exceptedValues[i] = val
 		exceptedKeys[i] = key
 		req := pb.SetRequest{Key: key, Value: val}
-		err = wal.Publish(&req)
+		err = wal.publish(&req)
 		assert.Nil(t, err)
 	}
-	replay, err := wal.Replay()
+	replay, err := wal.replay()
 	assert.Nil(t, err, "Replay returned error")
 
-	gotValues := slices.Collect(maps.Values(*replay))
-	gotKeys := slices.Collect(maps.Keys(*replay))
+	gotValues := slices.Collect(maps.Values(replay))
+	gotKeys := slices.Collect(maps.Keys(replay))
 
 	assert.ElementsMatch(t, exceptedValues, gotValues)
 	assert.ElementsMatch(t, exceptedKeys, gotKeys)

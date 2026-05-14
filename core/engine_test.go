@@ -15,10 +15,12 @@ const (
 )
 
 func cleanupEngineMocks(t *testing.T) {
-	err := os.Remove(MOCK_SSS_PATH)
-	assert.Nil(t, err)
-	err = os.Remove(MOCK_WAL_PATH)
-	assert.Nil(t, err)
+	if err := os.Remove(MOCK_SSS_PATH); err != nil && !os.IsNotExist(err) {
+		assert.Nil(t, err)
+	}
+	if err := os.Remove(MOCK_WAL_PATH); err != nil && !os.IsNotExist(err) {
+		assert.Nil(t, err)
+	}
 }
 
 func TestEngineBuilder(t *testing.T) {
@@ -46,36 +48,70 @@ func TestEngineBuilder(t *testing.T) {
 	defer eng.Stop()
 	assert.Equal(t, eng.sss.interval, MOCK_SSS_INTERVAL)
 	assert.Equal(t, eng.sss.file.Name(), MOCK_SSS_PATH)
-	assert.Equal(t, eng.Wal.file.Name(), MOCK_WAL_PATH)
+	assert.Equal(t, eng.wal.file.Name(), MOCK_WAL_PATH)
 
 	cleanupEngineMocks(t)
 }
 
-func TestEngineOpperations(t *testing.T) {
+func TestEngineOperations(t *testing.T) {
 	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_SSS_INTERVAL)
 	assert.Nil(t, err)
+	eng.Start()
 	defer eng.Stop()
 	bytes := make([]byte, 1)
 	bytes = append(bytes, byte(10))
 
-	eng.hm.Store("key", bytes)
+	err = eng.Set("key", bytes)
+	assert.Nil(t, err)
 	val, ok := eng.Get("key")
 	assert.Equal(t, val, bytes)
 	assert.True(t, ok)
 
-	exists := eng.Exists("key")
-	assert.True(t, exists)
-
 	bytes = make([]byte, 1)
 	bytes = append(bytes, byte(1))
-	eng.Set("key", bytes)
-	rawVal, _ := eng.hm.Load(Key("key"))
-	val = rawVal.(Value)
+	err = eng.Set("key", bytes)
+	assert.Nil(t, err)
+	val, ok = eng.Get("key")
+	assert.True(t, ok)
 	assert.Equal(t, val, bytes)
 
-	eng.Delete("key")
-	exists = eng.Exists("key")
-	assert.False(t, exists)
+	err = eng.Delete("key")
+	assert.Nil(t, err)
 
 	cleanupEngineMocks(t)
+}
+
+func TestEnginePersistence(t *testing.T) {
+	defer cleanupEngineMocks(t)
+
+	eng, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_SSS_INTERVAL)
+	eng.Start()
+	assert.Nil(t, err)
+	key1, val1 := "persist1", []byte("value1")
+	key2, val2 := "persist2", []byte("value2")
+	assert.Nil(t, eng.Set(key1, val1))
+	assert.Nil(t, eng.Set(key2, val2))
+
+	err = eng.sss.createNewSnapShot()
+	assert.Nil(t, err)
+
+	key3, val3 := "persist3", []byte("value3")
+	assert.Nil(t, eng.Set(key3, val3))
+
+	assert.Nil(t, eng.wal.sync())
+
+	eng.Stop()
+
+	eng2, err := newEngine(MOCK_WAL_PATH, MOCK_SSS_PATH, MOCK_SSS_INTERVAL)
+	assert.Nil(t, err)
+	eng2.Start()
+	defer eng2.Stop()
+
+	v, ok := eng2.Get(key1)
+	assert.True(t, ok)
+	assert.Equal(t, val1, v)
+
+	v, ok = eng2.Get(key3)
+	assert.True(t, ok)
+	assert.Equal(t, val3, v)
 }
