@@ -10,15 +10,15 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type MockWal struct {
+type mockWal struct {
 	clearCalled bool
 }
 
-func (mw *MockWal) publish(msg proto.Message) error { return nil }
-func (mw *MockWal) replay() (map[Key]Value, error)  { return nil, nil }
-func (mw *MockWal) clear() error                    { mw.clearCalled = true; return nil }
-func (mw *MockWal) stop()                           {}
-func (mw *MockWal) start()                          {}
+func (mw *mockWal) publish(msg proto.Message) error { return nil }
+func (mw *mockWal) replay() (map[Key]Value, error)  { return nil, nil }
+func (mw *mockWal) clear() error                    { mw.clearCalled = true; return nil }
+func (mw *mockWal) stop()                           {}
+func (mw *mockWal) start()                          {}
 
 func cleanupSnapshotMock(t *testing.T) {
 	err := os.Remove(mockConfig.sssPath)
@@ -34,7 +34,7 @@ func cleanupSnapshotMock(t *testing.T) {
 func TestNewSnapShotService(t *testing.T) {
 	defer cleanupSnapshotMock(t)
 
-	mw := &MockWal{}
+	mw := &mockWal{}
 	callBack := func() map[Key]Value { return map[Key]Value{} }
 
 	sss, err := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
@@ -46,7 +46,7 @@ func TestNewSnapShotService(t *testing.T) {
 func TestCreateNewSnapShot(t *testing.T) {
 	defer cleanupSnapshotMock(t)
 
-	mw := &MockWal{}
+	mw := &mockWal{}
 	mockData := map[Key]Value{
 		"user:1": []byte("alice"),
 		"user:2": []byte("bob"),
@@ -71,7 +71,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 func TestPeriodicSnapshots(t *testing.T) {
 	defer cleanupSnapshotMock(t)
 
-	mw := &MockWal{}
+	mw := &mockWal{}
 	mockData := map[Key]Value{"count": []byte("1")}
 	callBack := func() map[Key]Value { return mockData }
 
