@@ -52,8 +52,8 @@ func NewGrpc(eng *dkv.Engine) *Grpc {
 
 func (s *Grpc) Run(listener net.Listener) error {
 	slog.Info("Grpc server running on " + listener.Addr().String())
-	err := s.inner.Serve(listener)
 	s.eng.Start()
+	err := s.inner.Serve(listener)
 	return err
 }
 
