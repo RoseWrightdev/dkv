@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+package dkv;
+
 option go_package = "./";
 
 service DkvService {

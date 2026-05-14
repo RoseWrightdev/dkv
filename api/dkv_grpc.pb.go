@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.34.1
-// source: api/proto/dkv.proto
+// source: api/dkv.proto
 
 package __
 
@@ -19,9 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DkvService_Get_FullMethodName    = "/DkvService/Get"
-	DkvService_Set_FullMethodName    = "/DkvService/Set"
-	DkvService_Delete_FullMethodName = "/DkvService/Delete"
+	DkvService_Get_FullMethodName    = "/dkv.DkvService/Get"
+	DkvService_Set_FullMethodName    = "/dkv.DkvService/Set"
+	DkvService_Delete_FullMethodName = "/dkv.DkvService/Delete"
 )
 
 // DkvServiceClient is the client API for DkvService service.
@@ -176,7 +176,7 @@ func _DkvService_Delete_Handler(srv interface{}, ctx context.Context, dec func(i
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var DkvService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "DkvService",
+	ServiceName: "dkv.DkvService",
 	HandlerType: (*DkvServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -193,5 +193,5 @@ var DkvService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "api/proto/dkv.proto",
+	Metadata: "api/dkv.proto",
 }

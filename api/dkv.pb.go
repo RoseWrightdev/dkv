@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v7.34.1
-// source: api/proto/dkv.proto
+// source: api/dkv.proto
 
 package __
 
@@ -34,7 +34,7 @@ type WalEntry struct {
 
 func (x *WalEntry) Reset() {
 	*x = WalEntry{}
-	mi := &file_api_proto_dkv_proto_msgTypes[0]
+	mi := &file_api_dkv_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +46,7 @@ func (x *WalEntry) String() string {
 func (*WalEntry) ProtoMessage() {}
 
 func (x *WalEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_dkv_proto_msgTypes[0]
+	mi := &file_api_dkv_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +59,7 @@ func (x *WalEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WalEntry.ProtoReflect.Descriptor instead.
 func (*WalEntry) Descriptor() ([]byte, []int) {
-	return file_api_proto_dkv_proto_rawDescGZIP(), []int{0}
+	return file_api_dkv_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *WalEntry) GetEntry() isWalEntry_Entry {
@@ -112,7 +112,7 @@ type GetRequest struct {
 
 func (x *GetRequest) Reset() {
 	*x = GetRequest{}
-	mi := &file_api_proto_dkv_proto_msgTypes[1]
+	mi := &file_api_dkv_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -124,7 +124,7 @@ func (x *GetRequest) String() string {
 func (*GetRequest) ProtoMessage() {}
 
 func (x *GetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_dkv_proto_msgTypes[1]
+	mi := &file_api_dkv_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -137,7 +137,7 @@ func (x *GetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRequest.ProtoReflect.Descriptor instead.
 func (*GetRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_dkv_proto_rawDescGZIP(), []int{1}
+	return file_api_dkv_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *GetRequest) GetKey() string {
@@ -157,7 +157,7 @@ type GetResponse struct {
 
 func (x *GetResponse) Reset() {
 	*x = GetResponse{}
-	mi := &file_api_proto_dkv_proto_msgTypes[2]
+	mi := &file_api_dkv_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -169,7 +169,7 @@ func (x *GetResponse) String() string {
 func (*GetResponse) ProtoMessage() {}
 
 func (x *GetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_dkv_proto_msgTypes[2]
+	mi := &file_api_dkv_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -182,7 +182,7 @@ func (x *GetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResponse.ProtoReflect.Descriptor instead.
 func (*GetResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_dkv_proto_rawDescGZIP(), []int{2}
+	return file_api_dkv_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *GetResponse) GetValue() []byte {
@@ -209,7 +209,7 @@ type SetRequest struct {
 
 func (x *SetRequest) Reset() {
 	*x = SetRequest{}
-	mi := &file_api_proto_dkv_proto_msgTypes[3]
+	mi := &file_api_dkv_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -221,7 +221,7 @@ func (x *SetRequest) String() string {
 func (*SetRequest) ProtoMessage() {}
 
 func (x *SetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_dkv_proto_msgTypes[3]
+	mi := &file_api_dkv_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -234,7 +234,7 @@ func (x *SetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRequest.ProtoReflect.Descriptor instead.
 func (*SetRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_dkv_proto_rawDescGZIP(), []int{3}
+	return file_api_dkv_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SetRequest) GetKey() string {
@@ -259,7 +259,7 @@ type SetResponse struct {
 
 func (x *SetResponse) Reset() {
 	*x = SetResponse{}
-	mi := &file_api_proto_dkv_proto_msgTypes[4]
+	mi := &file_api_dkv_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -271,7 +271,7 @@ func (x *SetResponse) String() string {
 func (*SetResponse) ProtoMessage() {}
 
 func (x *SetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_dkv_proto_msgTypes[4]
+	mi := &file_api_dkv_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -284,7 +284,7 @@ func (x *SetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetResponse.ProtoReflect.Descriptor instead.
 func (*SetResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_dkv_proto_rawDescGZIP(), []int{4}
+	return file_api_dkv_proto_rawDescGZIP(), []int{4}
 }
 
 type DeleteRequest struct {
@@ -296,7 +296,7 @@ type DeleteRequest struct {
 
 func (x *DeleteRequest) Reset() {
 	*x = DeleteRequest{}
-	mi := &file_api_proto_dkv_proto_msgTypes[5]
+	mi := &file_api_dkv_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -308,7 +308,7 @@ func (x *DeleteRequest) String() string {
 func (*DeleteRequest) ProtoMessage() {}
 
 func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_dkv_proto_msgTypes[5]
+	mi := &file_api_dkv_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -321,7 +321,7 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_dkv_proto_rawDescGZIP(), []int{5}
+	return file_api_dkv_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DeleteRequest) GetKey() string {
@@ -339,7 +339,7 @@ type DeleteResponse struct {
 
 func (x *DeleteResponse) Reset() {
 	*x = DeleteResponse{}
-	mi := &file_api_proto_dkv_proto_msgTypes[6]
+	mi := &file_api_dkv_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -351,7 +351,7 @@ func (x *DeleteResponse) String() string {
 func (*DeleteResponse) ProtoMessage() {}
 
 func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_dkv_proto_msgTypes[6]
+	mi := &file_api_dkv_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -364,17 +364,17 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_dkv_proto_rawDescGZIP(), []int{6}
+	return file_api_dkv_proto_rawDescGZIP(), []int{6}
 }
 
-var File_api_proto_dkv_proto protoreflect.FileDescriptor
+var File_api_dkv_proto protoreflect.FileDescriptor
 
-const file_api_proto_dkv_proto_rawDesc = "" +
+const file_api_dkv_proto_rawDesc = "" +
 	"\n" +
-	"\x13api/proto/dkv.proto\"^\n" +
-	"\bWalEntry\x12\x1f\n" +
-	"\x03set\x18\x01 \x01(\v2\v.SetRequestH\x00R\x03set\x12(\n" +
-	"\x06delete\x18\x02 \x01(\v2\x0e.DeleteRequestH\x00R\x06deleteB\a\n" +
+	"\rapi/dkv.proto\x12\x03dkv\"f\n" +
+	"\bWalEntry\x12#\n" +
+	"\x03set\x18\x01 \x01(\v2\x0f.dkv.SetRequestH\x00R\x03set\x12,\n" +
+	"\x06delete\x18\x02 \x01(\v2\x12.dkv.DeleteRequestH\x00R\x06deleteB\a\n" +
 	"\x05entry\"\x1e\n" +
 	"\n" +
 	"GetRequest\x12\x10\n" +
@@ -389,44 +389,44 @@ const file_api_proto_dkv_proto_rawDesc = "" +
 	"\vSetResponse\"!\n" +
 	"\rDeleteRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\"\x10\n" +
-	"\x0eDeleteResponse2\x81\x01\n" +
+	"\x0eDeleteResponse2\x99\x01\n" +
 	"\n" +
-	"DkvService\x12\"\n" +
-	"\x03Get\x12\v.GetRequest\x1a\f.GetResponse\"\x00\x12\"\n" +
-	"\x03Set\x12\v.SetRequest\x1a\f.SetResponse\"\x00\x12+\n" +
-	"\x06Delete\x12\x0e.DeleteRequest\x1a\x0f.DeleteResponse\"\x00B\x04Z\x02./b\x06proto3"
+	"DkvService\x12*\n" +
+	"\x03Get\x12\x0f.dkv.GetRequest\x1a\x10.dkv.GetResponse\"\x00\x12*\n" +
+	"\x03Set\x12\x0f.dkv.SetRequest\x1a\x10.dkv.SetResponse\"\x00\x123\n" +
+	"\x06Delete\x12\x12.dkv.DeleteRequest\x1a\x13.dkv.DeleteResponse\"\x00B\x04Z\x02./b\x06proto3"
 
 var (
-	file_api_proto_dkv_proto_rawDescOnce sync.Once
-	file_api_proto_dkv_proto_rawDescData []byte
+	file_api_dkv_proto_rawDescOnce sync.Once
+	file_api_dkv_proto_rawDescData []byte
 )
 
-func file_api_proto_dkv_proto_rawDescGZIP() []byte {
-	file_api_proto_dkv_proto_rawDescOnce.Do(func() {
-		file_api_proto_dkv_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_proto_dkv_proto_rawDesc), len(file_api_proto_dkv_proto_rawDesc)))
+func file_api_dkv_proto_rawDescGZIP() []byte {
+	file_api_dkv_proto_rawDescOnce.Do(func() {
+		file_api_dkv_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_dkv_proto_rawDesc), len(file_api_dkv_proto_rawDesc)))
 	})
-	return file_api_proto_dkv_proto_rawDescData
+	return file_api_dkv_proto_rawDescData
 }
 
-var file_api_proto_dkv_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_api_proto_dkv_proto_goTypes = []any{
-	(*WalEntry)(nil),       // 0: WalEntry
-	(*GetRequest)(nil),     // 1: GetRequest
-	(*GetResponse)(nil),    // 2: GetResponse
-	(*SetRequest)(nil),     // 3: SetRequest
-	(*SetResponse)(nil),    // 4: SetResponse
-	(*DeleteRequest)(nil),  // 5: DeleteRequest
-	(*DeleteResponse)(nil), // 6: DeleteResponse
+var file_api_dkv_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_api_dkv_proto_goTypes = []any{
+	(*WalEntry)(nil),       // 0: dkv.WalEntry
+	(*GetRequest)(nil),     // 1: dkv.GetRequest
+	(*GetResponse)(nil),    // 2: dkv.GetResponse
+	(*SetRequest)(nil),     // 3: dkv.SetRequest
+	(*SetResponse)(nil),    // 4: dkv.SetResponse
+	(*DeleteRequest)(nil),  // 5: dkv.DeleteRequest
+	(*DeleteResponse)(nil), // 6: dkv.DeleteResponse
 }
-var file_api_proto_dkv_proto_depIdxs = []int32{
-	3, // 0: WalEntry.set:type_name -> SetRequest
-	5, // 1: WalEntry.delete:type_name -> DeleteRequest
-	1, // 2: DkvService.Get:input_type -> GetRequest
-	3, // 3: DkvService.Set:input_type -> SetRequest
-	5, // 4: DkvService.Delete:input_type -> DeleteRequest
-	2, // 5: DkvService.Get:output_type -> GetResponse
-	4, // 6: DkvService.Set:output_type -> SetResponse
-	6, // 7: DkvService.Delete:output_type -> DeleteResponse
+var file_api_dkv_proto_depIdxs = []int32{
+	3, // 0: dkv.WalEntry.set:type_name -> dkv.SetRequest
+	5, // 1: dkv.WalEntry.delete:type_name -> dkv.DeleteRequest
+	1, // 2: dkv.DkvService.Get:input_type -> dkv.GetRequest
+	3, // 3: dkv.DkvService.Set:input_type -> dkv.SetRequest
+	5, // 4: dkv.DkvService.Delete:input_type -> dkv.DeleteRequest
+	2, // 5: dkv.DkvService.Get:output_type -> dkv.GetResponse
+	4, // 6: dkv.DkvService.Set:output_type -> dkv.SetResponse
+	6, // 7: dkv.DkvService.Delete:output_type -> dkv.DeleteResponse
 	5, // [5:8] is the sub-list for method output_type
 	2, // [2:5] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -434,12 +434,12 @@ var file_api_proto_dkv_proto_depIdxs = []int32{
 	0, // [0:2] is the sub-list for field type_name
 }
 
-func init() { file_api_proto_dkv_proto_init() }
-func file_api_proto_dkv_proto_init() {
-	if File_api_proto_dkv_proto != nil {
+func init() { file_api_dkv_proto_init() }
+func file_api_dkv_proto_init() {
+	if File_api_dkv_proto != nil {
 		return
 	}
-	file_api_proto_dkv_proto_msgTypes[0].OneofWrappers = []any{
+	file_api_dkv_proto_msgTypes[0].OneofWrappers = []any{
 		(*WalEntry_Set)(nil),
 		(*WalEntry_Delete)(nil),
 	}
@@ -447,17 +447,17 @@ func file_api_proto_dkv_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_dkv_proto_rawDesc), len(file_api_proto_dkv_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_dkv_proto_rawDesc), len(file_api_dkv_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_api_proto_dkv_proto_goTypes,
-		DependencyIndexes: file_api_proto_dkv_proto_depIdxs,
-		MessageInfos:      file_api_proto_dkv_proto_msgTypes,
+		GoTypes:           file_api_dkv_proto_goTypes,
+		DependencyIndexes: file_api_dkv_proto_depIdxs,
+		MessageInfos:      file_api_dkv_proto_msgTypes,
 	}.Build()
-	File_api_proto_dkv_proto = out.File
-	file_api_proto_dkv_proto_goTypes = nil
-	file_api_proto_dkv_proto_depIdxs = nil
+	File_api_dkv_proto = out.File
+	file_api_dkv_proto_goTypes = nil
+	file_api_dkv_proto_depIdxs = nil
 }
