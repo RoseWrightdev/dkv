@@ -54,18 +54,17 @@ func newWal(path string) (*Wal, error) {
 	return wal, nil
 }
 
-func (w *Wal) backgroundSync() {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+func (w *Wal) Start() {
+	go w.backgroundSync()
+}
 
-	for {
-		select {
-		case <-ticker.C:
-			w.sync()
-		case <-w.ctx.Done():
-			return
-		}
-	}
+func (w *Wal) Stop() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.cancel()
+	w.wrt.Flush()
+	w.file.Sync()
+	w.file.Close()
 }
 
 func (w *Wal) publish(msg proto.Message) error {
@@ -112,17 +111,18 @@ func (w *Wal) sync() error {
 	return w.file.Sync()
 }
 
-func (w *Wal) Start() {
-	go w.backgroundSync()
-}
+func (w *Wal) backgroundSync() {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
 
-func (w *Wal) Stop() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.cancel()
-	w.wrt.Flush()
-	w.file.Sync()
-	w.file.Close()
+	for {
+		select {
+		case <-ticker.C:
+			w.sync()
+		case <-w.ctx.Done():
+			return
+		}
+	}
 }
 
 func (w *Wal) replay() (map[Key]Value, error) {
