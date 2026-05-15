@@ -2,7 +2,7 @@ package dkv
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/gob"
 	"log/slog"
 	"os"
 	"sync"
@@ -103,15 +103,18 @@ func (sss *SnapShotService) queueSnapShot() {
 func (sss *SnapShotService) createNewSnapShot() error {
 	state := sss.engCallBack()
 
-	data, err := json.Marshal(state)
+	tmpPath := sss.path + ".tmp"
+	file, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 
-	tmpPath := sss.path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := gob.NewEncoder(file).Encode(state); err != nil {
 		return err
 	}
+	file.Sync()
+	file.Close()
 
 	if err := os.Rename(tmpPath, sss.path); err != nil {
 		return err

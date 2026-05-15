@@ -30,6 +30,7 @@ type Wal struct {
 	wrt          *bufio.Writer
 	file         *os.File
 	path         string
+	headerPool   sync.Pool
 }
 
 func newWal(path string, syncInterval time.Duration, bufferSize uint32) (*Wal, error) {
@@ -38,7 +39,6 @@ func newWal(path string, syncInterval time.Duration, bufferSize uint32) (*Wal, e
 		return nil, err
 	}
 
-	// Seek to end to ensure we don't overwrite if O_APPEND isn't respected by bufio
 	if _, err := file.Seek(0, io.SeekEnd); err != nil {
 		file.Close()
 		return nil, err
@@ -53,6 +53,11 @@ func newWal(path string, syncInterval time.Duration, bufferSize uint32) (*Wal, e
 		wrt:          bufio.NewWriterSize(file, int(bufferSize)),
 		file:         file,
 		path:         path,
+		headerPool: sync.Pool{
+			New: func() any {
+				return make([]byte, 4)
+			},
+		},
 	}
 
 	return wal, nil
@@ -92,7 +97,8 @@ func (w *Wal) publish(msg proto.Message) error {
 		return err
 	}
 
-	header := make([]byte, 4)
+	header := w.headerPool.Get().([]byte)
+	defer w.headerPool.Put(header)
 	binary.BigEndian.PutUint32(header, uint32(len(data)))
 
 	if _, err := w.wrt.Write(header); err != nil {

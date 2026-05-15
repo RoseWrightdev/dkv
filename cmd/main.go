@@ -14,17 +14,18 @@ func main() {
 		SetSssPath("sss.json").
 		SetWalPath("wal.binpb").
 		SetWalBufferSize(64 * 1028).
+		SetEvictionService(dkv.NewLRU(64*1028, time.Duration(5)*time.Minute)).
 		GetEngine()
 	if err != nil {
 		panic(err)
 	}
 
-	s := dkv.NewServer(eng)
 	listener, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		panic(err)
 	}
 
+	s := dkv.NewServer(eng)
 	err = s.Run(listener)
 	if err != nil {
 		panic(err)

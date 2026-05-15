@@ -1,7 +1,7 @@
 package dkv
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	"log/slog"
 	"os"
 	"sync"
@@ -14,9 +14,10 @@ type Key = string
 type Value = []byte
 
 type Engine struct {
-	hm  *sync.Map
-	wal *Wal
-	sss *SnapShotService
+	hm              *sync.Map
+	wal             *Wal
+	sss             *SnapShotService
+	evictionService Evictor
 }
 
 type EngineConfig struct {
@@ -25,6 +26,7 @@ type EngineConfig struct {
 	walSyncInterval time.Duration
 	sssInterval     time.Duration
 	walBufferSize   uint32
+	evictionService Evictor
 }
 
 func newEngine(config EngineConfig) (*Engine, error) {
@@ -47,6 +49,8 @@ func newEngine(config EngineConfig) (*Engine, error) {
 		return nil, err
 	}
 	eng.sss = sss
+	eng.evictionService = config.evictionService
+	eng.evictionService.SetEvictCallback(eng.Evict)
 
 	return eng, nil
 }
@@ -54,14 +58,17 @@ func newEngine(config EngineConfig) (*Engine, error) {
 func (eng *Engine) Start() {
 	eng.sss.start()
 	eng.wal.start()
+	eng.evictionService.start()
 }
 
 func (eng *Engine) Stop() {
 	eng.sss.stop()
 	eng.wal.stop()
+	eng.evictionService.stop()
 }
 
 func (eng *Engine) Get(key Key) (Value, bool) {
+	eng.evictionService.publish(key)
 	val, ok := eng.hm.Load(key)
 	if !ok {
 		return nil, false
@@ -70,6 +77,7 @@ func (eng *Engine) Get(key Key) (Value, bool) {
 }
 
 func (eng *Engine) Set(key Key, value Value) error {
+	eng.evictionService.publish(key)
 	if err := eng.wal.publish(&pb.SetRequest{Key: key, Value: value}); err != nil {
 		return err
 	}
@@ -78,6 +86,15 @@ func (eng *Engine) Set(key Key, value Value) error {
 }
 
 func (eng *Engine) Delete(key Key) error {
+	eng.evictionService.publishDelete(key)
+	if err := eng.wal.publish(&pb.DeleteRequest{Key: key}); err != nil {
+		return err
+	}
+	eng.hm.Delete(key)
+	return nil
+}
+
+func (eng *Engine) Evict(key Key) error {
 	if err := eng.wal.publish(&pb.DeleteRequest{Key: key}); err != nil {
 		return err
 	}
@@ -96,12 +113,14 @@ func (eng *Engine) toMap() map[Key]Value {
 
 func (eng *Engine) recover(sssPath string) error {
 	if info, err := os.Stat(sssPath); err == nil && info.Size() > 0 {
-		data, err := os.ReadFile(sssPath)
+		file, err := os.Open(sssPath)
 		if err != nil {
 			return err
 		}
+		defer file.Close()
+
 		var state map[Key]Value
-		if err := json.Unmarshal(data, &state); err != nil {
+		if err := gob.NewDecoder(file).Decode(&state); err != nil {
 			return err
 		}
 		for k, v := range state {

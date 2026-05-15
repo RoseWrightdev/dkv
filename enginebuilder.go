@@ -11,6 +11,7 @@ type EngineBuilder struct {
 	walSyncInterval time.Duration
 	sssInterval     time.Duration
 	walBufferSize   uint32
+	evictionService Evictor
 }
 
 func NewEngineBuilder() *EngineBuilder {
@@ -42,6 +43,11 @@ func (eb *EngineBuilder) SetWalBufferSize(size uint32) *EngineBuilder {
 	return eb
 }
 
+func (eb *EngineBuilder) SetEvictionService(evictor Evictor) *EngineBuilder {
+	eb.evictionService = evictor
+	return eb
+}
+
 func (eb *EngineBuilder) GetEngine() (*Engine, error) {
 	if isUnit(eb.walPath) {
 		return nil, fmt.Errorf("required eb.walPath is unset cogfigure eb.walPath with SetWalPath(path string)")
@@ -63,12 +69,17 @@ func (eb *EngineBuilder) GetEngine() (*Engine, error) {
 		return nil, fmt.Errorf("required eb.walBufferSize is unset cogfigure eb.walBufferSize with SetWalBufferSize(size uint32)")
 	}
 
+	if eb.evictionService == nil {
+		return nil, fmt.Errorf("required eb.evictionService is unset configure eb.evictionService with SetEvictionService(evictor Evictor)")
+	}
+
 	config := EngineConfig{
 		walPath:         eb.walPath,
 		sssPath:         eb.sssPath,
 		walSyncInterval: eb.walSyncInterval,
 		sssInterval:     eb.sssInterval,
 		walBufferSize:   eb.walBufferSize,
+		evictionService: eb.evictionService,
 	}
 
 	return newEngine(config)

@@ -14,6 +14,7 @@ var mockConfig EngineConfig = EngineConfig{
 	walSyncInterval: 100 * time.Millisecond,
 	sssInterval:     500 * time.Millisecond,
 	walBufferSize:   uint32(64 * 1024),
+	evictionService: NewLRU(100, time.Hour),
 }
 
 func cleanupEngineMocks(t *testing.T) {

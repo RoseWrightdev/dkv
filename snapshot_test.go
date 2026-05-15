@@ -1,7 +1,7 @@
 package dkv
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	"os"
 	"testing"
 	"time"
@@ -57,11 +57,12 @@ func TestCreateNewSnapShot(t *testing.T) {
 	err := sss.createNewSnapShot()
 	assert.NoError(t, err)
 
-	data, err := os.ReadFile(mockConfig.sssPath)
+	file, err := os.Open(mockConfig.sssPath)
 	assert.NoError(t, err)
+	defer file.Close()
 
 	var decoded map[Key]Value
-	err = json.Unmarshal(data, &decoded)
+	err = gob.NewDecoder(file).Decode(&decoded)
 	assert.NoError(t, err)
 	assert.Equal(t, mockData, decoded)
 

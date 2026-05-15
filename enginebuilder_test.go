@@ -2,6 +2,7 @@ package dkv
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -36,6 +37,11 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SetSssPath(mockConfig.sssPath)
 	eb.SetWalSyncInterval(mockConfig.walSyncInterval)
 	eb.SetWalBufferSize(mockConfig.walBufferSize)
+	
+	lru := NewLRU(500, time.Minute)
+	eb.SetEvictionService(lru)
+	assert.Equal(t, lru, eb.evictionService)
+
 	eng, err := eb.GetEngine()
 	assert.Nil(t, err)
 	defer eng.Stop()
@@ -43,6 +49,11 @@ func TestEngineBuilder(t *testing.T) {
 	assert.Equal(t, eng.sss.interval, mockConfig.sssInterval)
 	assert.Equal(t, eng.sss.file.Name(), mockConfig.sssPath)
 	assert.Equal(t, eng.wal.file.Name(), mockConfig.walPath)
+
+	actualLRU, ok := eng.evictionService.(*LeastRecentlyUsed)
+	assert.True(t, ok)
+	assert.Equal(t, uint32(500), actualLRU.capacity)
+	assert.Equal(t, time.Minute, actualLRU.ttl)
 
 	cleanupEngineMocks(t)
 }
