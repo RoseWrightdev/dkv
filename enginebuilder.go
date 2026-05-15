@@ -13,6 +13,9 @@ type EngineBuilder struct {
 	walBufferSize   uint32
 	walSegments     int
 	evictionService Evictor
+	clock           Clock
+	clusterConfig   ClusterConfig
+	syncInterval    time.Duration
 }
 
 func NewEngineBuilder() *EngineBuilder {
@@ -29,6 +32,8 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.walBufferSize = 64 * 1024
 	eb.walSegments = 16
 	eb.evictionService = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
+	eb.clock = &MonotonicClock{}
+	eb.syncInterval = 10 * time.Second
 	return eb
 }
 
@@ -67,6 +72,21 @@ func (eb *EngineBuilder) SetEvictionService(evictor Evictor) *EngineBuilder {
 	return eb
 }
 
+func (eb *EngineBuilder) SetClock(clock Clock) *EngineBuilder {
+	eb.clock = clock
+	return eb
+}
+
+func (eb *EngineBuilder) SetClusterConfig(config ClusterConfig) *EngineBuilder {
+	eb.clusterConfig = config
+	return eb
+}
+
+func (eb *EngineBuilder) SetSyncInterval(interval time.Duration) *EngineBuilder {
+	eb.syncInterval = interval
+	return eb
+}
+
 func (eb *EngineBuilder) GetEngine() (Engine, error) {
 	if isUnit(eb.walPath) {
 		return nil, fmt.Errorf("required eb.walPath is unset cogfigure eb.walPath with SetWalPath(path string)")
@@ -92,8 +112,8 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 		return nil, fmt.Errorf("required eb.walSegments is unset configure eb.walSegments with SetWalSegments(count int)")
 	}
 
-	if eb.evictionService == nil {
-		return nil, fmt.Errorf("required eb.evictionService is unset configure eb.evictionService with SetEvictionService(evictor Evictor)")
+	if eb.clock == nil {
+		return nil, fmt.Errorf("required eb.clock is unset configure eb.clock with SetClock(clock Clock)")
 	}
 
 	config := EngineConfig{
@@ -104,6 +124,9 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 		walBufferSize:   eb.walBufferSize,
 		walSegments:     eb.walSegments,
 		evictionService: eb.evictionService,
+		clock:           eb.clock,
+		clusterConfig:   eb.clusterConfig,
+		syncInterval:    eb.syncInterval,
 	}
 
 	return newEngine(config)

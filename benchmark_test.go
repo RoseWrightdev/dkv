@@ -15,6 +15,7 @@ func setupBenchmarkEngine(b *testing.B) (Engine, func()) {
 	}
 
 	eng, err := NewEngineBuilder().
+		Default().
 		SetWalPath(tmpDir).
 		SetSssPath(tmpDir + "/sss.gob").
 		SetWalSyncInterval(time.Hour).
@@ -210,7 +211,11 @@ func BenchmarkEngine_Recover(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		e, err := NewEngineBuilder().GetEngineDefault(tmpDir, tmpDir+"/sss.gob")
+		e, err := NewEngineBuilder().
+			Default().
+			SetWalPath(tmpDir).
+			SetSssPath(tmpDir + "/sss.gob").
+			GetEngine()
 		if err != nil {
 			b.Fatal(err)
 		}

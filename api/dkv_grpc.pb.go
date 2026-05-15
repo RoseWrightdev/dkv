@@ -22,6 +22,8 @@ const (
 	DkvService_Get_FullMethodName    = "/dkv.DkvService/Get"
 	DkvService_Set_FullMethodName    = "/dkv.DkvService/Set"
 	DkvService_Delete_FullMethodName = "/dkv.DkvService/Delete"
+	DkvService_Pull_FullMethodName   = "/dkv.DkvService/Pull"
+	DkvService_Push_FullMethodName   = "/dkv.DkvService/Push"
 )
 
 // DkvServiceClient is the client API for DkvService service.
@@ -31,6 +33,9 @@ type DkvServiceClient interface {
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
 	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+	// Anti-Entropy Sync
+	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error)
+	Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error)
 }
 
 type dkvServiceClient struct {
@@ -71,6 +76,26 @@ func (c *dkvServiceClient) Delete(ctx context.Context, in *DeleteRequest, opts .
 	return out, nil
 }
 
+func (c *dkvServiceClient) Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PullResponse)
+	err := c.cc.Invoke(ctx, DkvService_Pull_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dkvServiceClient) Push(ctx context.Context, in *PushRequest, opts ...grpc.CallOption) (*PushResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PushResponse)
+	err := c.cc.Invoke(ctx, DkvService_Push_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DkvServiceServer is the server API for DkvService service.
 // All implementations must embed UnimplementedDkvServiceServer
 // for forward compatibility.
@@ -78,6 +103,9 @@ type DkvServiceServer interface {
 	Get(context.Context, *GetRequest) (*GetResponse, error)
 	Set(context.Context, *SetRequest) (*SetResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
+	// Anti-Entropy Sync
+	Pull(context.Context, *PullRequest) (*PullResponse, error)
+	Push(context.Context, *PushRequest) (*PushResponse, error)
 	mustEmbedUnimplementedDkvServiceServer()
 }
 
@@ -96,6 +124,12 @@ func (UnimplementedDkvServiceServer) Set(context.Context, *SetRequest) (*SetResp
 }
 func (UnimplementedDkvServiceServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedDkvServiceServer) Pull(context.Context, *PullRequest) (*PullResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Pull not implemented")
+}
+func (UnimplementedDkvServiceServer) Push(context.Context, *PushRequest) (*PushResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Push not implemented")
 }
 func (UnimplementedDkvServiceServer) mustEmbedUnimplementedDkvServiceServer() {}
 func (UnimplementedDkvServiceServer) testEmbeddedByValue()                    {}
@@ -172,6 +206,42 @@ func _DkvService_Delete_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DkvService_Pull_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PullRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DkvServiceServer).Pull(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DkvService_Pull_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DkvServiceServer).Pull(ctx, req.(*PullRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DkvService_Push_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PushRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DkvServiceServer).Push(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DkvService_Push_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DkvServiceServer).Push(ctx, req.(*PushRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DkvService_ServiceDesc is the grpc.ServiceDesc for DkvService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +260,14 @@ var DkvService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _DkvService_Delete_Handler,
+		},
+		{
+			MethodName: "Pull",
+			Handler:    _DkvService_Pull_Handler,
+		},
+		{
+			MethodName: "Push",
+			Handler:    _DkvService_Push_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

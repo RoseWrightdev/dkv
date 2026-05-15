@@ -1,12 +1,9 @@
 package dkv
 
 import (
-	"maps"
 	"os"
 	"strconv"
 	"testing"
-
-	"slices"
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/stretchr/testify/assert"
@@ -24,41 +21,17 @@ func TestNewWal(t *testing.T) {
 func TestPublish(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
-	req := pb.SetRequest{Key: "key", Value: []byte{byte(32)}}
+	req := pb.SetRequest{Key: "key", Value: []byte{byte(32)}, Timestamp: 100}
 	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
 	err = wal.publish(req.Key, hashFunc(req.Key), &req)
 	assert.Nil(t, err)
 
-	for _, seg := range wal.segments {
-		seg.mu.Lock()
-		seg.wrt.Flush()
-		seg.file.Sync()
-		seg.mu.Unlock()
-	}
-
-	// Read from the first segment since we used segmentCount=1
-	got, err := os.ReadFile(mockConfig.walPath + "/seg_00.log")
+	replay, err := wal.replay()
 	assert.Nil(t, err)
-
-	// 00000000 00000000 00000000 00001010 00001010 00001000
-	//  the first 4 bytes are the header ^        ^        ^
-	//             Protobuf Tag 1 for the set feild        |
-	//                        Length of the set msg (8 bytes)
-	// 00001010 00000011 01101011 01100101 01111001 00010010
-	//   Tag 1^       3^     "k"^     "e"^     "y"^   Tag 2^
-	// 00000001 00100000
-	//        1^     32^
-
-	expected := []byte{
-		0, 0, 0, 10,
-		0x0A, 8,
-		0b00001010, 3, 'k', 'e', 'y',
-		0b00010010, 1, 32,
-	}
-
-	assert.Equal(t, expected, got)
+	assert.Equal(t, []byte{32}, replay["key"].Data)
+	assert.Equal(t, int64(100), replay["key"].Timestamp)
 }
 
 func TestReplay(t *testing.T) {
@@ -73,15 +46,19 @@ func TestReplay(t *testing.T) {
 		key, val := strconv.Itoa(i), []byte{byte(i)}
 		exceptedValues[i] = val
 		exceptedKeys[i] = key
-		req := pb.SetRequest{Key: key, Value: val}
+		req := pb.SetRequest{Key: key, Value: val, Timestamp: int64(i)}
 		err = wal.publish(key, hashFunc(key), &req)
 		assert.Nil(t, err)
 	}
 	replay, err := wal.replay()
 	assert.Nil(t, err, "Replay returned error")
 
-	gotValues := slices.Collect(maps.Values(replay))
-	gotKeys := slices.Collect(maps.Keys(replay))
+	gotValues := make([][]byte, 0, 1000)
+	gotKeys := make([]string, 0, 1000)
+	for k, v := range replay {
+		gotKeys = append(gotKeys, k)
+		gotValues = append(gotValues, v.Data)
+	}
 
 	assert.ElementsMatch(t, exceptedValues, gotValues)
 	assert.ElementsMatch(t, exceptedKeys, gotKeys)

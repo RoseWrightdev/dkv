@@ -15,12 +15,10 @@ type mockWal struct {
 }
 
 func (mw *mockWal) publish(key Key, hash hashKey, msg proto.Message) error { return nil }
-func (mw *mockWal) replay() (map[Key]Value, error)  { return nil, nil }
-func (mw *mockWal) clear() error                    { mw.clearCalled = true; return nil }
-func (mw *mockWal) stop()                           {}
-func (mw *mockWal) start()                          {}
-
-
+func (mw *mockWal) replay() (map[Key]internalValue, error)  { return nil, nil }
+func (mw *mockWal) clear() error                             { mw.clearCalled = true; return nil }
+func (mw *mockWal) stop()                                    {}
+func (mw *mockWal) start()                                   {}
 
 func TestNewSnapShotService(t *testing.T) {
 	defer cleanupEngineMocks(t)
@@ -44,7 +42,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 	}
 	callBack := func(enc *gob.Encoder) error {
 		for k, v := range mockData {
-			if err := enc.Encode(snapshotEntry{Key: k, Value: v}); err != nil {
+			if err := enc.Encode(snapshotEntry{Key: k, Value: v, Timestamp: 100}); err != nil {
 				return err
 			}
 		}

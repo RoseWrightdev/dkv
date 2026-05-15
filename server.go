@@ -36,6 +36,21 @@ func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResp
 	return &pb.DeleteResponse{}, nil
 }
 
+func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, error) {
+	sets, deletes, err := s.eng.SyncPull(in.KnownDigests)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.PullResponse{Entries: sets, Deletions: deletes}, nil
+}
+
+func (s *server) Push(_ context.Context, in *pb.PushRequest) (*pb.PushResponse, error) {
+	if err := s.eng.SyncPush(in.Entries, in.Deletions); err != nil {
+		return nil, err
+	}
+	return &pb.PushResponse{}, nil
+}
+
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
