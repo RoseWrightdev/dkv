@@ -29,6 +29,12 @@ type EngineConfig struct {
 	evictionService Evictor
 }
 
+// snapshotEntry is used for streaming serialization
+type snapshotEntry struct {
+	Key   Key
+	Value Value
+}
+
 func newEngine(config EngineConfig) (*Engine, error) {
 	wal, err := newWal(config.walPath, config.walSyncInterval, config.walBufferSize)
 	if err != nil {
@@ -44,7 +50,7 @@ func newEngine(config EngineConfig) (*Engine, error) {
 		slog.Error("Failed to recover database state", "error", err)
 	}
 
-	sss, err := newSnapshotService(config.sssPath, config.sssInterval, wal, eng.toMap)
+	sss, err := newSnapshotService(config.sssPath, config.sssInterval, wal, eng.streamToEncoder)
 	if err != nil {
 		return nil, err
 	}
@@ -102,13 +108,17 @@ func (eng *Engine) Evict(key Key) error {
 	return nil
 }
 
-func (eng *Engine) toMap() map[Key]Value {
-	hm := make(map[Key]Value)
-	eng.hm.Range(func(key any, val any) bool {
-		hm[key.(Key)] = val.(Value)
+func (eng *Engine) streamToEncoder(enc *gob.Encoder) error {
+	var err error
+	eng.hm.Range(func(k, v any) bool {
+		entry := snapshotEntry{Key: k.(Key), Value: v.(Value)}
+		if e := enc.Encode(entry); e != nil {
+			err = e
+			return false
+		}
 		return true
 	})
-	return hm
+	return err
 }
 
 func (eng *Engine) recover(sssPath string) error {
@@ -119,14 +129,17 @@ func (eng *Engine) recover(sssPath string) error {
 		}
 		defer file.Close()
 
-		var state map[Key]Value
-		if err := gob.NewDecoder(file).Decode(&state); err != nil {
-			return err
+		dec := gob.NewDecoder(file)
+		count := 0
+		for {
+			var entry snapshotEntry
+			if err := dec.Decode(&entry); err != nil {
+				break // End of file or error
+			}
+			eng.hm.Store(entry.Key, entry.Value)
+			count++
 		}
-		for k, v := range state {
-			eng.hm.Store(k, v)
-		}
-		slog.Info("Loaded state from snapshot", "path", sssPath, "keys", len(state))
+		slog.Info("Loaded state from snapshot", "path", sssPath, "keys", count)
 	}
 
 	updates, err := eng.wal.replay()

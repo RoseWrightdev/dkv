@@ -35,7 +35,7 @@ func TestNewSnapShotService(t *testing.T) {
 	defer cleanupSnapshotMock(t)
 
 	mw := &mockWal{}
-	callBack := func() map[Key]Value { return map[Key]Value{} }
+	callBack := func(enc *gob.Encoder) error { return nil }
 
 	sss, err := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
 	assert.NoError(t, err)
@@ -51,7 +51,14 @@ func TestCreateNewSnapShot(t *testing.T) {
 		"user:1": []byte("alice"),
 		"user:2": []byte("bob"),
 	}
-	callBack := func() map[Key]Value { return mockData }
+	callBack := func(enc *gob.Encoder) error {
+		for k, v := range mockData {
+			if err := enc.Encode(snapshotEntry{Key: k, Value: v}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	sss, _ := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
 
 	err := sss.createNewSnapShot()
@@ -61,9 +68,15 @@ func TestCreateNewSnapShot(t *testing.T) {
 	assert.NoError(t, err)
 	defer file.Close()
 
-	var decoded map[Key]Value
-	err = gob.NewDecoder(file).Decode(&decoded)
-	assert.NoError(t, err)
+	dec := gob.NewDecoder(file)
+	decoded := make(map[Key]Value)
+	for {
+		var entry snapshotEntry
+		if err := dec.Decode(&entry); err != nil {
+			break
+		}
+		decoded[entry.Key] = entry.Value
+	}
 	assert.Equal(t, mockData, decoded)
 
 	assert.True(t, mw.clearCalled)
@@ -73,8 +86,7 @@ func TestPeriodicSnapshots(t *testing.T) {
 	defer cleanupSnapshotMock(t)
 
 	mw := &mockWal{}
-	mockData := map[Key]Value{"count": []byte("1")}
-	callBack := func() map[Key]Value { return mockData }
+	callBack := func(enc *gob.Encoder) error { return nil }
 
 	interval := 50 * time.Millisecond
 	sss, err := newSnapshotService(mockConfig.sssPath, interval, mw, callBack)

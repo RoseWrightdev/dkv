@@ -10,18 +10,18 @@ import (
 )
 
 type SnapShotService struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	ch          chan struct{}
-	wg          sync.WaitGroup
-	file        *os.File
-	path        string
-	interval    time.Duration
-	wal         Waler
-	engCallBack func() map[Key]Value
+	ctx      context.Context
+	cancel   context.CancelFunc
+	ch       chan struct{}
+	wg       sync.WaitGroup
+	file     *os.File
+	path     string
+	interval time.Duration
+	wal      Waler
+	encCallBack func(*gob.Encoder) error
 }
 
-func newSnapshotService(path string, interval time.Duration, wal Waler, engCallBack func() map[Key]Value) (*SnapShotService, error) {
+func newSnapshotService(path string, interval time.Duration, wal Waler, encCallBack func(*gob.Encoder) error) (*SnapShotService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
@@ -39,7 +39,7 @@ func newSnapshotService(path string, interval time.Duration, wal Waler, engCallB
 		path:        path,
 		interval:    interval,
 		wal:         wal,
-		engCallBack: engCallBack,
+		encCallBack: encCallBack,
 	}
 
 	return sss, nil
@@ -101,8 +101,6 @@ func (sss *SnapShotService) queueSnapShot() {
 }
 
 func (sss *SnapShotService) createNewSnapShot() error {
-	state := sss.engCallBack()
-
 	tmpPath := sss.path + ".tmp"
 	file, err := os.Create(tmpPath)
 	if err != nil {
@@ -110,9 +108,12 @@ func (sss *SnapShotService) createNewSnapShot() error {
 	}
 	defer file.Close()
 
-	if err := gob.NewEncoder(file).Encode(state); err != nil {
+	// Stream the data directly from the engine to the encoder
+	encoder := gob.NewEncoder(file)
+	if err := sss.encCallBack(encoder); err != nil {
 		return err
 	}
+
 	file.Sync()
 	file.Close()
 
