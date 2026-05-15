@@ -29,11 +29,13 @@ message GetResponse {
 message SetRequest {
   string key = 1;
   bytes value = 2;
+  int64 timestamp = 3;
 }
 
 message SetResponse {}
 
 message DeleteRequest {
   string key = 1;
+  int64 timestamp = 2;
 }
 message DeleteResponse {}
