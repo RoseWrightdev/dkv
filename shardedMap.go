@@ -22,15 +22,11 @@ func newShardedMap() *shardedMap {
 	return &sm
 }
 
-func (sm *shardedMap) getShardByHash(hash uint64) *shard {
+func (sm *shardedMap) getShardByHash(hash hashKey) *shard {
 	return sm[hash%shardCount]
 }
 
-func (sm *shardedMap) Load(key Key) (Value, bool) {
-	return sm.LoadByHash(key, hashFunc(key))
-}
-
-func (sm *shardedMap) LoadByHash(key Key, hash uint64) (Value, bool) {
+func (sm *shardedMap) Load(key Key, hash hashKey) (Value, bool) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.RLock()
 	val, ok := shard.m[key]
@@ -38,22 +34,14 @@ func (sm *shardedMap) LoadByHash(key Key, hash uint64) (Value, bool) {
 	return val, ok
 }
 
-func (sm *shardedMap) Store(key Key, value Value) {
-	sm.StoreByHash(key, hashFunc(key), value)
-}
-
-func (sm *shardedMap) StoreByHash(key Key, hash uint64, value Value) {
+func (sm *shardedMap) Store(key Key, hash hashKey, value Value) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	shard.m[key] = value
 	shard.mu.Unlock()
 }
 
-func (sm *shardedMap) Delete(key Key) {
-	sm.DeleteByHash(key, hashFunc(key))
-}
-
-func (sm *shardedMap) DeleteByHash(key Key, hash uint64) {
+func (sm *shardedMap) Delete(key Key, hash hashKey) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	delete(shard.m, key)

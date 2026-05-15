@@ -28,7 +28,7 @@ func TestPublish(t *testing.T) {
 	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
-	err = wal.publish(req.Key, &req)
+	err = wal.publish(req.Key, hashFunc(req.Key), &req)
 	assert.Nil(t, err)
 
 	for _, seg := range wal.segments {
@@ -74,7 +74,7 @@ func TestReplay(t *testing.T) {
 		exceptedValues[i] = val
 		exceptedKeys[i] = key
 		req := pb.SetRequest{Key: key, Value: val}
-		err = wal.publish(key, &req)
+		err = wal.publish(key, hashFunc(key), &req)
 		assert.Nil(t, err)
 	}
 	replay, err := wal.replay()

@@ -10,8 +10,8 @@ import (
 type hashKey = uint64
 
 type Evictor interface {
-	publish(key Key)
-	publishDelete(key Key)
+	publish(key Key, hash hashKey)
+	publishDelete(key Key, hash hashKey)
 	start()
 	stop()
 	SetEvictCallback(func(Key) error)
@@ -27,7 +27,7 @@ type entry struct {
 
 type lruMsg struct {
 	key  string
-	hash uint64
+	hash hashKey
 }
 
 type lruShard struct {
@@ -36,7 +36,7 @@ type lruShard struct {
 	wg       sync.WaitGroup
 	mu       sync.Mutex
 	ch       chan lruMsg
-	delCh    chan uint64
+	delCh    chan hashKey
 	evictCh  chan string
 	capacity uint32
 	head     *entry
@@ -122,8 +122,7 @@ func (s *lruShard) stop() {
 	s.wg.Wait()
 }
 
-func (lru *LeastRecentlyUsed) publish(key Key) {
-	hash := hashFunc(key)
+func (lru *LeastRecentlyUsed) publish(key Key, hash hashKey) {
 	shard := lru.getShardByHash(hash)
 	select {
 	case shard.ch <- lruMsg{key: key, hash: hash}:
@@ -131,12 +130,11 @@ func (lru *LeastRecentlyUsed) publish(key Key) {
 	}
 }
 
-func (lru *LeastRecentlyUsed) seen(key Key, hash uint64) {
+func (lru *LeastRecentlyUsed) seen(key Key, hash hashKey) {
 	lru.getShardByHash(hash).seen(key, hash)
 }
 
-func (lru *LeastRecentlyUsed) publishDelete(key Key) {
-	hash := hashFunc(key)
+func (lru *LeastRecentlyUsed) publishDelete(key Key, hash hashKey) {
 	shard := lru.getShardByHash(hash)
 	select {
 	case shard.delCh <- hash:
@@ -144,8 +142,8 @@ func (lru *LeastRecentlyUsed) publishDelete(key Key) {
 	}
 }
 
-func (lru *LeastRecentlyUsed) getShardByHash(hash uint64) *lruShard {
-	return lru.shards[hash%uint64(lru.count)]
+func (lru *LeastRecentlyUsed) getShardByHash(hash hashKey) *lruShard {
+	return lru.shards[hash%hashKey(lru.count)]
 }
 
 func (s *lruShard) subscriber() {
@@ -191,7 +189,7 @@ func (s *lruShard) evictor() {
 	}
 }
 
-func (s *lruShard) seen(key string, hkey uint64) {
+func (s *lruShard) seen(key string, hkey hashKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

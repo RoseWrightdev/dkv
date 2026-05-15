@@ -15,7 +15,7 @@ import (
 )
 
 type Waler interface {
-	publish(key Key, msg proto.Message) error
+	publish(key Key, hash hashKey, msg proto.Message) error
 	replay() (map[Key]Value, error)
 	clear() error
 	start()
@@ -131,15 +131,11 @@ func (w *Wal) stop() {
 	}
 }
 
-func (w *Wal) getSegment(hash uint64) *walSegment {
-	return w.segments[hash%uint64(w.count)]
+func (w *Wal) getSegment(hash hashKey) *walSegment {
+	return w.segments[hash%hashKey(w.count)]
 }
 
-func (w *Wal) publish(key Key, msg proto.Message) error {
-	seg := w.getSegment(hashFunc(key))
-	seg.mu.Lock()
-	defer seg.mu.Unlock()
-
+func (w *Wal) publish(key Key, hash hashKey, msg proto.Message) error {
 	entry := w.entryPool.Get().(*pb.WalEntry)
 	defer w.entryPool.Put(entry)
 
@@ -176,6 +172,10 @@ func (w *Wal) publish(key Key, msg proto.Message) error {
 	header := *headerPtr
 	defer w.headerPool.Put(headerPtr)
 	binary.BigEndian.PutUint32(header, uint32(len(data)))
+
+	seg := w.getSegment(hash)
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
 
 	if _, err := seg.wrt.Write(header); err != nil {
 		return err

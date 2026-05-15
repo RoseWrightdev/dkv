@@ -20,11 +20,12 @@ type Engine interface {
 }
 
 type engine struct {
-	hm              *shardedMap
-	wal             Waler
-	sss             *SnapShotService
-	evictionService Evictor
-	setRequestPool  sync.Pool
+	hm                *shardedMap
+	wal               Waler
+	sss               *SnapShotService
+	evictionService   Evictor
+	setRequestPool    sync.Pool
+	snapshotEntryPool sync.Pool
 }
 
 type EngineConfig struct {
@@ -54,6 +55,17 @@ func newEngine(config EngineConfig) (Engine, error) {
 		wal: wal,
 	}
 
+	eng.setRequestPool = sync.Pool{
+		New: func() any {
+			return &pb.SetRequest{}
+		},
+	}
+	eng.snapshotEntryPool = sync.Pool{
+		New: func() any {
+			return &snapshotEntry{}
+		},
+	}
+
 	if err := eng.recover(config.sssPath); err != nil {
 		slog.Error("Failed to recover database state", "error", err)
 	}
@@ -65,11 +77,6 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.sss = sss
 	eng.evictionService = config.evictionService
 	eng.evictionService.SetEvictCallback(eng.Evict)
-	eng.setRequestPool = sync.Pool{
-		New: func() any {
-			return &pb.SetRequest{}
-		},
-	}
 
 	return eng, nil
 }
@@ -87,41 +94,45 @@ func (eng *engine) Stop() {
 }
 
 func (eng *engine) Get(key Key) (Value, bool) {
-	eng.evictionService.publish(key)
-	return eng.hm.Load(key)
+	hash := hashFunc(key)
+	eng.evictionService.publish(key, hash)
+	return eng.hm.Load(key, hash)
 }
 
 func (eng *engine) Set(key Key, value Value) error {
-	eng.evictionService.publish(key)
+	hash := hashFunc(key)
+	eng.evictionService.publish(key, hash)
 	req := eng.setRequestPool.Get().(*pb.SetRequest)
 	req.Key = key
 	req.Value = value
 
-	err := eng.wal.publish(key, req)
+	err := eng.wal.publish(key, hash, req)
 	eng.setRequestPool.Put(req)
 
 	if err != nil {
 		return err
 	}
 
-	eng.hm.Store(key, value)
+	eng.hm.Store(key, hash, value)
 	return nil
 }
 
 func (eng *engine) Delete(key Key) error {
-	eng.evictionService.publishDelete(key)
-	if err := eng.wal.publish(key, &pb.DeleteRequest{Key: key}); err != nil {
+	hash := hashFunc(key)
+	eng.evictionService.publishDelete(key, hash)
+	if err := eng.wal.publish(key, hash, &pb.DeleteRequest{Key: key}); err != nil {
 		return err
 	}
-	eng.hm.Delete(key)
+	eng.hm.Delete(key, hash)
 	return nil
 }
 
 func (eng *engine) Evict(key Key) error {
-	if err := eng.wal.publish(key, &pb.DeleteRequest{Key: key}); err != nil {
+	hash := hashFunc(key)
+	if err := eng.wal.publish(key, hash, &pb.DeleteRequest{Key: key}); err != nil {
 		return err
 	}
-	eng.hm.Delete(key)
+	eng.hm.Delete(key, hash)
 	return nil
 }
 
@@ -132,11 +143,19 @@ func (eng *engine) Snapshot() error {
 func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 	var err error
 	eng.hm.Range(func(k, v any) bool {
-		entry := snapshotEntry{Key: k.(Key), Value: v.(Value)}
+		entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
+		entry.Key = k.(Key)
+		entry.Value = v.(Value)
 		if e := enc.Encode(entry); e != nil {
 			err = e
+			entry.Key = ""
+			entry.Value = nil
+			eng.snapshotEntryPool.Put(entry)
 			return false
 		}
+		entry.Key = ""
+		entry.Value = nil
+		eng.snapshotEntryPool.Put(entry)
 		return true
 	})
 	return err
@@ -157,7 +176,7 @@ func (eng *engine) recover(sssPath string) error {
 			if err := dec.Decode(&entry); err != nil {
 				break // End of file or error
 			}
-			eng.hm.Store(entry.Key, entry.Value)
+			eng.hm.Store(entry.Key, hashFunc(entry.Key), entry.Value)
 			count++
 		}
 		slog.Info("Loaded state from snapshot", "path", sssPath, "keys", count)
@@ -168,10 +187,11 @@ func (eng *engine) recover(sssPath string) error {
 		return err
 	}
 	for k, v := range updates {
+		h := hashFunc(k)
 		if v == nil {
-			eng.hm.Delete(k)
+			eng.hm.Delete(k, h)
 		} else {
-			eng.hm.Store(k, v)
+			eng.hm.Store(k, h, v)
 		}
 	}
 	if len(updates) > 0 {

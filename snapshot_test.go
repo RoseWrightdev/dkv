@@ -14,7 +14,7 @@ type mockWal struct {
 	clearCalled bool
 }
 
-func (mw *mockWal) publish(key Key, msg proto.Message) error { return nil }
+func (mw *mockWal) publish(key Key, hash hashKey, msg proto.Message) error { return nil }
 func (mw *mockWal) replay() (map[Key]Value, error)  { return nil, nil }
 func (mw *mockWal) clear() error                    { mw.clearCalled = true; return nil }
 func (mw *mockWal) stop()                           {}
