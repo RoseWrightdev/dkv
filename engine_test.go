@@ -65,7 +65,7 @@ func TestEnginePersistence(t *testing.T) {
 	assert.Nil(t, eng.Set(key1, val1))
 	assert.Nil(t, eng.Set(key2, val2))
 
-	err = eng.sss.createNewSnapShot()
+	err = eng.sss.create()
 	assert.Nil(t, err)
 
 	key3, val3 := "persist3", []byte("value3")

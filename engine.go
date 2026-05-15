@@ -108,6 +108,10 @@ func (eng *Engine) Evict(key Key) error {
 	return nil
 }
 
+func (eng *Engine) Snapshot() error {
+	return eng.sss.create()
+}
+
 func (eng *Engine) streamToEncoder(enc *gob.Encoder) error {
 	var err error
 	eng.hm.Range(func(k, v any) bool {

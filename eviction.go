@@ -42,6 +42,7 @@ type LeastRecentlyUsed struct {
 	ttl        time.Duration
 	onEvict    func(Key) error
 	hasherPool sync.Pool
+	entryPool  sync.Pool
 }
 
 func NewLRU(capacity uint32, ttl time.Duration) *LeastRecentlyUsed {
@@ -67,6 +68,11 @@ func NewLRU(capacity uint32, ttl time.Duration) *LeastRecentlyUsed {
 		hasherPool: sync.Pool{
 			New: func() any {
 				return fnv.New64a()
+			},
+		},
+		entryPool: sync.Pool{
+			New: func() any {
+				return &entry{}
 			},
 		},
 	}
@@ -140,6 +146,7 @@ func (lru *LeastRecentlyUsed) evictExpired() {
 
 		lru.ll.Remove(elm)
 		delete(lru.cache, e.hash)
+		lru.entryPool.Put(e)
 
 		select {
 		case lru.evictCh <- e.key:
@@ -162,7 +169,11 @@ func (lru *LeastRecentlyUsed) seen(key string) {
 		return
 	}
 
-	ent := lru.ll.PushFront(&entry{key: key, hash: hKey, expiry: expiry})
+	e := lru.entryPool.Get().(*entry)
+	e.key = key
+	e.hash = hKey
+	e.expiry = expiry
+	ent := lru.ll.PushFront(e)
 	lru.cache[hKey] = ent
 
 	if uint32(lru.ll.Len()) > lru.capacity {
@@ -172,6 +183,7 @@ func (lru *LeastRecentlyUsed) seen(key string) {
 			lru.ll.Remove(elm)
 			e := elm.Value.(*entry)
 			delete(lru.cache, e.hash)
+			lru.entryPool.Put(e)
 
 			select {
 			case lru.evictCh <- e.key:
@@ -188,6 +200,7 @@ func (lru *LeastRecentlyUsed) delete(hKey hashKey) {
 	if ent, ok := lru.cache[hKey]; ok {
 		lru.ll.Remove(ent)
 		delete(lru.cache, hKey)
+		lru.entryPool.Put(ent.Value.(*entry))
 	}
 }
 

@@ -61,7 +61,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 	}
 	sss, _ := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
 
-	err := sss.createNewSnapShot()
+	err := sss.create()
 	assert.NoError(t, err)
 
 	file, err := os.Open(mockConfig.sssPath)

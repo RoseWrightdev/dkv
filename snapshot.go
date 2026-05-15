@@ -83,7 +83,7 @@ func (sss *SnapShotService) consumer(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if err := sss.createNewSnapShot(); err != nil {
+			if err := sss.create(); err != nil {
 				slog.Error("Failed to create snapshot", "error", err)
 			} else {
 				slog.Info("Database snapshot created.")
@@ -100,7 +100,7 @@ func (sss *SnapShotService) queueSnapShot() {
 	}
 }
 
-func (sss *SnapShotService) createNewSnapShot() error {
+func (sss *SnapShotService) create() error {
 	tmpPath := sss.path + ".tmp"
 	file, err := os.Create(tmpPath)
 	if err != nil {
