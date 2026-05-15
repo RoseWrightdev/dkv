@@ -31,6 +31,8 @@ type Wal struct {
 	file         *os.File
 	path         string
 	headerPool   sync.Pool
+	entryPool    sync.Pool
+	bufferPool   sync.Pool
 }
 
 func newWal(path string, syncInterval time.Duration, bufferSize uint32) (*Wal, error) {
@@ -55,7 +57,19 @@ func newWal(path string, syncInterval time.Duration, bufferSize uint32) (*Wal, e
 		path:         path,
 		headerPool: sync.Pool{
 			New: func() any {
-				return make([]byte, 4)
+				b := make([]byte, 4)
+				return &b
+			},
+		},
+		entryPool: sync.Pool{
+			New: func() any {
+				return &pb.WalEntry{}
+			},
+		},
+		bufferPool: sync.Pool{
+			New: func() any {
+				b := make([]byte, 0, 2048)
+				return &b
 			},
 		},
 	}
@@ -80,25 +94,41 @@ func (w *Wal) publish(msg proto.Message) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	var entry *pb.WalEntry
+	entry := w.entryPool.Get().(*pb.WalEntry)
+	defer w.entryPool.Put(entry)
+
 	switch m := msg.(type) {
 	case *pb.WalEntry:
-		entry = m
+		entry.Entry = m.Entry
 	case *pb.SetRequest:
-		entry = &pb.WalEntry{Entry: &pb.WalEntry_Set{Set: m}}
+		if wrapper, ok := entry.Entry.(*pb.WalEntry_Set); ok {
+			wrapper.Set = m
+		} else {
+			entry.Entry = &pb.WalEntry_Set{Set: m}
+		}
 	case *pb.DeleteRequest:
-		entry = &pb.WalEntry{Entry: &pb.WalEntry_Delete{Delete: m}}
+		if wrapper, ok := entry.Entry.(*pb.WalEntry_Delete); ok {
+			wrapper.Delete = m
+		} else {
+			entry.Entry = &pb.WalEntry_Delete{Delete: m}
+		}
 	default:
 		return fmt.Errorf("unsupported message type: %T", msg)
 	}
 
-	data, err := proto.Marshal(entry)
+	bufPtr := w.bufferPool.Get().(*[]byte)
+	buf := (*bufPtr)[:0]
+	data, err := proto.MarshalOptions{}.MarshalAppend(buf, entry)
 	if err != nil {
+		w.bufferPool.Put(bufPtr)
 		return err
 	}
+	*bufPtr = data
+	defer w.bufferPool.Put(bufPtr)
 
-	header := w.headerPool.Get().([]byte)
-	defer w.headerPool.Put(header)
+	headerPtr := w.headerPool.Get().(*[]byte)
+	header := *headerPtr
+	defer w.headerPool.Put(headerPtr)
 	binary.BigEndian.PutUint32(header, uint32(len(data)))
 
 	if _, err := w.wrt.Write(header); err != nil {

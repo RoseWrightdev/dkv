@@ -10,14 +10,12 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 )
 
-type Key = string
-type Value = []byte
-
 type Engine struct {
-	hm              *sync.Map
+	hm              *shardedMap
 	wal             *Wal
 	sss             *SnapShotService
 	evictionService Evictor
+	setRequestPool  sync.Pool
 }
 
 type EngineConfig struct {
@@ -42,7 +40,7 @@ func newEngine(config EngineConfig) (*Engine, error) {
 	}
 
 	eng := &Engine{
-		hm:  &sync.Map{},
+		hm:  newShardedMap(),
 		wal: wal,
 	}
 
@@ -57,6 +55,11 @@ func newEngine(config EngineConfig) (*Engine, error) {
 	eng.sss = sss
 	eng.evictionService = config.evictionService
 	eng.evictionService.SetEvictCallback(eng.Evict)
+	eng.setRequestPool = sync.Pool{
+		New: func() any {
+			return &pb.SetRequest{}
+		},
+	}
 
 	return eng, nil
 }
@@ -75,19 +78,30 @@ func (eng *Engine) Stop() {
 
 func (eng *Engine) Get(key Key) (Value, bool) {
 	eng.evictionService.publish(key)
-	val, ok := eng.hm.Load(key)
-	if !ok {
-		return nil, false
-	}
-	return val.(Value), ok
+	shard := eng.hm.getShard(key)
+	shard.mu.RLock()
+	val, ok := shard.m[key]
+	shard.mu.RUnlock()
+	return val, ok
 }
 
 func (eng *Engine) Set(key Key, value Value) error {
 	eng.evictionService.publish(key)
-	if err := eng.wal.publish(&pb.SetRequest{Key: key, Value: value}); err != nil {
+	req := eng.setRequestPool.Get().(*pb.SetRequest)
+	req.Key = key
+	req.Value = value
+	
+	err := eng.wal.publish(req)
+	eng.setRequestPool.Put(req)
+	
+	if err != nil {
 		return err
 	}
-	eng.hm.Store(key, value)
+	
+	shard := eng.hm.getShard(key)
+	shard.mu.Lock()
+	shard.m[key] = value
+	shard.mu.Unlock()
 	return nil
 }
 
@@ -96,7 +110,10 @@ func (eng *Engine) Delete(key Key) error {
 	if err := eng.wal.publish(&pb.DeleteRequest{Key: key}); err != nil {
 		return err
 	}
-	eng.hm.Delete(key)
+	shard := eng.hm.getShard(key)
+	shard.mu.Lock()
+	delete(shard.m, key)
+	shard.mu.Unlock()
 	return nil
 }
 
