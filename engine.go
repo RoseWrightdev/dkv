@@ -25,6 +25,7 @@ type engine struct {
 	sss               *SnapShotService
 	evictionService   Evictor
 	setRequestPool    sync.Pool
+	deleteRequestPool sync.Pool
 	snapshotEntryPool sync.Pool
 }
 
@@ -58,6 +59,11 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.setRequestPool = sync.Pool{
 		New: func() any {
 			return &pb.SetRequest{}
+		},
+	}
+	eng.deleteRequestPool = sync.Pool{
+		New: func() any {
+			return &pb.DeleteRequest{}
 		},
 	}
 	eng.snapshotEntryPool = sync.Pool{
@@ -120,7 +126,14 @@ func (eng *engine) Set(key Key, value Value) error {
 func (eng *engine) Delete(key Key) error {
 	hash := hashFunc(key)
 	eng.evictionService.publishDelete(key, hash)
-	if err := eng.wal.publish(key, hash, &pb.DeleteRequest{Key: key}); err != nil {
+	req := eng.deleteRequestPool.Get().(*pb.DeleteRequest)
+	req.Key = key
+
+	err := eng.wal.publish(key, hash, req)
+	req.Reset()
+	eng.deleteRequestPool.Put(req)
+
+	if err != nil {
 		return err
 	}
 	eng.hm.Delete(key, hash)
@@ -129,7 +142,14 @@ func (eng *engine) Delete(key Key) error {
 
 func (eng *engine) Evict(key Key) error {
 	hash := hashFunc(key)
-	if err := eng.wal.publish(key, hash, &pb.DeleteRequest{Key: key}); err != nil {
+	req := eng.deleteRequestPool.Get().(*pb.DeleteRequest)
+	req.Key = key
+
+	err := eng.wal.publish(key, hash, req)
+	req.Reset()
+	eng.deleteRequestPool.Put(req)
+
+	if err != nil {
 		return err
 	}
 	eng.hm.Delete(key, hash)

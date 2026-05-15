@@ -128,7 +128,98 @@ func BenchmarkEngine_PayloadSizes(b *testing.B) {
 	}
 }
 
-func BenchmarkServer_GetSet_gRPC_Parallel(b *testing.B) {
+func BenchmarkEngine_Delete_Parallel(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
+
+	const keyCount = 100000
+	keys := make([]string, keyCount)
+	for i := range keyCount {
+		keys[i] = fmt.Sprintf("key-%d", i)
+		_ = eng.Set(keys[i], []byte("val"))
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			_ = eng.Delete(keys[i%keyCount])
+			i++
+		}
+	})
+}
+
+func BenchmarkEngine_Mixed_Parallel(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
+
+	const keyCount = 100000
+	keys := make([]string, keyCount)
+	for i := range keyCount {
+		keys[i] = fmt.Sprintf("key-%d", i)
+		_ = eng.Set(keys[i], []byte("val"))
+	}
+	val := []byte("val")
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			if i%5 == 0 { // 20% Writes
+				_ = eng.Set(keys[i%keyCount], val)
+			} else { // 80% Reads
+				_, _ = eng.Get(keys[i%keyCount])
+			}
+			i++
+		}
+	})
+}
+
+func BenchmarkEngine_Snapshot(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
+
+	const keyCount = 100000
+	for i := range keyCount {
+		_ = eng.Set(fmt.Sprintf("key-%d", i), []byte("value-data-12345"))
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = eng.Snapshot()
+	}
+}
+
+func BenchmarkEngine_Recover(b *testing.B) {
+	tmpDir, _ := os.MkdirTemp("", "dkv-recover-bench-*")
+	defer os.RemoveAll(tmpDir)
+
+	// Pre-fill a WAL and Snapshot
+	eng, err := NewEngineBuilder().GetEngineDefault(tmpDir, tmpDir+"/sss.gob")
+	if err != nil {
+		b.Fatal(err)
+	}
+	eng.Start()
+	
+	const keyCount = 10000
+	for i := range keyCount {
+		_ = eng.Set(fmt.Sprintf("key-%d", i), []byte("val"))
+	}
+	_ = eng.Snapshot()
+	eng.Stop()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e, err := NewEngineBuilder().GetEngineDefault(tmpDir, tmpDir+"/sss.gob")
+		if err != nil {
+			b.Fatal(err)
+		}
+		e.Start()
+		e.Stop()
+	}
+}
+
+func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b)
 	defer cleanup()
 	s := NewServer(eng)
@@ -136,14 +227,59 @@ func BenchmarkServer_GetSet_gRPC_Parallel(b *testing.B) {
 	go s.Run(lis)
 	defer s.Stop()
 
+	val := []byte("val")
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
 		defer client.Close()
-		val := []byte("val")
 		for pb.Next() {
 			_ = client.Set("key", val)
+		}
+	})
+}
+
+func BenchmarkServer_Get_gRPC_Parallel(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
+	s := NewServer(eng)
+	lis, _ := net.Listen("tcp", "127.0.0.1:0")
+	go s.Run(lis)
+	defer s.Stop()
+
+	_ = eng.Set("key", []byte("val"))
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
+		defer client.Close()
+		for pb.Next() {
 			_, _, _ = client.Get("key")
 		}
 	})
 }
+
+func BenchmarkServer_Mixed_gRPC_Parallel(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
+	s := NewServer(eng)
+	lis, _ := net.Listen("tcp", "127.0.0.1:0")
+	go s.Run(lis)
+	defer s.Stop()
+
+	val := []byte("val")
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
+		defer client.Close()
+		i := 0
+		for pb.Next() {
+			if i%5 == 0 {
+				_ = client.Set("key", val)
+			} else {
+				_, _, _ = client.Get("key")
+			}
+			i++
+		}
+	})
+}
+
