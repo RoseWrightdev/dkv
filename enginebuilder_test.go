@@ -29,19 +29,20 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SetWalSegments(mockConfig.walSegments)
 	assert.Equal(t, mockConfig.walSegments, eb.walSegments)
 	
-	lru := NewLRU(500, time.Minute)
+	lru := NewLRU(LRUConfig{Capacity: 500, TTL: time.Minute, ShardCount: 16})
 	eb.SetEvictionService(lru)
 
 	eng, err := eb.GetEngine()
 	assert.Nil(t, err)
 	defer eng.Stop()
 
-	assert.Equal(t, eng.sss.interval, mockConfig.sssInterval)
+	e := eng.(*engine)
+	assert.Equal(t, e.sss.interval, mockConfig.sssInterval)
 
-	actualLRU, ok := eng.evictionService.(*LeastRecentlyUsed)
+	actualLRU, ok := e.evictionService.(*LeastRecentlyUsed)
 	assert.True(t, ok)
-	assert.Equal(t, uint32(500), actualLRU.capacity)
-	assert.Equal(t, time.Minute, actualLRU.ttl)
+	assert.Equal(t, time.Minute, actualLRU.shards[0].ttl)
+	assert.Equal(t, uint32(500/16), actualLRU.shards[0].capacity)
 
 	cleanupEngineMocks(t)
 }

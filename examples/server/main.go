@@ -9,12 +9,11 @@ import (
 
 func main() {
 	eng, err := dkv.NewEngineBuilder().
-		SetSssInterval(time.Duration(3) * time.Minute).
-		SetWalSyncInterval(time.Duration(500) * time.Microsecond).
+		Default().
 		SetSssPath("sss.json").
 		SetWalPath("wal.binpb").
-		SetWalBufferSize(64 * 1028).
-		SetEvictionService(dkv.NewLRU(64*1028, time.Duration(5)*time.Minute)).
+		SetSssInterval(3 * time.Minute).
+		SetWalSyncInterval(500 * time.Microsecond).
 		GetEngine()
 	if err != nil {
 		panic(err)

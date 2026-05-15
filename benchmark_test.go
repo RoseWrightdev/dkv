@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func setupBenchmarkEngine(b *testing.B) (*Engine, func()) {
+func setupBenchmarkEngine(b *testing.B) (Engine, func()) {
 	tmpDir, err := os.MkdirTemp("", "dkv-bench-*")
 	if err != nil {
 		b.Fatal(err)
@@ -20,7 +20,7 @@ func setupBenchmarkEngine(b *testing.B) (*Engine, func()) {
 		SetWalSyncInterval(time.Hour).
 		SetSssInterval(time.Hour).
 		SetWalBufferSize(1024 * 1024).
-		SetEvictionService(NewLRU(1000000, time.Hour)).
+		SetEvictionService(NewLRU(LRUConfig{Capacity: 1000000, TTL: time.Hour, ShardCount: 16})).
 		SetWalSegments(16).
 		GetEngine()
 	if err != nil {
@@ -66,7 +66,7 @@ func BenchmarkEngine_Get(b *testing.B) {
 }
 
 func BenchmarkLRU_Seen(b *testing.B) {
-	lru := NewLRU(1000000, time.Hour)
+	lru := NewLRU(LRUConfig{Capacity: 1000000, TTL: time.Hour, ShardCount: 16})
 	const keyCount = 1000
 	keys := make([]string, keyCount)
 	for i := range keyCount {
@@ -74,7 +74,8 @@ func BenchmarkLRU_Seen(b *testing.B) {
 	}
 	
 	for i := 0; b.Loop(); i++ {
-		lru.seen(keys[i%keyCount])
+		key := keys[i%keyCount]
+		lru.seen(key, hashFunc(key))
 	}
 }
 

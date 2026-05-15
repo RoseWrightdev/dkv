@@ -25,228 +25,278 @@ type entry struct {
 	next   *entry
 }
 
-type LeastRecentlyUsed struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	mu        sync.Mutex
-	ch        chan string
-	delCh     chan hashKey
-	evictCh   chan string
-	capacity  uint32
-	head      *entry
-	tail      *entry
-	size      uint32
-	cache     map[hashKey]*entry
-	ttl       time.Duration
-	onEvict   func(Key) error
-	entryPool sync.Pool
+type lruMsg struct {
+	key  string
+	hash uint64
 }
 
-func NewLRU(capacity uint32, ttl time.Duration) *LeastRecentlyUsed {
-	ctx, cancel := context.WithCancel(context.Background())
+type lruShard struct {
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	ch       chan lruMsg
+	delCh    chan uint64
+	evictCh  chan string
+	capacity uint32
+	head     *entry
+	tail     *entry
+	cache    map[hashKey]*entry
+	ttl      time.Duration
+	onEvict  func(Key) error
+	pool     *sync.Pool
+}
 
-	chSize := max(capacity/2, 1024)
-	delSize := max(capacity/4, 1024)
-	evictSize := max(capacity/4, 1024)
+type LeastRecentlyUsed struct {
+	shards []*lruShard
+	count  int
+}
+
+type LRUConfig struct {
+	Capacity   uint32
+	TTL        time.Duration
+	ShardCount int
+}
+
+func NewLRU(config LRUConfig) *LeastRecentlyUsed {
+	shardCount := config.ShardCount
+	if shardCount <= 0 {
+		panic("dkv: LRU ShardCount must be greater than 0")
+	}
+	shards := make([]*lruShard, shardCount)
+
+	// Distribute capacity across shards
+	shardCap := config.Capacity / uint32(shardCount)
+	if shardCap == 0 {
+		panic("dkv: LRU Capacity must be at least equal to ShardCount")
+	}
+
+	pool := &sync.Pool{
+		New: func() any {
+			return &entry{}
+		},
+	}
+
+	for i := range shardCount {
+		ctx, cancel := context.WithCancel(context.Background())
+		shards[i] = &lruShard{
+			ctx:      ctx,
+			cancel:   cancel,
+			ch:       make(chan lruMsg, max(shardCap/2, 1024)),
+			delCh:    make(chan uint64, max(shardCap/4, 1024)),
+			evictCh:  make(chan string, max(shardCap/4, 1024)),
+			capacity: shardCap,
+			cache:    make(map[hashKey]*entry),
+			ttl:      config.TTL,
+			pool:     pool,
+		}
+	}
 
 	return &LeastRecentlyUsed{
-		ctx:      ctx,
-		cancel:   cancel,
-		ch:       make(chan string, chSize),
-		delCh:    make(chan hashKey, delSize),
-		evictCh:  make(chan string, evictSize),
-		capacity: capacity,
-		cache:    make(map[hashKey]*entry),
-		ttl:      ttl,
-		entryPool: sync.Pool{
-			New: func() any {
-				return &entry{}
-			},
-		},
+		shards: shards,
+		count:  shardCount,
 	}
 }
 
 func (lru *LeastRecentlyUsed) start() {
-	lru.wg.Add(3)
-	go lru.subscriber()
-	go lru.deleter()
-	go lru.evictor()
+	for _, s := range lru.shards {
+		s.start()
+	}
+}
+
+func (s *lruShard) start() {
+	s.wg.Add(3)
+	go s.subscriber()
+	go s.deleter()
+	go s.evictor()
 }
 
 func (lru *LeastRecentlyUsed) stop() {
-	lru.cancel()
-	lru.wg.Wait()
+	for _, s := range lru.shards {
+		s.stop()
+	}
+}
+
+func (s *lruShard) stop() {
+	s.cancel()
+	s.wg.Wait()
 }
 
 func (lru *LeastRecentlyUsed) publish(key Key) {
+	hash := hashFunc(key)
+	shard := lru.getShardByHash(hash)
 	select {
-	case lru.ch <- key:
+	case shard.ch <- lruMsg{key: key, hash: hash}:
 	default:
 	}
+}
+
+func (lru *LeastRecentlyUsed) seen(key Key, hash uint64) {
+	lru.getShardByHash(hash).seen(key, hash)
 }
 
 func (lru *LeastRecentlyUsed) publishDelete(key Key) {
-	hKey := lru.hashKey(key)
+	hash := hashFunc(key)
+	shard := lru.getShardByHash(hash)
 	select {
-	case lru.delCh <- hKey:
+	case shard.delCh <- hash:
 	default:
 	}
 }
 
-func (lru *LeastRecentlyUsed) subscriber() {
-	defer lru.wg.Done()
+func (lru *LeastRecentlyUsed) getShardByHash(hash uint64) *lruShard {
+	return lru.shards[hash%uint64(lru.count)]
+}
+
+func (s *lruShard) subscriber() {
+	defer s.wg.Done()
 	for {
 		select {
-		case <-lru.ctx.Done():
+		case <-s.ctx.Done():
 			return
-		case key := <-lru.ch:
-			lru.seen(key)
+		case msg := <-s.ch:
+			s.seen(msg.key, msg.hash)
 		}
 	}
 }
 
-func (lru *LeastRecentlyUsed) deleter() {
-	defer lru.wg.Done()
+func (s *lruShard) deleter() {
+	defer s.wg.Done()
 	for {
 		select {
-		case <-lru.ctx.Done():
+		case <-s.ctx.Done():
 			return
-		case hKey := <-lru.delCh:
-			lru.delete(hKey)
+		case hKey := <-s.delCh:
+			s.delete(hKey)
 		}
 	}
 }
 
-func (lru *LeastRecentlyUsed) evictor() {
-	defer lru.wg.Done()
-	ticker := time.NewTicker(lru.ttl / 10)
+func (s *lruShard) evictor() {
+	defer s.wg.Done()
+	ticker := time.NewTicker(s.ttl / 10)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-lru.ctx.Done():
+		case <-s.ctx.Done():
 			return
 		case <-ticker.C:
-			lru.evictExpired()
-		case key := <-lru.evictCh:
-			if lru.onEvict != nil {
-				_ = lru.onEvict(key)
+			s.evictExpired()
+		case key := <-s.evictCh:
+			if s.onEvict != nil {
+				_ = s.onEvict(key)
 			}
 		}
 	}
 }
 
-func (lru *LeastRecentlyUsed) seen(key string) {
-	hkey := lru.hashKey(key)
-	lru.mu.Lock()
-	defer lru.mu.Unlock()
+func (s *lruShard) seen(key string, hkey uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	now := time.Now()
-	jitter := time.Duration(rand.Int64N(int64(lru.ttl / 10)))
-	expiry := now.Add(lru.ttl + jitter)
+	jitter := time.Duration(rand.Int64N(int64(s.ttl / 10)))
+	expiry := now.Add(s.ttl + jitter)
 
-	if e, ok := lru.cache[hkey]; ok {
+	if e, ok := s.cache[hkey]; ok {
 		e.expiry = expiry
-		lru.remove(e)
-		lru.pushFront(e)
+		s.remove(e)
+		s.pushFront(e)
 		return
 	}
 
-	if uint32(len(lru.cache)) >= lru.capacity {
-		lru.evictOldest()
+	if uint32(len(s.cache)) >= s.capacity {
+		s.evictOldest()
 	}
 
-	e := lru.entryPool.Get().(*entry)
+	e := s.pool.Get().(*entry)
 	e.key = key
 	e.hash = hkey
 	e.expiry = expiry
-	lru.cache[hkey] = e
-	lru.pushFront(e)
+	s.cache[hkey] = e
+	s.pushFront(e)
 }
 
-func (lru *LeastRecentlyUsed) evictOldest() {
-	if lru.tail == nil {
+func (s *lruShard) evictOldest() {
+	if s.tail == nil {
 		return
 	}
-	e := lru.tail
-	lru.remove(e)
-	delete(lru.cache, e.hash)
+	e := s.tail
+	s.remove(e)
+	delete(s.cache, e.hash)
 
 	select {
-	case lru.evictCh <- e.key:
+	case s.evictCh <- e.key:
 	default:
 	}
 
-	lru.entryPool.Put(e)
+	s.pool.Put(e)
 }
 
-func (lru *LeastRecentlyUsed) evictExpired() {
-	lru.mu.Lock()
-	defer lru.mu.Unlock()
+func (s *lruShard) evictExpired() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	now := time.Now()
-	for lru.tail != nil {
-		e := lru.tail
+	for s.tail != nil {
+		e := s.tail
 		if e.expiry.After(now) {
 			break
 		}
 
-		lru.remove(e)
-		delete(lru.cache, e.hash)
+		s.remove(e)
+		delete(s.cache, e.hash)
 
 		select {
-		case lru.evictCh <- e.key:
+		case s.evictCh <- e.key:
 		default:
 		}
 
-		lru.entryPool.Put(e)
+		s.pool.Put(e)
 	}
 }
 
-func (lru *LeastRecentlyUsed) delete(hKey hashKey) {
-	lru.mu.Lock()
-	defer lru.mu.Unlock()
+func (s *lruShard) delete(hKey hashKey) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if e, ok := lru.cache[hKey]; ok {
-		lru.remove(e)
-		delete(lru.cache, hKey)
-		lru.entryPool.Put(e)
+	if e, ok := s.cache[hKey]; ok {
+		s.remove(e)
+		delete(s.cache, hKey)
+		s.pool.Put(e)
 	}
 }
 
-// Helpers for intrusive list
-func (lru *LeastRecentlyUsed) remove(e *entry) {
+func (s *lruShard) remove(e *entry) {
 	if e.prev != nil {
 		e.prev.next = e.next
 	} else {
-		lru.head = e.next
+		s.head = e.next
 	}
 	if e.next != nil {
 		e.next.prev = e.prev
 	} else {
-		lru.tail = e.prev
+		s.tail = e.prev
 	}
 	e.prev = nil
 	e.next = nil
 }
 
-func (lru *LeastRecentlyUsed) pushFront(e *entry) {
-	e.next = lru.head
+func (s *lruShard) pushFront(e *entry) {
+	e.next = s.head
 	e.prev = nil
-	if lru.head != nil {
-		lru.head.prev = e
+	if s.head != nil {
+		s.head.prev = e
 	}
-	lru.head = e
-	if lru.tail == nil {
-		lru.tail = e
+	s.head = e
+	if s.tail == nil {
+		s.tail = e
 	}
-}
-
-func (lru *LeastRecentlyUsed) hashKey(key string) hashKey {
-	return hashFunc(key)
 }
 
 func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(Key) error) {
-	lru.onEvict = fn
+	for _, s := range lru.shards {
+		s.onEvict = fn
+	}
 }

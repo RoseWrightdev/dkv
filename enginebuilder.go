@@ -19,6 +19,19 @@ func NewEngineBuilder() *EngineBuilder {
 	return &EngineBuilder{}
 }
 
+func NewDefaultEngine(walPath, sssPath string) (Engine, error) {
+	return NewEngineBuilder().GetEngineDefault(walPath, sssPath)
+}
+
+func (eb *EngineBuilder) Default() *EngineBuilder {
+	eb.walSyncInterval = 500 * time.Millisecond
+	eb.sssInterval = 5 * time.Minute
+	eb.walBufferSize = 64 * 1024
+	eb.walSegments = 16
+	eb.evictionService = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
+	return eb
+}
+
 func (eb *EngineBuilder) SetWalPath(path string) *EngineBuilder {
 	eb.walPath = path
 	return eb
@@ -54,7 +67,7 @@ func (eb *EngineBuilder) SetEvictionService(evictor Evictor) *EngineBuilder {
 	return eb
 }
 
-func (eb *EngineBuilder) GetEngine() (*Engine, error) {
+func (eb *EngineBuilder) GetEngine() (Engine, error) {
 	if isUnit(eb.walPath) {
 		return nil, fmt.Errorf("required eb.walPath is unset cogfigure eb.walPath with SetWalPath(path string)")
 	}
@@ -94,6 +107,10 @@ func (eb *EngineBuilder) GetEngine() (*Engine, error) {
 	}
 
 	return newEngine(config)
+}
+
+func (eb *EngineBuilder) GetEngineDefault(walPath, sssPath string) (Engine, error) {
+	return eb.Default().SetWalPath(walPath).SetSssPath(sssPath).GetEngine()
 }
 
 func isUnit[T comparable](val T) bool {

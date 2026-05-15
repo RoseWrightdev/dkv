@@ -26,7 +26,7 @@ func TestDkvIntegration(t *testing.T) {
 		SetWalSyncInterval(time.Hour).SetSssInterval(time.Hour).
 		SetWalBufferSize(64 * 1024).
 		SetWalSegments(4).
-		SetEvictionService(dkv.NewLRU(100, time.Hour)).
+		SetEvictionService(dkv.NewLRU(dkv.LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16})).
 		GetEngine()
 	require.NoError(t, err)
 
@@ -78,7 +78,7 @@ func TestDkvHighPressure(t *testing.T) {
 		SetSssInterval(time.Hour).
 		SetWalBufferSize(64 * 1024).
 		SetWalSegments(4).
-		SetEvictionService(dkv.NewLRU(1000, time.Hour)).
+		SetEvictionService(dkv.NewLRU(dkv.LRUConfig{Capacity: 1000, TTL: time.Hour, ShardCount: 16})).
 		GetEngine()
 	require.NoError(t, err)
 	
@@ -129,7 +129,7 @@ func TestDkvHighPressure(t *testing.T) {
 			SetSssInterval(time.Hour).
 			SetWalBufferSize(64 * 1024).
 			SetWalSegments(4).
-			SetEvictionService(dkv.NewLRU(2000, time.Hour)).
+			SetEvictionService(dkv.NewLRU(dkv.LRUConfig{Capacity: 2000, TTL: time.Hour, ShardCount: 16})).
 			GetEngine()
 		require.NoError(t, err)
 		

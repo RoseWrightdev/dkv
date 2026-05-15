@@ -11,7 +11,7 @@ import (
 
 type server struct {
 	pb.UnimplementedDkvServiceServer
-	eng *Engine
+	eng Engine
 }
 
 func (s *server) Get(_ context.Context, in *pb.GetRequest) (*pb.GetResponse, error) {
@@ -39,10 +39,10 @@ func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResp
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
-	eng      *Engine
+	eng      Engine
 }
 
-func NewServer(eng *Engine) *Grpc {
+func NewServer(eng Engine) *Grpc {
 	s := grpc.NewServer()
 	h := &server{eng: eng}
 	pb.RegisterDkvServiceServer(s, h)

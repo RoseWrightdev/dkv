@@ -32,6 +32,25 @@ type walSegment struct {
 	path         string
 }
 
+func (s *walSegment) backgroundSync() {
+	ticker := time.NewTicker(s.syncInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.mu.Lock()
+			if s.wrt.Buffered() > 0 {
+				s.wrt.Flush()
+				s.file.Sync()
+			}
+			s.mu.Unlock()
+		case <-s.ctx.Done():
+			return
+		}
+	}
+}
+
 type Wal struct {
 	segments   []*walSegment
 	count      int
@@ -112,13 +131,12 @@ func (w *Wal) stop() {
 	}
 }
 
-func (w *Wal) getSegment(key Key) *walSegment {
-	hash := hashFunc(key)
+func (w *Wal) getSegment(hash uint64) *walSegment {
 	return w.segments[hash%uint64(w.count)]
 }
 
 func (w *Wal) publish(key Key, msg proto.Message) error {
-	seg := w.getSegment(key)
+	seg := w.getSegment(hashFunc(key))
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 
@@ -168,25 +186,6 @@ func (w *Wal) publish(key Key, msg proto.Message) error {
 	}
 
 	return nil
-}
-
-func (s *walSegment) backgroundSync() {
-	ticker := time.NewTicker(s.syncInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			s.mu.Lock()
-			if s.wrt.Buffered() > 0 {
-				s.wrt.Flush()
-				s.file.Sync()
-			}
-			s.mu.Unlock()
-		case <-s.ctx.Done():
-			return
-		}
-	}
 }
 
 func (w *Wal) replay() (map[Key]Value, error) {

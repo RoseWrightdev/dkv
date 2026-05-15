@@ -10,9 +10,18 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 )
 
-type Engine struct {
+type Engine interface {
+	Get(key Key) (Value, bool)
+	Set(key Key, value Value) error
+	Delete(key Key) error
+	Start()
+	Stop()
+	Snapshot() error
+}
+
+type engine struct {
 	hm              *shardedMap
-	wal             *Wal
+	wal             Waler
 	sss             *SnapShotService
 	evictionService Evictor
 	setRequestPool  sync.Pool
@@ -34,13 +43,13 @@ type snapshotEntry struct {
 	Value Value
 }
 
-func newEngine(config EngineConfig) (*Engine, error) {
+func newEngine(config EngineConfig) (Engine, error) {
 	wal, err := newWal(config.walPath, config.walSyncInterval, config.walBufferSize, config.walSegments)
 	if err != nil {
 		return nil, err
 	}
 
-	eng := &Engine{
+	eng := &engine{
 		hm:  newShardedMap(),
 		wal: wal,
 	}
@@ -65,60 +74,42 @@ func newEngine(config EngineConfig) (*Engine, error) {
 	return eng, nil
 }
 
-func (eng *Engine) Start() {
+func (eng *engine) Start() {
 	eng.sss.start()
 	eng.wal.start()
 	eng.evictionService.start()
 }
 
-func (eng *Engine) Stop() {
+func (eng *engine) Stop() {
 	eng.sss.stop()
 	eng.wal.stop()
 	eng.evictionService.stop()
 }
 
-func (eng *Engine) Get(key Key) (Value, bool) {
+func (eng *engine) Get(key Key) (Value, bool) {
 	eng.evictionService.publish(key)
-	shard := eng.hm.getShard(key)
-	shard.mu.RLock()
-	val, ok := shard.m[key]
-	shard.mu.RUnlock()
-	return val, ok
+	return eng.hm.Load(key)
 }
 
-func (eng *Engine) Set(key Key, value Value) error {
+func (eng *engine) Set(key Key, value Value) error {
 	eng.evictionService.publish(key)
 	req := eng.setRequestPool.Get().(*pb.SetRequest)
 	req.Key = key
 	req.Value = value
-	
+
 	err := eng.wal.publish(key, req)
 	eng.setRequestPool.Put(req)
-	
+
 	if err != nil {
 		return err
 	}
-	
-	shard := eng.hm.getShard(key)
-	shard.mu.Lock()
-	shard.m[key] = value
-	shard.mu.Unlock()
+
+	eng.hm.Store(key, value)
 	return nil
 }
 
-func (eng *Engine) Delete(key Key) error {
+func (eng *engine) Delete(key Key) error {
 	eng.evictionService.publishDelete(key)
-	if err := eng.wal.publish(key, &pb.DeleteRequest{Key: key}); err != nil {
-		return err
-	}
-	shard := eng.hm.getShard(key)
-	shard.mu.Lock()
-	delete(shard.m, key)
-	shard.mu.Unlock()
-	return nil
-}
-
-func (eng *Engine) Evict(key Key) error {
 	if err := eng.wal.publish(key, &pb.DeleteRequest{Key: key}); err != nil {
 		return err
 	}
@@ -126,11 +117,19 @@ func (eng *Engine) Evict(key Key) error {
 	return nil
 }
 
-func (eng *Engine) Snapshot() error {
+func (eng *engine) Evict(key Key) error {
+	if err := eng.wal.publish(key, &pb.DeleteRequest{Key: key}); err != nil {
+		return err
+	}
+	eng.hm.Delete(key)
+	return nil
+}
+
+func (eng *engine) Snapshot() error {
 	return eng.sss.create()
 }
 
-func (eng *Engine) streamToEncoder(enc *gob.Encoder) error {
+func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 	var err error
 	eng.hm.Range(func(k, v any) bool {
 		entry := snapshotEntry{Key: k.(Key), Value: v.(Value)}
@@ -143,7 +142,7 @@ func (eng *Engine) streamToEncoder(enc *gob.Encoder) error {
 	return err
 }
 
-func (eng *Engine) recover(sssPath string) error {
+func (eng *engine) recover(sssPath string) error {
 	if info, err := os.Stat(sssPath); err == nil && info.Size() > 0 {
 		file, err := os.Open(sssPath)
 		if err != nil {
