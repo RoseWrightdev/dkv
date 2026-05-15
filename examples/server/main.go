@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"time"
 
@@ -19,14 +20,14 @@ func main() {
 		panic(err)
 	}
 
-	listener, err := net.Listen("tcp", ":8080")
+	listener, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		panic(err)
 	}
 
+	fmt.Println("DKV server listening on :50051...")
 	s := dkv.NewServer(eng)
-	err = s.Run(listener)
-	if err != nil {
+	if err := s.Run(listener); err != nil {
 		panic(err)
 	}
 	defer s.Stop()
