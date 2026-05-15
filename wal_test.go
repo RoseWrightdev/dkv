@@ -12,29 +12,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func cleanupWalMock(t *testing.T) {
-	err := os.Remove(mockConfig.walPath)
-	assert.Nil(t, err)
-}
+
 
 func TestNewWal(t *testing.T) {
-	_, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize)
+	_, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
-	cleanupWalMock(t)
+	cleanupEngineMocks(t)
 }
 
 func TestPublish(t *testing.T) {
-	defer cleanupWalMock(t)
+	defer cleanupEngineMocks(t)
 
 	req := pb.SetRequest{Key: "key", Value: []byte{byte(32)}}
-	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize)
+	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
-	err = wal.publish(&req)
+	err = wal.publish(req.Key, &req)
 	assert.Nil(t, err)
 
-	err = wal.sync()
+	for _, seg := range wal.segments {
+		seg.mu.Lock()
+		seg.wrt.Flush()
+		seg.file.Sync()
+		seg.mu.Unlock()
+	}
+
+	// Read from the first segment since we used segmentCount=1
+	got, err := os.ReadFile(mockConfig.walPath + "/seg_00.log")
 	assert.Nil(t, err)
 
 	// 00000000 00000000 00000000 00001010 00001010 00001000
@@ -45,9 +50,6 @@ func TestPublish(t *testing.T) {
 	//   Tag 1^       3^     "k"^     "e"^     "y"^   Tag 2^
 	// 00000001 00100000
 	//        1^     32^
-
-	got, err := os.ReadFile(mockConfig.walPath)
-	assert.Nil(t, err)
 
 	expected := []byte{
 		0, 0, 0, 10,
@@ -60,9 +62,9 @@ func TestPublish(t *testing.T) {
 }
 
 func TestReplay(t *testing.T) {
-	defer cleanupWalMock(t)
+	defer cleanupEngineMocks(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize)
+	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 4)
 	exceptedValues := make([][]byte, 1000)
 	exceptedKeys := make([]string, 1000)
 	assert.Nil(t, err)
@@ -72,7 +74,7 @@ func TestReplay(t *testing.T) {
 		exceptedValues[i] = val
 		exceptedKeys[i] = key
 		req := pb.SetRequest{Key: key, Value: val}
-		err = wal.publish(&req)
+		err = wal.publish(key, &req)
 		assert.Nil(t, err)
 	}
 	replay, err := wal.replay()
@@ -86,12 +88,12 @@ func TestReplay(t *testing.T) {
 }
 
 func TestClear(t *testing.T) {
-	defer cleanupWalMock(t)
+	defer cleanupEngineMocks(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize)
+	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
 	wal.clear()
-	content, err := os.ReadFile(mockConfig.walPath)
+	content, err := os.ReadFile(mockConfig.walPath + "/seg_00.log")
 	assert.Equal(t, 0, len(content))
 }

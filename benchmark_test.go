@@ -8,16 +8,38 @@ import (
 	"time"
 )
 
-func BenchmarkEngine_Set(b *testing.B) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-bench-*")
-	defer os.RemoveAll(tmpDir)
-	eng, _ := newEngine(EngineConfig{
-		walPath: tmpDir + "/wal.bin", sssPath: tmpDir + "/sss.gob",
-		walSyncInterval: time.Hour, sssInterval: time.Hour,
-		walBufferSize: 1024 * 1024, evictionService: NewLRU(1000000, time.Hour),
-	})
+func setupBenchmarkEngine(b *testing.B) (*Engine, func()) {
+	tmpDir, err := os.MkdirTemp("", "dkv-bench-*")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	eng, err := NewEngineBuilder().
+		SetWalPath(tmpDir).
+		SetSssPath(tmpDir + "/sss.gob").
+		SetWalSyncInterval(time.Hour).
+		SetSssInterval(time.Hour).
+		SetWalBufferSize(1024 * 1024).
+		SetEvictionService(NewLRU(1000000, time.Hour)).
+		SetWalSegments(16).
+		GetEngine()
+	if err != nil {
+		b.Fatal(err)
+	}
+
 	eng.Start()
-	defer eng.Stop()
+
+	cleanup := func() {
+		eng.Stop()
+		os.RemoveAll(tmpDir)
+	}
+
+	return eng, cleanup
+}
+
+func BenchmarkEngine_Set(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
 
 	const keyCount = 1000
 	keys := make([]string, keyCount)
@@ -26,26 +48,19 @@ func BenchmarkEngine_Set(b *testing.B) {
 	}
 	val := []byte("value-data-12345")
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for i := 0; b.Loop(); i++ {
 		_ = eng.Set(keys[i%keyCount], val)
 	}
 }
 
 func BenchmarkEngine_Get(b *testing.B) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-bench-*")
-	defer os.RemoveAll(tmpDir)
-	eng, _ := newEngine(EngineConfig{
-		walPath: tmpDir + "/wal.bin", sssPath: tmpDir + "/sss.gob",
-		walSyncInterval: time.Hour, sssInterval: time.Hour,
-		evictionService: NewLRU(1000000, time.Hour),
-	})
-	eng.Start()
-	defer eng.Stop()
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
 
 	eng.Set("key", []byte("val"))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for b.Loop() {
 		_, _ = eng.Get("key")
 	}
 }
@@ -57,22 +72,15 @@ func BenchmarkLRU_Seen(b *testing.B) {
 	for i := range keyCount {
 		keys[i] = fmt.Sprintf("key-%d", i)
 	}
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	
+	for i := 0; b.Loop(); i++ {
 		lru.seen(keys[i%keyCount])
 	}
 }
 
 func BenchmarkEngine_Set_Parallel(b *testing.B) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-bench-p-*")
-	defer os.RemoveAll(tmpDir)
-	eng, _ := newEngine(EngineConfig{
-		walPath: tmpDir + "/wal.bin", sssPath: tmpDir + "/sss.gob",
-		walSyncInterval: time.Hour, sssInterval: time.Hour,
-		walBufferSize: 1024 * 1024, evictionService: NewLRU(1000000, time.Hour),
-	})
-	eng.Start()
-	defer eng.Stop()
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
 
 	const keyCount = 100000
 	keys := make([]string, keyCount)
@@ -92,15 +100,8 @@ func BenchmarkEngine_Set_Parallel(b *testing.B) {
 }
 
 func BenchmarkEngine_Get_Parallel(b *testing.B) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-bench-p-*")
-	defer os.RemoveAll(tmpDir)
-	eng, _ := newEngine(EngineConfig{
-		walPath: tmpDir + "/wal.bin", sssPath: tmpDir + "/sss.gob",
-		walSyncInterval: time.Hour, sssInterval: time.Hour,
-		evictionService: NewLRU(1000000, time.Hour),
-	})
-	eng.Start()
-	defer eng.Stop()
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
 	eng.Set("key", []byte("val"))
 
 	b.ResetTimer()
@@ -115,15 +116,8 @@ func BenchmarkEngine_PayloadSizes(b *testing.B) {
 	sizes := []int{128, 1024, 1024 * 1024}
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Size-%d", size), func(b *testing.B) {
-			tmpDir, _ := os.MkdirTemp("", "dkv-size-*")
-			defer os.RemoveAll(tmpDir)
-			eng, _ := newEngine(EngineConfig{
-				walPath: tmpDir + "/wal.bin", sssPath: tmpDir + "/sss.gob",
-				walSyncInterval: time.Hour, sssInterval: time.Hour,
-				evictionService: NewLRU(1000000, time.Hour),
-			})
-			eng.Start()
-			defer eng.Stop()
+			eng, cleanup := setupBenchmarkEngine(b)
+			defer cleanup()
 			val := make([]byte, size)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -134,13 +128,8 @@ func BenchmarkEngine_PayloadSizes(b *testing.B) {
 }
 
 func BenchmarkServer_GetSet_gRPC_Parallel(b *testing.B) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-grpc-p-*")
-	defer os.RemoveAll(tmpDir)
-	eng, _ := newEngine(EngineConfig{
-		walPath: tmpDir + "/wal.bin", sssPath: tmpDir + "/sss.gob",
-		walSyncInterval: time.Hour, sssInterval: time.Hour,
-		walBufferSize: 1024 * 1024, evictionService: NewLRU(100000, time.Hour),
-	})
+	eng, cleanup := setupBenchmarkEngine(b)
+	defer cleanup()
 	s := NewServer(eng)
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	go s.Run(lis)

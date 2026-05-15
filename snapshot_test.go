@@ -14,25 +14,16 @@ type mockWal struct {
 	clearCalled bool
 }
 
-func (mw *mockWal) publish(msg proto.Message) error { return nil }
+func (mw *mockWal) publish(key Key, msg proto.Message) error { return nil }
 func (mw *mockWal) replay() (map[Key]Value, error)  { return nil, nil }
 func (mw *mockWal) clear() error                    { mw.clearCalled = true; return nil }
 func (mw *mockWal) stop()                           {}
 func (mw *mockWal) start()                          {}
 
-func cleanupSnapshotMock(t *testing.T) {
-	err := os.Remove(mockConfig.sssPath)
-	if err != nil && !os.IsNotExist(err) {
-		assert.NoError(t, err)
-	}
-	err = os.Remove(mockConfig.sssPath + ".tmp")
-	if err != nil && !os.IsNotExist(err) {
-		assert.NoError(t, err)
-	}
-}
+
 
 func TestNewSnapShotService(t *testing.T) {
-	defer cleanupSnapshotMock(t)
+	defer cleanupEngineMocks(t)
 
 	mw := &mockWal{}
 	callBack := func(enc *gob.Encoder) error { return nil }
@@ -44,7 +35,7 @@ func TestNewSnapShotService(t *testing.T) {
 }
 
 func TestCreateNewSnapShot(t *testing.T) {
-	defer cleanupSnapshotMock(t)
+	defer cleanupEngineMocks(t)
 
 	mw := &mockWal{}
 	mockData := map[Key]Value{
@@ -83,7 +74,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 }
 
 func TestPeriodicSnapshots(t *testing.T) {
-	defer cleanupSnapshotMock(t)
+	defer cleanupEngineMocks(t)
 
 	mw := &mockWal{}
 	callBack := func(enc *gob.Encoder) error { return nil }

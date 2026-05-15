@@ -15,14 +15,14 @@ import (
 )
 
 type Waler interface {
-	publish(msg proto.Message) error
+	publish(key Key, msg proto.Message) error
 	replay() (map[Key]Value, error)
 	clear() error
 	start()
 	stop()
 }
 
-type Wal struct {
+type walSegment struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	mu           sync.Mutex
@@ -30,31 +30,24 @@ type Wal struct {
 	wrt          *bufio.Writer
 	file         *os.File
 	path         string
-	headerPool   sync.Pool
-	entryPool    sync.Pool
-	bufferPool   sync.Pool
 }
 
-func newWal(path string, syncInterval time.Duration, bufferSize uint32) (*Wal, error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
-	if err != nil {
+type Wal struct {
+	segments   []*walSegment
+	count      int
+	headerPool sync.Pool
+	entryPool  sync.Pool
+	bufferPool sync.Pool
+}
+
+func newWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segmentCount int) (*Wal, error) {
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
 		return nil, err
 	}
 
-	if _, err := file.Seek(0, io.SeekEnd); err != nil {
-		file.Close()
-		return nil, err
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
 	wal := &Wal{
-		ctx:          ctx,
-		cancel:       cancel,
-		mu:           sync.Mutex{},
-		syncInterval: syncInterval,
-		wrt:          bufio.NewWriterSize(file, int(bufferSize)),
-		file:         file,
-		path:         path,
+		segments: make([]*walSegment, segmentCount),
+		count:    segmentCount,
 		headerPool: sync.Pool{
 			New: func() any {
 				b := make([]byte, 4)
@@ -74,25 +67,60 @@ func newWal(path string, syncInterval time.Duration, bufferSize uint32) (*Wal, e
 		},
 	}
 
+	for i := range segmentCount {
+		path := fmt.Sprintf("%s/seg_%02d.log", dirPath, i)
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := file.Seek(0, io.SeekEnd); err != nil {
+			file.Close()
+			return nil, err
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		seg := &walSegment{
+			ctx:          ctx,
+			cancel:       cancel,
+			mu:           sync.Mutex{},
+			syncInterval: syncInterval,
+			wrt:          bufio.NewWriterSize(file, int(bufferSize)),
+			file:         file,
+			path:         path,
+		}
+		wal.segments[i] = seg
+	}
+
 	return wal, nil
 }
 
 func (w *Wal) start() {
-	go w.backgroundSync()
+	for _, seg := range w.segments {
+		go seg.backgroundSync()
+	}
 }
 
 func (w *Wal) stop() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.cancel()
-	w.wrt.Flush()
-	w.file.Sync()
-	w.file.Close()
+	for _, seg := range w.segments {
+		seg.mu.Lock()
+		seg.cancel()
+		seg.wrt.Flush()
+		seg.file.Sync()
+		seg.file.Close()
+		seg.mu.Unlock()
+	}
 }
 
-func (w *Wal) publish(msg proto.Message) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+func (w *Wal) getSegment(key Key) *walSegment {
+	hash := hashFunc(key)
+	return w.segments[hash%uint64(w.count)]
+}
+
+func (w *Wal) publish(key Key, msg proto.Message) error {
+	seg := w.getSegment(key)
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
 
 	entry := w.entryPool.Get().(*pb.WalEntry)
 	defer w.entryPool.Put(entry)
@@ -131,100 +159,125 @@ func (w *Wal) publish(msg proto.Message) error {
 	defer w.headerPool.Put(headerPtr)
 	binary.BigEndian.PutUint32(header, uint32(len(data)))
 
-	if _, err := w.wrt.Write(header); err != nil {
+	if _, err := seg.wrt.Write(header); err != nil {
 		return err
 	}
 
-	if _, err := w.wrt.Write(data); err != nil {
+	if _, err := seg.wrt.Write(data); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (w *Wal) sync() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if err := w.wrt.Flush(); err != nil {
-		return err
-	}
-	return w.file.Sync()
-}
-
-func (w *Wal) backgroundSync() {
-	ticker := time.NewTicker(w.syncInterval)
+func (s *walSegment) backgroundSync() {
+	ticker := time.NewTicker(s.syncInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			w.sync()
-		case <-w.ctx.Done():
+			s.mu.Lock()
+			if s.wrt.Buffered() > 0 {
+				s.wrt.Flush()
+				s.file.Sync()
+			}
+			s.mu.Unlock()
+		case <-s.ctx.Done():
 			return
 		}
 	}
 }
 
 func (w *Wal) replay() (map[Key]Value, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if err := w.wrt.Flush(); err != nil {
-		return nil, err
-	}
-
 	results := make(map[Key]Value)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var firstErr error
+	var errOnce sync.Once
 
-	if _, err := w.file.Seek(0, 0); err != nil {
-		return nil, err
+	for i := range w.count {
+		wg.Add(1)
+		go func(seg *walSegment) {
+			defer wg.Done()
+			if err := w.replaySegment(seg, results, &mu); err != nil {
+				errOnce.Do(func() { firstErr = err })
+			}
+		}(w.segments[i])
 	}
 
-	reader := bufio.NewReader(w.file)
+	wg.Wait()
+	return results, firstErr
+}
+
+func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *sync.Mutex) error {
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+
+	seg.wrt.Flush()
+	if _, err := seg.file.Seek(0, 0); err != nil {
+		return err
+	}
+
+	reader := bufio.NewReader(seg.file)
+	headerPtr := w.headerPool.Get().(*[]byte)
+	header := *headerPtr
+	defer w.headerPool.Put(headerPtr)
+	var payload []byte
+
 	for {
-		header := make([]byte, 4)
 		if _, err := io.ReadFull(reader, header); err != nil {
 			if err == io.EOF {
 				break
 			}
-			return nil, err
+			return err
 		}
 
-		size := binary.BigEndian.Uint32(header)
-		payload := make([]byte, size)
+		size := int(binary.BigEndian.Uint32(header))
+		if cap(payload) < size {
+			payload = make([]byte, size)
+		}
+		payload = payload[:size]
+
 		if _, err := io.ReadFull(reader, payload); err != nil {
-			return nil, err
+			return err
 		}
 
-		var entry pb.WalEntry
-		if err := proto.Unmarshal(payload, &entry); err != nil {
-			return nil, err
+		entry := w.entryPool.Get().(*pb.WalEntry)
+		entry.Reset()
+		if err := proto.Unmarshal(payload, entry); err != nil {
+			w.entryPool.Put(entry)
+			return err
 		}
 
+		resultsMu.Lock()
 		switch kv := entry.Entry.(type) {
 		case *pb.WalEntry_Set:
 			results[kv.Set.Key] = kv.Set.Value
 		case *pb.WalEntry_Delete:
 			results[kv.Delete.Key] = nil
 		}
+		resultsMu.Unlock()
+		w.entryPool.Put(entry)
 	}
 
-	// Seek back to end for future writes
-	if _, err := w.file.Seek(0, io.SeekEnd); err != nil {
-		return nil, err
-	}
-
-	return results, nil
+	_, err := seg.file.Seek(0, io.SeekEnd)
+	return err
 }
 
 func (w *Wal) clear() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if err := w.file.Truncate(0); err != nil {
-		return err
+	for _, seg := range w.segments {
+		seg.mu.Lock()
+		if err := seg.file.Truncate(0); err != nil {
+			seg.mu.Unlock()
+			return err
+		}
+		if _, err := seg.file.Seek(0, 0); err != nil {
+			seg.mu.Unlock()
+			return err
+		}
+		seg.wrt.Reset(seg.file)
+		seg.mu.Unlock()
 	}
-	if _, err := w.file.Seek(0, 0); err != nil {
-		return err
-	}
-	w.wrt.Reset(w.file)
 	return nil
 }

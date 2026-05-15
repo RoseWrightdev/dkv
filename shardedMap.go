@@ -5,7 +5,7 @@ import "sync"
 type Key = string
 type Value = []byte
 
-const shardCount = 64
+const shardCount = 128
 
 type shard struct {
 	mu sync.RWMutex
@@ -23,16 +23,7 @@ func newShardedMap() *shardedMap {
 }
 
 func (sm *shardedMap) getShard(key Key) *shard {
-	// Simple FNV-1a inline hash for shard selection
-	const (
-		offset64 = 14695981039346656037
-		prime64  = 1099511628211
-	)
-	var hash uint64 = offset64
-	for i := 0; i < len(key); i++ {
-		hash ^= uint64(key[i])
-		hash *= prime64
-	}
+	hash := hashFunc(key)
 	return sm[hash%shardCount]
 }
 

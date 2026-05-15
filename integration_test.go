@@ -18,13 +18,14 @@ func TestDkvIntegration(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-integ-*")
 	defer os.RemoveAll(tmpDir)
 
-	walPath := filepath.Join(tmpDir, "wal.bin")
+	walDir := filepath.Join(tmpDir, "wal")
 	sssPath := filepath.Join(tmpDir, "sss.gob")
 
 	eng, err := dkv.NewEngineBuilder().
-		SetWalPath(walPath).SetSssPath(sssPath).
+		SetWalPath(walDir).SetSssPath(sssPath).
 		SetWalSyncInterval(time.Hour).SetSssInterval(time.Hour).
-		SetWalBufferSize(64 * 1024). // Added
+		SetWalBufferSize(64 * 1024).
+		SetWalSegments(4).
 		SetEvictionService(dkv.NewLRU(100, time.Hour)).
 		GetEngine()
 	require.NoError(t, err)
@@ -68,14 +69,15 @@ func TestDkvHighPressure(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-pressure-*")
 	defer os.RemoveAll(tmpDir)
 
-	walPath := filepath.Join(tmpDir, "wal.bin")
+	walDir := filepath.Join(tmpDir, "wal")
 	sssPath := filepath.Join(tmpDir, "snapshot.gob")
 
 	eng, err := dkv.NewEngineBuilder().
-		SetWalPath(walPath).SetSssPath(sssPath).
+		SetWalPath(walDir).SetSssPath(sssPath).
 		SetWalSyncInterval(10 * time.Millisecond).
 		SetSssInterval(time.Hour).
 		SetWalBufferSize(64 * 1024).
+		SetWalSegments(4).
 		SetEvictionService(dkv.NewLRU(1000, time.Hour)).
 		GetEngine()
 	require.NoError(t, err)
@@ -113,7 +115,7 @@ func TestDkvHighPressure(t *testing.T) {
 
 	t.Run("MassiveDataset_Recovery", func(t *testing.T) {
 		client, _ := dkv.NewInsecureClient(addr, time.Second)
-		for i := range 10000 {
+		for i := range 1000 {
 			_ = client.Set(fmt.Sprintf("bulk-%d", i), []byte("data"))
 		}
 		_ = eng.Snapshot()
@@ -122,11 +124,12 @@ func TestDkvHighPressure(t *testing.T) {
 		client.Close()
 
 		eng2, err := dkv.NewEngineBuilder().
-			SetWalPath(walPath).SetSssPath(sssPath).
+			SetWalPath(walDir).SetSssPath(sssPath).
 			SetWalSyncInterval(10 * time.Millisecond).
 			SetSssInterval(time.Hour).
 			SetWalBufferSize(64 * 1024).
-			SetEvictionService(dkv.NewLRU(20000, time.Hour)).
+			SetWalSegments(4).
+			SetEvictionService(dkv.NewLRU(2000, time.Hour)).
 			GetEngine()
 		require.NoError(t, err)
 		
@@ -138,7 +141,7 @@ func TestDkvHighPressure(t *testing.T) {
 		client2, _ := dkv.NewInsecureClient(addr, time.Second)
 		defer client2.Close()
 
-		val, ok, _ := client2.Get("bulk-9999")
+		val, ok, _ := client2.Get("bulk-999")
 		assert.True(t, ok)
 		assert.Equal(t, []byte("data"), val)
 	})

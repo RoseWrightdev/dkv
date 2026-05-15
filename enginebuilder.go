@@ -11,6 +11,7 @@ type EngineBuilder struct {
 	walSyncInterval time.Duration
 	sssInterval     time.Duration
 	walBufferSize   uint32
+	walSegments     int
 	evictionService Evictor
 }
 
@@ -43,6 +44,11 @@ func (eb *EngineBuilder) SetWalBufferSize(size uint32) *EngineBuilder {
 	return eb
 }
 
+func (eb *EngineBuilder) SetWalSegments(count int) *EngineBuilder {
+	eb.walSegments = count
+	return eb
+}
+
 func (eb *EngineBuilder) SetEvictionService(evictor Evictor) *EngineBuilder {
 	eb.evictionService = evictor
 	return eb
@@ -69,6 +75,10 @@ func (eb *EngineBuilder) GetEngine() (*Engine, error) {
 		return nil, fmt.Errorf("required eb.walBufferSize is unset cogfigure eb.walBufferSize with SetWalBufferSize(size uint32)")
 	}
 
+	if isUnit(eb.walSegments) {
+		return nil, fmt.Errorf("required eb.walSegments is unset configure eb.walSegments with SetWalSegments(count int)")
+	}
+
 	if eb.evictionService == nil {
 		return nil, fmt.Errorf("required eb.evictionService is unset configure eb.evictionService with SetEvictionService(evictor Evictor)")
 	}
@@ -79,6 +89,7 @@ func (eb *EngineBuilder) GetEngine() (*Engine, error) {
 		walSyncInterval: eb.walSyncInterval,
 		sssInterval:     eb.sssInterval,
 		walBufferSize:   eb.walBufferSize,
+		walSegments:     eb.walSegments,
 		evictionService: eb.evictionService,
 	}
 

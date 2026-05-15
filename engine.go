@@ -24,6 +24,7 @@ type EngineConfig struct {
 	walSyncInterval time.Duration
 	sssInterval     time.Duration
 	walBufferSize   uint32
+	walSegments     int
 	evictionService Evictor
 }
 
@@ -34,7 +35,7 @@ type snapshotEntry struct {
 }
 
 func newEngine(config EngineConfig) (*Engine, error) {
-	wal, err := newWal(config.walPath, config.walSyncInterval, config.walBufferSize)
+	wal, err := newWal(config.walPath, config.walSyncInterval, config.walBufferSize, config.walSegments)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +92,7 @@ func (eng *Engine) Set(key Key, value Value) error {
 	req.Key = key
 	req.Value = value
 	
-	err := eng.wal.publish(req)
+	err := eng.wal.publish(key, req)
 	eng.setRequestPool.Put(req)
 	
 	if err != nil {
@@ -107,7 +108,7 @@ func (eng *Engine) Set(key Key, value Value) error {
 
 func (eng *Engine) Delete(key Key) error {
 	eng.evictionService.publishDelete(key)
-	if err := eng.wal.publish(&pb.DeleteRequest{Key: key}); err != nil {
+	if err := eng.wal.publish(key, &pb.DeleteRequest{Key: key}); err != nil {
 		return err
 	}
 	shard := eng.hm.getShard(key)
@@ -118,7 +119,7 @@ func (eng *Engine) Delete(key Key) error {
 }
 
 func (eng *Engine) Evict(key Key) error {
-	if err := eng.wal.publish(&pb.DeleteRequest{Key: key}); err != nil {
+	if err := eng.wal.publish(key, &pb.DeleteRequest{Key: key}); err != nil {
 		return err
 	}
 	eng.hm.Delete(key)
