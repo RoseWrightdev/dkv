@@ -6,6 +6,7 @@ import (
 )
 
 // Clock defines an interface for providing distributed-safe timestamps.
+// Clock defines the interface for distributed timestamps.
 type Clock interface {
 	// Now returns a Hybrid Logical Clock (HLC) timestamp.
 	Now() int64
@@ -21,6 +22,7 @@ const (
 	logicalMask = (1 << logicalBits) - 1
 )
 
+// HLC implements a Hybrid Logical Clock.
 type HLC struct {
 	state atomic.Uint64
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// SnapShotService manages the background persistence of the engine state to disk.
 type SnapShotService struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -45,12 +46,14 @@ func newSnapshotService(path string, interval time.Duration, wal Waler, encCallB
 	return sss, nil
 }
 
+// start begins the periodic snapshotting loop.
 func (sss *SnapShotService) start() {
 	sss.wg.Add(2)
 	go sss.producer(sss.ctx)
 	go sss.consumer(sss.ctx)
 }
 
+// stop gracefully shuts down the snapshotting service.
 func (sss *SnapShotService) stop() {
 	sss.cancel()
 	sss.wg.Wait()

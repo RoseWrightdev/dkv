@@ -139,6 +139,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	return eng, nil
 }
 
+// Start initializes background services.
 func (eng *engine) Start() {
 	eng.startOnce.Do(func() {
 		eng.sss.start()
@@ -153,6 +154,7 @@ func (eng *engine) Start() {
 	})
 }
 
+// Stop gracefully shuts down the engine and its background services.
 func (eng *engine) Stop() {
 	eng.stopOnce.Do(func() {
 		if eng.entropy != nil {
@@ -167,6 +169,7 @@ func (eng *engine) Stop() {
 	})
 }
 
+// Get retrieves the value associated with a key from the sharded map.
 func (eng *engine) Get(key Key) ([]byte, bool) {
 	hash := hashKey(hashFunc(key))
 	iv, ok := eng.hm.Load(key, hash)
@@ -177,6 +180,7 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 	return iv.Data, true
 }
 
+// Set persists a key-value pair to the WAL and updates the sharded map.
 func (eng *engine) Set(key Key, value []byte) error {
 	hash := hashFunc(key)
 	eng.evictionService.publish(key, hash)
@@ -219,6 +223,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 	return nil
 }
 
+// Delete marks a key as deleted by publishing a tombstone to the WAL.
 func (eng *engine) Delete(key Key) error {
 	hash := hashFunc(key)
 	eng.evictionService.publishDelete(key, hash)
@@ -299,6 +304,7 @@ func (eng *engine) Evict(key Key) error {
 	return nil
 }
 
+// Snapshot triggers an immediate persistence of the current state to disk.
 func (eng *engine) Snapshot() error {
 	return eng.sss.create()
 }

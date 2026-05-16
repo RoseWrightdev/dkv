@@ -1,6 +1,6 @@
 package dkv
 
-// ClusterConfigBuilder provides a fluent API for configuring DKV's distribution layer.
+// ClusterConfigBuilder provides a fluent API for configuring dkv's distribution layer.
 type ClusterConfigBuilder struct {
 	config ClusterConfig
 }
@@ -52,7 +52,7 @@ func (cb *ClusterConfigBuilder) SetSeedNodes(seeds []string) *ClusterConfigBuild
 	return cb
 }
 
-// SetGrpcPort sets the port of the DKV gRPC API.
+// SetGrpcPort sets the port of the dkv gRPC API.
 func (cb *ClusterConfigBuilder) SetGrpcPort(port int) *ClusterConfigBuilder {
 	cb.config.GrpcPort = port
 	return cb

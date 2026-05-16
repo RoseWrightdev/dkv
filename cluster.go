@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/memberlist"
 )
 
-// PeerAddress represents the network address (IP:Port) of a DKV node.
+// PeerAddress represents the network address (IP:Port) of a dkv node.
 type PeerAddress string
 
 // Cluster defines the interface for distributed node discovery and replication.
@@ -23,7 +23,7 @@ type Cluster interface {
 // ClusterConfig holds configuration for decentralized node discovery and membership.
 type ClusterConfig struct {
 	// SingleNode explicitly disables the distribution layer when set to true.
-	// DKV is distributed by default.
+	// dkv is distributed by default.
 	SingleNode bool
 	// NodeID is a unique identifier for this node in the cluster.
 	NodeID string
@@ -35,7 +35,7 @@ type ClusterConfig struct {
 	AdvertiseAddr string
 	// SeedNodes is a list of existing nodes to join upon startup.
 	SeedNodes []string
-	// GrpcPort is the port of the DKV gRPC API, shared with peers via metadata.
+	// GrpcPort is the port of the dkv gRPC API, shared with peers via metadata.
 	GrpcPort int
 	// FastTest optimizes internal intervals for rapid test execution.
 	FastTest bool

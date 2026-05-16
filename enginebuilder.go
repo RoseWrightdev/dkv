@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// EngineBuilder provides a fluent API for constructing and configuring a dkv engine.
 type EngineBuilder struct {
 	walPath         string
 	sssPath         string
@@ -133,6 +134,7 @@ func (eb *EngineBuilder) FastTest() *EngineBuilder {
 	return eb
 }
 
+// GetEngine validates the configuration and returns a new Engine instance.
 func (eb *EngineBuilder) GetEngine() (Engine, error) {
 	if isUnit(eb.walPath) {
 		return nil, fmt.Errorf("required eb.walPath is unset; configure eb.walPath with SetWalPath(path string)")

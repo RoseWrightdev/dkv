@@ -32,7 +32,7 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("DKV server listening on :50051...")
+	fmt.Println("dkv server listening on :50051...")
 	s := dkv.NewServer(eng)
 	if err := s.Run(listener); err != nil {
 		panic(err)

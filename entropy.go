@@ -10,7 +10,7 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 )
 
-// Reconciler defines the interface required by the anti-entropy service to perform state comparison and updates.
+// Reconciler defines the interface required by the anti-entropy service for state comparison.
 type Reconciler interface {
 	Digests() map[ShardID]ShardDigest
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
@@ -44,7 +44,7 @@ func newAntiEntropyService(cluster Cluster, storage Reconciler, pools *resourceP
 	}
 }
 
-// start begins the background reconciliation loop.
+// start begins the background reconciliation loop until stopChan is closed.
 func (s *AntiEntropyService) start() {
 	if s.interval <= 0 {
 		panic(fmt.Sprintf("invalid anti-entropy interval: %v", s.interval))

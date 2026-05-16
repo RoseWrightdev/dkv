@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Waler defines the interface for a durable write-ahead log.
 type Waler interface {
 	publish(key Key, hash hashKey, msg proto.Message) error
 	replay() (map[Key]Value, error)

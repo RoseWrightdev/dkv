@@ -9,6 +9,7 @@ import (
 
 type hashKey = uint64
 
+// Evictor defines the interface for cache invalidation.
 type Evictor interface {
 	publish(key Key, hash hashKey)
 	publishDelete(key Key, hash hashKey)
