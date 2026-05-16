@@ -71,6 +71,27 @@ func BenchmarkEngine_Set_Parallel(b *testing.B) {
 	})
 }
 
+func BenchmarkEngine_Get_Parallel(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b, false)
+	defer cleanup()
+	_ = eng.Set("key", []byte("val"))
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, _ = eng.Get("key")
+		}
+	})
+}
+
+func BenchmarkEngine_Delete_Parallel(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b, false)
+	defer cleanup()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_ = eng.Delete("key")
+		}
+	})
+}
+
 func BenchmarkEngine_PayloadSizes(b *testing.B) {
 	sizes := []int{128, 4096}
 	if !testing.Short() {
@@ -143,6 +164,27 @@ func BenchmarkServer_Get_gRPC(b *testing.B) {
 	b.ResetTimer()
 	for b.Loop() {
 		_, _, _ = client.Get("key")
+	}
+}
+
+func BenchmarkServer_Delete_gRPC(b *testing.B) {
+	if testing.Short() {
+		b.Skip("skipping heavy gRPC parallel benchmark")
+	}
+	eng, cleanup := setupBenchmarkEngine(b, false)
+	defer cleanup()
+	s := NewServer(eng)
+	lis, _ := net.Listen("tcp", "127.0.0.1:0")
+	go s.Run(lis)
+	defer s.Stop()
+
+	client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
+	defer client.Close()
+	_ = eng.Set("key", []byte("val"))
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = client.Delete("key")
 	}
 }
 

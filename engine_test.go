@@ -70,6 +70,25 @@ func TestEnginePersistence(t *testing.T) {
 	assert.Equal(t, val3, v)
 }
 
+func TestEngine_DeletePersistence(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	eng, _ := newEngine(mockConfig)
+	eng.Start()
+	
+	key, val := "del-persist", []byte("data")
+	eng.Set(key, val)
+	eng.Delete(key)
+	eng.Stop()
+
+	// Recover
+	eng2, _ := newEngine(mockConfig)
+	eng2.Start()
+	defer eng2.Stop()
+
+	_, ok := eng2.Get(key)
+	assert.False(t, ok, "Key should still be deleted after recovery")
+}
+
 func TestEngine_LWW(t *testing.T) {
 	defer cleanupEngineMocks(t)
 	e, _ := newEngine(mockConfig)
