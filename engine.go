@@ -381,20 +381,24 @@ func (eng *engine) onGossipMessage(data []byte) {
 
 	switch kv := entry.Entry.(type) {
 	case *pb.WalEntry_Set:
-		eng.applyGossipSet(kv.Set)
+		if err := eng.applyGossipSet(kv.Set); err != nil {
+			slog.Error("Critical: Failed to apply gossip set", "error", err)
+		}
 	case *pb.WalEntry_Delete:
-		eng.applyGossipDelete(kv.Delete)
+		if err := eng.applyGossipDelete(kv.Delete); err != nil {
+			slog.Error("Critical: Failed to apply gossip delete", "error", err)
+		}
 	}
 }
 
-func (eng *engine) applyGossipSet(req *pb.SetRequest) {
+func (eng *engine) applyGossipSet(req *pb.SetRequest) error {
 	eng.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
 
 	// LWW Conflict Resolution
 	existing, ok := eng.hm.Load(req.Key, hash)
 	if ok && existing.Timestamp >= req.Timestamp {
-		return // Ignore older or equal update
+		return nil // Ignore older or equal update
 	}
 
 	// Apply update
@@ -404,19 +408,19 @@ func (eng *engine) applyGossipSet(req *pb.SetRequest) {
 		Tombstone: false,
 	})
 
-	// Also write to WAL for persistence
 	if err := eng.wal.publish(req.Key, hash, req); err != nil {
-		slog.Error("Failed to persist gossip set to WAL", "key", req.Key, "error", err)
+		return fmt.Errorf("failed to persist gossip set to WAL: %w", err)
 	}
+	return nil
 }
 
-func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) {
+func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) error {
 	eng.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
 
 	existing, ok := eng.hm.Load(req.Key, hash)
 	if ok && existing.Timestamp >= req.Timestamp {
-		return
+		return nil
 	}
 
 	eng.hm.Store(req.Key, hash, Value{
@@ -424,8 +428,9 @@ func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) {
 		Tombstone: true,
 	})
 	if err := eng.wal.publish(req.Key, hash, req); err != nil {
-		slog.Error("Failed to persist gossip delete to WAL", "key", req.Key, "error", err)
+		return fmt.Errorf("failed to persist gossip delete to WAL: %w", err)
 	}
+	return nil
 }
 
 func (eng *engine) SyncPull(knownDigests map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
@@ -466,10 +471,14 @@ func (eng *engine) Digests() map[ShardID]ShardDigest {
 
 func (eng *engine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
 	for _, s := range sets {
-		eng.applyGossipSet(s)
+		if err := eng.applyGossipSet(s); err != nil {
+			return err
+		}
 	}
 	for _, d := range deletes {
-		eng.applyGossipDelete(d)
+		if err := eng.applyGossipDelete(d); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -513,17 +522,29 @@ func (eng *engine) decodeFromReader(r io.Reader) error {
 			req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 			req.Key = entry.Key
 			req.Timestamp = entry.Timestamp
-			eng.applyGossipDelete(req)
+			err := eng.applyGossipDelete(req)
 			req.Reset()
 			eng.pools.deleteRequests.Put(req)
+			if err != nil {
+				entry.Key = ""
+				entry.Data = nil
+				eng.pools.snapshotEntries.Put(entry)
+				return err
+			}
 		} else {
 			req := eng.pools.setRequests.Get().(*pb.SetRequest)
 			req.Key = entry.Key
 			req.Value = entry.Data
 			req.Timestamp = entry.Timestamp
-			eng.applyGossipSet(req)
+			err := eng.applyGossipSet(req)
 			req.Reset()
 			eng.pools.setRequests.Put(req)
+			if err != nil {
+				entry.Key = ""
+				entry.Data = nil
+				eng.pools.snapshotEntries.Put(entry)
+				return err
+			}
 		}
 
 		entry.Key = ""
