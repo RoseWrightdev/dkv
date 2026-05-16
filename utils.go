@@ -1,7 +1,5 @@
 package dkv
 
-import "fmt"
-
 // hashFunc implements the FNV-1a hash algorithm.
 func hashFunc(key string) hashKey {
 	const (
@@ -14,10 +12,4 @@ func hashFunc(key string) hashKey {
 		hash *= prime64
 	}
 	return hash
-}
-
-func assertNotNil(val any, err error) {
-	if val == nil {
-		panic(fmt.Errorf("NotNil Assertion failed: %w", err))
-	}
 }

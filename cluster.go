@@ -65,9 +65,15 @@ func newClusterService(
 		mergeRemoteState: mergeRemoteState,
 	}
 
-	assertNotNil(onMessage, fmt.Errorf("onMessage must be defined for cluster service"))
-	assertNotNil(getLocalState, fmt.Errorf("getLocalState must be defined for cluster service"))
-	assertNotNil(mergeRemoteState, fmt.Errorf("mergeRemoteState must be defined for cluster service"))
+	if onMessage == nil {
+		panic("onMessage must be defined for cluster service")
+	}
+	if getLocalState == nil {
+		panic("getLocalState must be defined for cluster service")
+	}
+	if mergeRemoteState == nil {
+		panic("mergeRemoteState must be defined for cluster service")
+	}
 
 	mlConfig := memberlist.DefaultLocalConfig()
 	if config.FastTest {
