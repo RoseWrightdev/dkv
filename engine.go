@@ -1,7 +1,10 @@
 package dkv
 
 import (
+	"bytes"
 	"encoding/gob"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"sync"
@@ -31,7 +34,7 @@ type engine struct {
 	deleteRequestPool sync.Pool
 	snapshotEntryPool sync.Pool
 	clock             Clock
-	cluster           *ClusterService
+	cluster           Cluster
 	entropy           *AntiEntropyService
 }
 
@@ -73,11 +76,13 @@ func newEngine(config EngineConfig) (Engine, error) {
 			return &pb.SetRequest{}
 		},
 	}
+
 	eng.deleteRequestPool = sync.Pool{
 		New: func() any {
 			return &pb.DeleteRequest{}
 		},
 	}
+
 	eng.snapshotEntryPool = sync.Pool{
 		New: func() any {
 			return &snapshotEntry{}
@@ -96,8 +101,14 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.evictionService = config.evictionService
 	eng.evictionService.SetEvictCallback(eng.Evict)
 
-	if config.clusterConfig.BindPort != 0 {
-		cs, err := newClusterService(config.clusterConfig, eng.onGossipMessage)
+	eng.cluster = &NopCluster{}
+	if !config.clusterConfig.SingleNode {
+		cs, err := newClusterService(
+			config.clusterConfig,
+			eng.onGossipMessage,
+			eng.getLocalState,
+			eng.mergeRemoteState,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -113,20 +124,16 @@ func (eng *engine) Start() {
 	eng.sss.start()
 	eng.wal.start()
 	eng.evictionService.start()
-	if eng.cluster != nil {
-		if err := eng.cluster.start(); err != nil {
-			slog.Error("Failed to start cluster service", "error", err)
-		}
+	if err := eng.cluster.start(); err != nil {
+		slog.Error("Failed to start cluster service", "error", err)
 	}
 	eng.entropy.start()
 }
 
 func (eng *engine) Stop() {
 	eng.entropy.stop()
-	if eng.cluster != nil {
-		if err := eng.cluster.stop(); err != nil {
-			slog.Error("Failed to stop cluster service", "error", err)
-		}
+	if err := eng.cluster.stop(); err != nil {
+		slog.Error("Failed to stop cluster service", "error", err)
 	}
 	eng.sss.stop()
 	eng.wal.stop()
@@ -145,9 +152,9 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 func (eng *engine) Set(key Key, value []byte) error {
 	hash := hashFunc(key)
 	eng.evictionService.publish(key, hash)
-	
+
 	ts := eng.clock.Now()
-	
+
 	req := eng.setRequestPool.Get().(*pb.SetRequest)
 	req.Key = key
 	req.Value = value
@@ -165,13 +172,11 @@ func (eng *engine) Set(key Key, value []byte) error {
 		Tombstone: false,
 	})
 
-	if eng.cluster != nil {
-		entry := pb.WalEntry{Entry: &pb.WalEntry_Set{Set: req}}
-		if data, err := proto.Marshal(&entry); err == nil {
-			eng.cluster.Broadcast(data)
-		}
+	entry := pb.WalEntry{Entry: &pb.WalEntry_Set{Set: req}}
+	if data, err := proto.Marshal(&entry); err == nil {
+		eng.cluster.Broadcast(data)
 	}
-	
+
 	eng.setRequestPool.Put(req)
 	return nil
 }
@@ -179,9 +184,9 @@ func (eng *engine) Set(key Key, value []byte) error {
 func (eng *engine) Delete(key Key) error {
 	hash := hashFunc(key)
 	eng.evictionService.publishDelete(key, hash)
-	
+
 	ts := eng.clock.Now()
-	
+
 	req := eng.deleteRequestPool.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = ts
@@ -196,13 +201,11 @@ func (eng *engine) Delete(key Key) error {
 		Tombstone: true,
 	})
 
-	if eng.cluster != nil {
-		entry := pb.WalEntry{Entry: &pb.WalEntry_Delete{Delete: req}}
-		if data, err := proto.Marshal(&entry); err == nil {
-			eng.cluster.Broadcast(data)
-		}
+	entry := pb.WalEntry{Entry: &pb.WalEntry_Delete{Delete: req}}
+	if data, err := proto.Marshal(&entry); err == nil {
+		eng.cluster.Broadcast(data)
 	}
-	
+
 	req.Reset()
 	eng.deleteRequestPool.Put(req)
 
@@ -211,9 +214,9 @@ func (eng *engine) Delete(key Key) error {
 
 func (eng *engine) Evict(key Key) error {
 	hash := hashFunc(key)
-	
+
 	ts := eng.clock.Now()
-	
+
 	req := eng.deleteRequestPool.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = ts
@@ -228,13 +231,11 @@ func (eng *engine) Evict(key Key) error {
 		Tombstone: true,
 	})
 
-	if eng.cluster != nil {
-		entry := pb.WalEntry{Entry: &pb.WalEntry_Delete{Delete: req}}
-		if data, err := proto.Marshal(&entry); err == nil {
-			eng.cluster.Broadcast(data)
-		}
+	entry := pb.WalEntry{Entry: &pb.WalEntry_Delete{Delete: req}}
+	if data, err := proto.Marshal(&entry); err == nil {
+		eng.cluster.Broadcast(data)
 	}
-	
+
 	req.Reset()
 	eng.deleteRequestPool.Put(req)
 
@@ -254,7 +255,7 @@ func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 		entry.Data = iv.Data
 		entry.Timestamp = iv.Timestamp
 		entry.Tombstone = iv.Tombstone
-		
+
 		if e := enc.Encode(entry); e != nil {
 			err = e
 			entry.Key = ""
@@ -262,6 +263,7 @@ func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 			eng.snapshotEntryPool.Put(entry)
 			return false
 		}
+
 		entry.Key = ""
 		entry.Data = nil
 		eng.snapshotEntryPool.Put(entry)
@@ -343,7 +345,9 @@ func (eng *engine) applyGossipSet(req *pb.SetRequest) {
 	})
 
 	// Also write to WAL for persistence
-	_ = eng.wal.publish(req.Key, hash, req)
+	if err := eng.wal.publish(req.Key, hash, req); err != nil {
+		slog.Error("Failed to persist gossip set to WAL", "key", req.Key, "error", err)
+	}
 }
 
 func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) {
@@ -359,7 +363,9 @@ func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) {
 		Timestamp: req.Timestamp,
 		Tombstone: true,
 	})
-	_ = eng.wal.publish(req.Key, hash, req)
+	if err := eng.wal.publish(req.Key, hash, req); err != nil {
+		slog.Error("Failed to persist gossip delete to WAL", "key", req.Key, "error", err)
+	}
 }
 
 func (eng *engine) SyncPull(knownDigests map[int32]uint64) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
@@ -400,6 +406,70 @@ func (eng *engine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) 
 	}
 	for _, d := range deletes {
 		eng.applyGossipDelete(d)
+	}
+	return nil
+}
+
+func (eng *engine) getLocalState() []byte {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := eng.streamToEncoder(enc); err != nil {
+		slog.Error("Failed to encode local state for cluster sync", "error", err)
+		return nil
+	}
+	return buf.Bytes()
+}
+
+func (eng *engine) mergeRemoteState(buf []byte) {
+	if len(buf) == 0 {
+		return
+	}
+	reader := bytes.NewReader(buf)
+	if err := eng.decodeFromReader(reader); err != nil {
+		slog.Error("Failed to decode remote state from cluster sync", "error", err)
+	}
+}
+
+func (eng *engine) decodeFromReader(r io.Reader) error {
+	dec := gob.NewDecoder(r)
+	count := 0
+	for {
+		entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
+		if err := dec.Decode(entry); err != nil {
+			entry.Key = ""
+			entry.Data = nil
+			eng.snapshotEntryPool.Put(entry)
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("failed to decode snapshot entry: %w", err)
+		}
+
+		if entry.Tombstone {
+			req := eng.deleteRequestPool.Get().(*pb.DeleteRequest)
+			req.Key = entry.Key
+			req.Timestamp = entry.Timestamp
+			eng.applyGossipDelete(req)
+			req.Reset()
+			eng.deleteRequestPool.Put(req)
+		} else {
+			req := eng.setRequestPool.Get().(*pb.SetRequest)
+			req.Key = entry.Key
+			req.Value = entry.Data
+			req.Timestamp = entry.Timestamp
+			eng.applyGossipSet(req)
+			req.Reset()
+			eng.setRequestPool.Put(req)
+		}
+
+		entry.Key = ""
+		entry.Data = nil
+		eng.snapshotEntryPool.Put(entry)
+		count++
+	}
+
+	if count > 0 {
+		slog.Info("Merged remote state from cluster member", "entries", count)
 	}
 	return nil
 }

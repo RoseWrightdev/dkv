@@ -17,6 +17,7 @@ var mockConfig EngineConfig = EngineConfig{
 	walSegments:     4,
 	evictionService: NewLRU(LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
 	clock:           NewHLC(),
+	clusterConfig:   ClusterConfig{SingleNode: true},
 }
 
 func cleanupEngineMocks(t *testing.T) {

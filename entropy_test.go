@@ -18,7 +18,7 @@ func TestAntiEntropySync(t *testing.T) {
 	// Setup Node 1
 	n1Dir := filepath.Join(tmpDir, "node1")
 	os.MkdirAll(n1Dir, 0755)
-	
+
 	e1, err := NewEngineBuilder().
 		Default().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
@@ -31,7 +31,7 @@ func TestAntiEntropySync(t *testing.T) {
 		}).
 		GetEngine()
 	require.NoError(t, err)
-	
+
 	s1 := NewServer(e1)
 	l1, _ := net.Listen("tcp", "127.0.0.1:9002")
 	go s1.Run(l1)
@@ -76,16 +76,16 @@ func TestAntiEntropySync(t *testing.T) {
 	got, ok := e2.Get(key)
 	assert.True(t, ok, "Node 2 should have reconciled the key via Anti-Entropy")
 	assert.Equal(t, val, got)
-	
+
 	// Test Deletion reconciliation
 	err = e1.Delete(key)
 	require.NoError(t, err)
-	
+
 	// Simulating a missed delete broadcast by "waiting" but Node 2 is still running
 	// In reality, it would have received it via gossip, but we'll assume it missed it.
 	// We'll wait for Anti-Entropy again.
 	time.Sleep(1000 * time.Millisecond)
-	
+
 	_, ok = e2.Get(key)
 	assert.False(t, ok, "Node 2 should have reconciled the deletion via Anti-Entropy")
 }

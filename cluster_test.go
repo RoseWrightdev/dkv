@@ -15,7 +15,7 @@ func TestClusterMembership(t *testing.T) {
 		BindPort: 7001,
 		GrpcPort: 8001,
 	}
-	s1, err := newClusterService(c1, func([]byte) {})
+	s1, err := newClusterService(c1, func([]byte) {}, nil, nil)
 	require.NoError(t, err)
 	defer s1.stop()
 
@@ -26,7 +26,7 @@ func TestClusterMembership(t *testing.T) {
 		SeedNodes: []string{"127.0.0.1:7001"},
 		GrpcPort:  8002,
 	}
-	s2, err := newClusterService(c2, func([]byte) {})
+	s2, err := newClusterService(c2, func([]byte) {}, nil, nil)
 	require.NoError(t, err)
 	defer s2.stop()
 
@@ -38,7 +38,7 @@ func TestClusterMembership(t *testing.T) {
 
 	members := s1.Members()
 	assert.GreaterOrEqual(t, len(members), 2)
-	
+
 	hasPort := func(list []string, port string) bool {
 		for _, m := range list {
 			if len(m) >= len(port) && m[len(m)-len(port):] == port {

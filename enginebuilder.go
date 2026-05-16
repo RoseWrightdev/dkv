@@ -34,6 +34,10 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.evictionService = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
 	eb.clock = NewHLC()
 	eb.syncInterval = 10 * time.Second
+	eb.clusterConfig = ClusterConfig{
+		SingleNode: false, // Distributed by default
+		BindPort:   7946,
+	}
 	return eb
 }
 
@@ -52,7 +56,7 @@ func (eb *EngineBuilder) SetSssInterval(interval time.Duration) *EngineBuilder {
 	return eb
 }
 
-func (eb *EngineBuilder) SetWalSyncInterval(interval time.Duration) *EngineBuilder  {
+func (eb *EngineBuilder) SetWalSyncInterval(interval time.Duration) *EngineBuilder {
 	eb.walSyncInterval = interval
 	return eb
 }
@@ -79,6 +83,11 @@ func (eb *EngineBuilder) SetClock(clock Clock) *EngineBuilder {
 
 func (eb *EngineBuilder) SetClusterConfig(config ClusterConfig) *EngineBuilder {
 	eb.clusterConfig = config
+	return eb
+}
+
+func (eb *EngineBuilder) SingleNode() *EngineBuilder {
+	eb.clusterConfig.SingleNode = true
 	return eb
 }
 

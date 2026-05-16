@@ -83,7 +83,7 @@ func TestDkvHighPressure(t *testing.T) {
 		SetEvictionService(dkv.NewLRU(dkv.LRUConfig{Capacity: 1000, TTL: time.Hour, ShardCount: 16})).
 		GetEngine()
 	require.NoError(t, err)
-	
+
 	server := dkv.NewServer(eng)
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr := lis.Addr().String()
@@ -135,7 +135,7 @@ func TestDkvHighPressure(t *testing.T) {
 			SetEvictionService(dkv.NewLRU(dkv.LRUConfig{Capacity: 2000, TTL: time.Hour, ShardCount: 16})).
 			GetEngine()
 		require.NoError(t, err)
-		
+
 		server2 := dkv.NewServer(eng2)
 		lis2, _ := net.Listen("tcp", addr)
 		go func() { _ = server2.Run(lis2) }()
@@ -157,7 +157,7 @@ func TestDistributedCluster(t *testing.T) {
 	createNode := func(name string, gossipPort, grpcPort int, seeds []string) (dkv.Engine, *dkv.Grpc, string) {
 		nodeDir := filepath.Join(tmpDir, name)
 		os.MkdirAll(nodeDir, 0755)
-		
+
 		eng, err := dkv.NewEngineBuilder().
 			Default().
 			SetWalPath(filepath.Join(nodeDir, "wal")).
@@ -173,7 +173,7 @@ func TestDistributedCluster(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		
+
 		srv := dkv.NewServer(eng)
 		addr := fmt.Sprintf("127.0.0.1:%d", grpcPort)
 		lis, err := net.Listen("tcp", addr)
@@ -224,7 +224,7 @@ func TestDistributedCluster(t *testing.T) {
 		// Restart Node 2
 		_, s2_new, _ := createNode("node2", 12002, 13002, []string{"127.0.0.1:12001"})
 		defer s2_new.Stop()
-		
+
 		// Wait for anti-entropy sync (interval is 500ms)
 		time.Sleep(2 * time.Second)
 

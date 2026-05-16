@@ -18,7 +18,7 @@ func TestGossipReplication(t *testing.T) {
 	// Setup Node 1
 	n1Dir := filepath.Join(tmpDir, "node1")
 	os.MkdirAll(n1Dir, 0755)
-	
+
 	e1, err := dkv.NewEngineBuilder().
 		Default().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
@@ -35,7 +35,7 @@ func TestGossipReplication(t *testing.T) {
 	// Setup Node 2
 	n2Dir := filepath.Join(tmpDir, "node2")
 	os.MkdirAll(n2Dir, 0755)
-	
+
 	e2, err := dkv.NewEngineBuilder().
 		Default().
 		SetWalPath(filepath.Join(n2Dir, "wal")).

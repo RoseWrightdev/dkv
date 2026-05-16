@@ -8,32 +8,60 @@ import (
 	"github.com/hashicorp/memberlist"
 )
 
-// ClusterConfig holds configuration for the Gossip cluster.
+// Cluster defines the interface for distributed node discovery and replication.
+type Cluster interface {
+	Broadcast(msg []byte)
+	Members() []string
+	start() error
+	stop() error
+}
+
+// ClusterConfig holds configuration for decentralized node discovery and membership.
 type ClusterConfig struct {
-	NodeName      string
-	BindAddr      string
-	BindPort      int
+	// SingleNode explicitly disables the distribution layer when set to true.
+	// DKV is distributed by default.
+	SingleNode bool
+	// NodeName is a unique identifier for this node in the cluster.
+	NodeName string
+	// BindAddr is the address memberlist will bind to for gossip (UDP/TCP).
+	BindAddr string
+	// BindPort is the port memberlist will use.
+	BindPort int
+	// AdvertiseAddr is the address other nodes should use to reach this node.
 	AdvertiseAddr string
-	SeedNodes     []string
-	GrpcPort      int
+	// SeedNodes is a list of existing nodes to join upon startup.
+	SeedNodes []string
+	// GrpcPort is the port of the DKV gRPC API, shared with peers via metadata.
+	GrpcPort int
 }
 
-// ClusterService manages node discovery and membership using memberlist.
+// ClusterService manages the lifecycle of the node within a gossip-based cluster.
 type ClusterService struct {
-	config     ClusterConfig
-	memberList *memberlist.Memberlist
-	broadcasts *memberlist.TransmitLimitedQueue
-	onMessage  func([]byte)
+	config           ClusterConfig
+	memberList       *memberlist.Memberlist
+	broadcasts       *memberlist.TransmitLimitedQueue
+	onMessage        func([]byte)
+	getLocalState    func() []byte
+	mergeRemoteState func([]byte)
 }
 
-func newClusterService(config ClusterConfig, onMessage func([]byte)) (*ClusterService, error) {
+// newClusterService initializes a new ClusterService instance.
+func newClusterService(
+	config ClusterConfig,
+	onMessage func([]byte),
+	getLocalState func() []byte,
+	mergeRemoteState func([]byte),
+) (*ClusterService, error) {
 	cs := &ClusterService{
-		config:    config,
-		onMessage: onMessage,
+		config:           config,
+		onMessage:        onMessage,
+		getLocalState:    getLocalState,
+		mergeRemoteState: mergeRemoteState,
 	}
 
 	mlConfig := memberlist.DefaultLocalConfig()
 	mlConfig.Delegate = cs
+	mlConfig.Events = cs
 
 	if config.NodeName != "" {
 		mlConfig.Name = config.NodeName
@@ -50,7 +78,7 @@ func newClusterService(config ClusterConfig, onMessage func([]byte)) (*ClusterSe
 
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create memberlist: %w", err)
 	}
 
 	cs.memberList = ml
@@ -62,56 +90,22 @@ func newClusterService(config ClusterConfig, onMessage func([]byte)) (*ClusterSe
 	return cs, nil
 }
 
-// memberlist.Delegate implementation
-func (cs *ClusterService) NodeMeta(limit int) []byte {
-	return []byte(fmt.Sprintf("%d", cs.config.GrpcPort))
-}
-
-func (cs *ClusterService) NotifyMsg(b []byte) { cs.onMessage(b) }
-func (cs *ClusterService) GetBroadcasts(overhead, limit int) [][]byte {
-	return cs.broadcasts.GetBroadcasts(overhead, limit)
-}
-func (cs *ClusterService) LocalState(join bool) []byte            { return nil }
-func (cs *ClusterService) MergeRemoteState(buf []byte, join bool) {}
-
-// Broadcast sends a message to the cluster.
+// Broadcast serializes and spreads a message across the cluster using epidemic gossip.
 func (cs *ClusterService) Broadcast(msg []byte) {
-	cs.broadcasts.QueueBroadcast(&broadcast{msg: msg})
-}
-
-type broadcast struct {
-	msg []byte
-}
-
-func (b *broadcast) Invalidates(other memberlist.Broadcast) bool { return false }
-func (b *broadcast) Message() []byte                             { return b.msg }
-func (b *broadcast) Finished()                                   {}
-
-func (cs *ClusterService) start() error {
-	if len(cs.config.SeedNodes) > 0 {
-		count, err := cs.memberList.Join(cs.config.SeedNodes)
-		if err != nil {
-			return err
-		}
-		slog.Info("Joined cluster", "seed_count", len(cs.config.SeedNodes), "joined_count", count)
+	if cs.broadcasts == nil {
+		return
 	}
-	return nil
+	cs.broadcasts.QueueBroadcast(&broadcast{
+		msg: msg,
+	})
 }
 
-func (cs *ClusterService) stop() error {
+// Members returns the gRPC API addresses of all active peers discovered via gossip.
+func (cs *ClusterService) Members() []string {
 	if cs.memberList == nil {
 		return nil
 	}
-	if err := cs.memberList.Leave(time.Second); err != nil {
-		slog.Debug("Error leaving cluster", "error", err)
-	}
-	err := cs.memberList.Shutdown()
-	cs.memberList = nil // Mark as stopped
-	return err
-}
 
-// Members returns a list of current active members in the cluster.
-func (cs *ClusterService) Members() []string {
 	members := cs.memberList.Members()
 	addrs := make([]string, 0, len(members))
 	for _, m := range members {
@@ -121,3 +115,88 @@ func (cs *ClusterService) Members() []string {
 	}
 	return addrs
 }
+
+func (cs *ClusterService) start() error {
+	if len(cs.config.SeedNodes) > 0 {
+		count, err := cs.memberList.Join(cs.config.SeedNodes)
+		if err != nil {
+			return fmt.Errorf("failed to join cluster: %w", err)
+		}
+		slog.Info("Joined cluster successfully", "seeds", len(cs.config.SeedNodes), "joined", count)
+	}
+	return nil
+}
+
+func (cs *ClusterService) stop() error {
+	if cs.memberList == nil {
+		return nil
+	}
+
+	slog.Info("Leaving cluster...")
+	if err := cs.memberList.Leave(time.Second); err != nil {
+		slog.Warn("Error during cluster leave", "error", err)
+	}
+
+	err := cs.memberList.Shutdown()
+	cs.memberList = nil
+	return err
+}
+
+// memberlist.Delegate implementation
+
+func (cs *ClusterService) NodeMeta(limit int) []byte {
+	return []byte(fmt.Sprintf("%d", cs.config.GrpcPort))
+}
+
+func (cs *ClusterService) NotifyMsg(b []byte) {
+	if cs.onMessage != nil {
+		cs.onMessage(b)
+	}
+}
+
+func (cs *ClusterService) GetBroadcasts(overhead, limit int) [][]byte {
+	return cs.broadcasts.GetBroadcasts(overhead, limit)
+}
+
+func (cs *ClusterService) LocalState(join bool) []byte {
+	if cs.getLocalState != nil {
+		return cs.getLocalState()
+	}
+	return nil
+}
+
+func (cs *ClusterService) MergeRemoteState(buf []byte, join bool) {
+	if cs.mergeRemoteState != nil {
+		cs.mergeRemoteState(buf)
+	}
+}
+
+// memberlist.EventDelegate implementation
+
+func (cs *ClusterService) NotifyJoin(node *memberlist.Node) {
+	slog.Debug("Cluster member joined", "name", node.Name, "addr", node.Addr.String())
+}
+
+func (cs *ClusterService) NotifyLeave(node *memberlist.Node) {
+	slog.Debug("Cluster member left", "name", node.Name, "addr", node.Addr.String())
+}
+
+func (cs *ClusterService) NotifyUpdate(node *memberlist.Node) {
+	slog.Debug("Cluster member updated", "name", node.Name)
+}
+
+// NopCluster is a non-functional implementation of the Cluster interface used when distribution is disabled.
+type NopCluster struct{}
+
+func (n *NopCluster) Broadcast([]byte)  {}
+func (n *NopCluster) Members() []string { return nil }
+func (n *NopCluster) start() error      { return nil }
+func (n *NopCluster) stop() error       { return nil }
+
+type broadcast struct {
+	msg []byte
+}
+
+func (b *broadcast) Invalidates(other memberlist.Broadcast) bool { return false }
+func (b *broadcast) Message() []byte                             { return b.msg }
+func (b *broadcast) Finished()                                   {}
