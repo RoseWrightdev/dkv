@@ -26,22 +26,26 @@ type Engine interface {
 }
 
 type engine struct {
-	hm                *shardedMap
-	wal               Waler
-	sss               *SnapShotService
-	evictionService   Evictor
-	setRequestPool    sync.Pool
-	deleteRequestPool sync.Pool
-	snapshotEntryPool sync.Pool
-	walEntryPool         sync.Pool
-	walSetWrapperPool    sync.Pool
-	walDeleteWrapperPool sync.Pool
-	clock                Clock
-	cluster           Cluster
-	clusterConfig     ClusterConfig
-	entropy           *AntiEntropyService
-	startOnce         sync.Once
-	stopOnce          sync.Once
+	hm              *shardedMap
+	wal             Waler
+	sss             *SnapShotService
+	evictionService Evictor
+	pools           *resourcePools
+	clock           Clock
+	cluster         Cluster
+	clusterConfig   ClusterConfig
+	entropy         *AntiEntropyService
+	startOnce       sync.Once
+	stopOnce        sync.Once
+}
+
+type resourcePools struct {
+	setRequests       sync.Pool
+	deleteRequests    sync.Pool
+	snapshotEntries   sync.Pool
+	walEntries        sync.Pool
+	walSetWrappers    sync.Pool
+	walDeleteWrappers sync.Pool
 }
 
 type EngineConfig struct {
@@ -76,41 +80,25 @@ func newEngine(config EngineConfig) (Engine, error) {
 		wal:           wal,
 		clock:         config.clock,
 		clusterConfig: config.clusterConfig,
-	}
-
-	eng.setRequestPool = sync.Pool{
-		New: func() any {
-			return &pb.SetRequest{}
-		},
-	}
-
-	eng.deleteRequestPool = sync.Pool{
-		New: func() any {
-			return &pb.DeleteRequest{}
-		},
-	}
-
-	eng.snapshotEntryPool = sync.Pool{
-		New: func() any {
-			return &snapshotEntry{}
-		},
-	}
-
-	eng.walEntryPool = sync.Pool{
-		New: func() any {
-			return &pb.WalEntry{}
-		},
-	}
-
-	eng.walSetWrapperPool = sync.Pool{
-		New: func() any {
-			return &pb.WalEntry_Set{}
-		},
-	}
-
-	eng.walDeleteWrapperPool = sync.Pool{
-		New: func() any {
-			return &pb.WalEntry_Delete{}
+		pools: &resourcePools{
+			setRequests: sync.Pool{
+				New: func() any { return &pb.SetRequest{} },
+			},
+			deleteRequests: sync.Pool{
+				New: func() any { return &pb.DeleteRequest{} },
+			},
+			snapshotEntries: sync.Pool{
+				New: func() any { return &snapshotEntry{} },
+			},
+			walEntries: sync.Pool{
+				New: func() any { return &pb.WalEntry{} },
+			},
+			walSetWrappers: sync.Pool{
+				New: func() any { return &pb.WalEntry_Set{} },
+			},
+			walDeleteWrappers: sync.Pool{
+				New: func() any { return &pb.WalEntry_Delete{} },
+			},
 		},
 	}
 
@@ -190,7 +178,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 
 	ts := eng.clock.Now()
 
-	req := eng.setRequestPool.Get().(*pb.SetRequest)
+	req := eng.pools.setRequests.Get().(*pb.SetRequest)
 	req.Key = key
 	req.Value = value
 	req.Timestamp = ts
@@ -208,8 +196,8 @@ func (eng *engine) Set(key Key, value []byte) error {
 	})
 
 	if !eng.clusterConfig.SingleNode {
-		entry := eng.walEntryPool.Get().(*pb.WalEntry)
-		wrapper := eng.walSetWrapperPool.Get().(*pb.WalEntry_Set)
+		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
+		wrapper := eng.pools.walSetWrappers.Get().(*pb.WalEntry_Set)
 		wrapper.Set = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
@@ -217,11 +205,11 @@ func (eng *engine) Set(key Key, value []byte) error {
 		}
 		entry.Entry = nil
 		wrapper.Set = nil
-		eng.walSetWrapperPool.Put(wrapper)
-		eng.walEntryPool.Put(entry)
+		eng.pools.walSetWrappers.Put(wrapper)
+		eng.pools.walEntries.Put(entry)
 	}
 
-	eng.setRequestPool.Put(req)
+	eng.pools.setRequests.Put(req)
 	return nil
 }
 
@@ -231,7 +219,7 @@ func (eng *engine) Delete(key Key) error {
 
 	ts := eng.clock.Now()
 
-	req := eng.deleteRequestPool.Get().(*pb.DeleteRequest)
+	req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = ts
 
@@ -246,8 +234,8 @@ func (eng *engine) Delete(key Key) error {
 	})
 
 	if !eng.clusterConfig.SingleNode {
-		entry := eng.walEntryPool.Get().(*pb.WalEntry)
-		wrapper := eng.walDeleteWrapperPool.Get().(*pb.WalEntry_Delete)
+		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
+		wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
 		wrapper.Delete = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
@@ -255,12 +243,12 @@ func (eng *engine) Delete(key Key) error {
 		}
 		entry.Entry = nil
 		wrapper.Delete = nil
-		eng.walDeleteWrapperPool.Put(wrapper)
-		eng.walEntryPool.Put(entry)
+		eng.pools.walDeleteWrappers.Put(wrapper)
+		eng.pools.walEntries.Put(entry)
 	}
 
 	req.Reset()
-	eng.deleteRequestPool.Put(req)
+	eng.pools.deleteRequests.Put(req)
 
 	return nil
 }
@@ -270,7 +258,7 @@ func (eng *engine) Evict(key Key) error {
 
 	ts := eng.clock.Now()
 
-	req := eng.deleteRequestPool.Get().(*pb.DeleteRequest)
+	req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = ts
 
@@ -285,8 +273,8 @@ func (eng *engine) Evict(key Key) error {
 	})
 
 	if !eng.clusterConfig.SingleNode {
-		entry := eng.walEntryPool.Get().(*pb.WalEntry)
-		wrapper := eng.walDeleteWrapperPool.Get().(*pb.WalEntry_Delete)
+		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
+		wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
 		wrapper.Delete = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
@@ -294,12 +282,12 @@ func (eng *engine) Evict(key Key) error {
 		}
 		entry.Entry = nil
 		wrapper.Delete = nil
-		eng.walDeleteWrapperPool.Put(wrapper)
-		eng.walEntryPool.Put(entry)
+		eng.pools.walDeleteWrappers.Put(wrapper)
+		eng.pools.walEntries.Put(entry)
 	}
 
 	req.Reset()
-	eng.deleteRequestPool.Put(req)
+	eng.pools.deleteRequests.Put(req)
 
 	return nil
 }
@@ -313,7 +301,7 @@ func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 		shard := eng.hm[i]
 		shard.mu.RLock()
 		for k, v := range shard.m {
-			entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
+			entry := eng.pools.snapshotEntries.Get().(*snapshotEntry)
 			entry.Key = k
 			entry.Data = v.Data
 			entry.Timestamp = v.Timestamp
@@ -323,12 +311,12 @@ func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 				shard.mu.RUnlock()
 				entry.Key = ""
 				entry.Data = nil
-				eng.snapshotEntryPool.Put(entry)
+				eng.pools.snapshotEntries.Put(entry)
 				return err
 			}
 			entry.Key = ""
 			entry.Data = nil
-			eng.snapshotEntryPool.Put(entry)
+			eng.pools.snapshotEntries.Put(entry)
 		}
 		shard.mu.RUnlock()
 	}
@@ -346,11 +334,11 @@ func (eng *engine) recover(sssPath string) error {
 		dec := gob.NewDecoder(file)
 		count := 0
 		for {
-			entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
+			entry := eng.pools.snapshotEntries.Get().(*snapshotEntry)
 			if err := dec.Decode(entry); err != nil {
 				entry.Key = ""
 				entry.Data = nil
-				eng.snapshotEntryPool.Put(entry)
+				eng.pools.snapshotEntries.Put(entry)
 				if err == io.EOF {
 					break
 				}
@@ -363,7 +351,7 @@ func (eng *engine) recover(sssPath string) error {
 			})
 			entry.Key = ""
 			entry.Data = nil
-			eng.snapshotEntryPool.Put(entry)
+			eng.pools.snapshotEntries.Put(entry)
 			count++
 		}
 		slog.Info("Loaded state from snapshot", "path", sssPath, "keys", count)
@@ -510,11 +498,11 @@ func (eng *engine) decodeFromReader(r io.Reader) error {
 	dec := gob.NewDecoder(r)
 	count := 0
 	for {
-		entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
+		entry := eng.pools.snapshotEntries.Get().(*snapshotEntry)
 		if err := dec.Decode(entry); err != nil {
 			entry.Key = ""
 			entry.Data = nil
-			eng.snapshotEntryPool.Put(entry)
+			eng.pools.snapshotEntries.Put(entry)
 			if err == io.EOF {
 				break
 			}
@@ -522,25 +510,25 @@ func (eng *engine) decodeFromReader(r io.Reader) error {
 		}
 
 		if entry.Tombstone {
-			req := eng.deleteRequestPool.Get().(*pb.DeleteRequest)
+			req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 			req.Key = entry.Key
 			req.Timestamp = entry.Timestamp
 			eng.applyGossipDelete(req)
 			req.Reset()
-			eng.deleteRequestPool.Put(req)
+			eng.pools.deleteRequests.Put(req)
 		} else {
-			req := eng.setRequestPool.Get().(*pb.SetRequest)
+			req := eng.pools.setRequests.Get().(*pb.SetRequest)
 			req.Key = entry.Key
 			req.Value = entry.Data
 			req.Timestamp = entry.Timestamp
 			eng.applyGossipSet(req)
 			req.Reset()
-			eng.setRequestPool.Put(req)
+			eng.pools.setRequests.Put(req)
 		}
 
 		entry.Key = ""
 		entry.Data = nil
-		eng.snapshotEntryPool.Put(entry)
+		eng.pools.snapshotEntries.Put(entry)
 		count++
 	}
 
