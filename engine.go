@@ -326,6 +326,7 @@ func (eng *engine) onGossipMessage(data []byte) {
 }
 
 func (eng *engine) applyGossipSet(req *pb.SetRequest) {
+	eng.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
 
 	// LWW Conflict Resolution
@@ -346,6 +347,7 @@ func (eng *engine) applyGossipSet(req *pb.SetRequest) {
 }
 
 func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) {
+	eng.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
 
 	existing, ok := eng.hm.Load(req.Key, hash)

@@ -32,7 +32,7 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.walBufferSize = 64 * 1024
 	eb.walSegments = 16
 	eb.evictionService = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
-	eb.clock = &MonotonicClock{}
+	eb.clock = NewHLC()
 	eb.syncInterval = 10 * time.Second
 	return eb
 }

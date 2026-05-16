@@ -71,7 +71,7 @@ func (cs *ClusterService) NotifyMsg(b []byte) { cs.onMessage(b) }
 func (cs *ClusterService) GetBroadcasts(overhead, limit int) [][]byte {
 	return cs.broadcasts.GetBroadcasts(overhead, limit)
 }
-func (cs *ClusterService) LocalState(join bool) []byte        { return nil }
+func (cs *ClusterService) LocalState(join bool) []byte            { return nil }
 func (cs *ClusterService) MergeRemoteState(buf []byte, join bool) {}
 
 // Broadcast sends a message to the cluster.
@@ -84,8 +84,8 @@ type broadcast struct {
 }
 
 func (b *broadcast) Invalidates(other memberlist.Broadcast) bool { return false }
-func (b *broadcast) Message() []byte                        { return b.msg }
-func (b *broadcast) Finished()                              {}
+func (b *broadcast) Message() []byte                             { return b.msg }
+func (b *broadcast) Finished()                                   {}
 
 func (cs *ClusterService) start() error {
 	if len(cs.config.SeedNodes) > 0 {

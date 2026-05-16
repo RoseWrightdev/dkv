@@ -1,40 +1,95 @@
 package dkv
 
 import (
-	"sync/atomic"
+	"sync"
 	"time"
 )
 
-// Clock defines an interface for providing timestamps.
+// Clock defines an interface for providing distributed-safe timestamps.
 type Clock interface {
+	// Now returns a Hybrid Logical Clock (HLC) timestamp.
 	Now() int64
+	// Update adjusts the local clock based on a remote timestamp.
+	Update(remote int64)
 }
 
-// RealClock provides wall-clock time in nanoseconds.
-type RealClock struct{}
+const (
+	// logicalBits defines how many bits are reserved for the logical counter.
+	// 16 bits allow for 65,536 events per millisecond.
+	logicalBits = 16
+	// logicalMask is used to extract the logical counter from a 64-bit timestamp.
+	logicalMask = (1 << logicalBits) - 1
+)
 
-func (c *RealClock) Now() int64 {
-	return time.Now().UnixNano()
+type HLC struct {
+	mu           sync.Mutex
+	lastPhysical int64
+	logical      int64
 }
 
-// HybridLogicalClock (placeholder for future implementation if needed)
-// For now, we use a simple Lamport-ish clock or just Wall clock.
-// Given LWW, Wall clock is standard but needs monotonicity.
-
-// MonotonicClock ensures that timestamps never go backwards on a single node.
-type MonotonicClock struct {
-	lastTimestamp atomic.Int64
-}
-
-func (c *MonotonicClock) Now() int64 {
-	for {
-		now := time.Now().UnixNano()
-		last := c.lastTimestamp.Load()
-		if now <= last {
-			now = last + 1
-		}
-		if c.lastTimestamp.CompareAndSwap(last, now) {
-			return now
-		}
+// NewHLC initializes a new Hybrid Logical Clock.
+func NewHLC() *HLC {
+	return &HLC{
+		lastPhysical: time.Now().UnixMilli(),
 	}
 }
+
+// Now returns the current HLC timestamp and advances the local state.
+func (c *HLC) Now() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	now := time.Now().UnixMilli()
+
+	if now > c.lastPhysical {
+		c.lastPhysical = now
+		c.logical = 0
+	} else {
+		// Physical clock is lagging or stable; increment logical counter.
+		c.logical++
+	}
+
+	return c.assemble(c.lastPhysical, c.logical)
+}
+
+// Update incorporates a remote timestamp to maintain causality.
+// Should be called on every incoming message containing a timestamp.
+func (c *HLC) Update(remote int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	remotePhysical, remoteLogical := c.disassemble(remote)
+	now := time.Now().UnixMilli()
+
+	maxPhysical := now
+	if remotePhysical > maxPhysical {
+		maxPhysical = remotePhysical
+	}
+	if c.lastPhysical > maxPhysical {
+		maxPhysical = c.lastPhysical
+	}
+
+	if maxPhysical == c.lastPhysical && maxPhysical == remotePhysical {
+		if remoteLogical > c.logical {
+			c.logical = remoteLogical
+		}
+		c.logical++
+	} else if maxPhysical == c.lastPhysical {
+		c.logical++
+	} else if maxPhysical == remotePhysical {
+		c.lastPhysical = remotePhysical
+		c.logical = remoteLogical + 1
+	} else {
+		c.lastPhysical = maxPhysical
+		c.logical = 0
+	}
+}
+
+func (c *HLC) assemble(physical, logical int64) int64 {
+	return (physical << logicalBits) | (logical & logicalMask)
+}
+
+func (c *HLC) disassemble(ts int64) (int64, int64) {
+	return ts >> logicalBits, ts & logicalMask
+}
+
