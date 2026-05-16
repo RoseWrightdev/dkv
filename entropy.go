@@ -21,12 +21,13 @@ type Reconciler interface {
 type AntiEntropyService struct {
 	cluster  Cluster
 	storage  Reconciler
+	pools    *resourcePools
 	interval time.Duration
 	stopChan chan struct{}
 }
 
 // newAntiEntropyService initializes a new AntiEntropyService instance.
-func newAntiEntropyService(cluster Cluster, storage Reconciler, interval time.Duration) *AntiEntropyService {
+func newAntiEntropyService(cluster Cluster, storage Reconciler, pools *resourcePools, interval time.Duration) *AntiEntropyService {
 	if cluster == nil {
 		panic("anti-entropy requires a cluster implementation")
 	}
@@ -37,6 +38,7 @@ func newAntiEntropyService(cluster Cluster, storage Reconciler, interval time.Du
 	return &AntiEntropyService{
 		cluster:  cluster,
 		storage:  storage,
+		pools:    pools,
 		interval: interval,
 		stopChan: make(chan struct{}),
 	}
@@ -99,7 +101,14 @@ func (s *AntiEntropyService) performSync() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	resp, err := client.api.Pull(ctx, &pb.PullRequest{KnownDigests: localDigests})
+	req := s.pools.pullRequests.Get().(*pb.PullRequest)
+	req.KnownDigests = localDigests
+	
+	resp, err := client.api.Pull(ctx, req)
+	
+	req.KnownDigests = nil
+	s.pools.pullRequests.Put(req)
+
 	if err != nil {
 		slog.Error("Anti-entropy pull failed", "peer", target, "error", err)
 		return

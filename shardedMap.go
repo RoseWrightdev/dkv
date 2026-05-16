@@ -11,6 +11,7 @@ const shardCount = 128
 type Value struct {
 	Data      []byte
 	Timestamp int64
+	NodeID    string
 	Tombstone bool
 }
 

@@ -46,6 +46,7 @@ type resourcePools struct {
 	walEntries        sync.Pool
 	walSetWrappers    sync.Pool
 	walDeleteWrappers sync.Pool
+	pullRequests      sync.Pool
 }
 
 type EngineConfig struct {
@@ -99,6 +100,9 @@ func newEngine(config EngineConfig) (Engine, error) {
 			walDeleteWrappers: sync.Pool{
 				New: func() any { return &pb.WalEntry_Delete{} },
 			},
+			pullRequests: sync.Pool{
+				New: func() any { return &pb.PullRequest{} },
+			},
 		},
 	}
 
@@ -129,7 +133,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	}
 
 	if !config.clusterConfig.SingleNode {
-		eng.entropy = newAntiEntropyService(eng.cluster, eng, config.gossipInterval)
+		eng.entropy = newAntiEntropyService(eng.cluster, eng, eng.pools, config.gossipInterval)
 	}
 
 	return eng, nil
@@ -183,6 +187,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 	req.Key = key
 	req.Value = value
 	req.Timestamp = ts
+	req.NodeId = eng.clusterConfig.NodeID
 
 	err := eng.wal.publish(key, hash, req)
 
@@ -223,6 +228,7 @@ func (eng *engine) Delete(key Key) error {
 	req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = ts
+	req.NodeId = eng.clusterConfig.NodeID
 
 	err := eng.wal.publish(key, hash, req)
 
@@ -374,8 +380,11 @@ func (eng *engine) recover(sssPath string) error {
 }
 
 func (eng *engine) onGossipMessage(data []byte) {
-	var entry pb.WalEntry
-	if err := proto.Unmarshal(data, &entry); err != nil {
+	entry := eng.pools.walEntries.Get().(*pb.WalEntry)
+	defer eng.pools.walEntries.Put(entry)
+	entry.Reset()
+
+	if err := proto.Unmarshal(data, entry); err != nil {
 		slog.Error("Failed to unmarshal gossip message", "error", err)
 		return
 	}
@@ -390,6 +399,7 @@ func (eng *engine) onGossipMessage(data []byte) {
 			slog.Error("Critical: Failed to apply gossip delete", "error", err)
 		}
 	}
+	entry.Entry = nil
 }
 
 func (eng *engine) applyGossipSet(req *pb.SetRequest) error {
@@ -398,14 +408,20 @@ func (eng *engine) applyGossipSet(req *pb.SetRequest) error {
 
 	// LWW Conflict Resolution
 	existing, ok := eng.hm.Load(req.Key, hash)
-	if ok && existing.Timestamp >= req.Timestamp {
-		return nil // Ignore older or equal update
+	if ok {
+		if existing.Timestamp > req.Timestamp {
+			return nil
+		}
+		if existing.Timestamp == req.Timestamp && existing.NodeID >= req.NodeId {
+			return nil // Tie-break: existing node wins if NodeID is >= incoming
+		}
 	}
 
 	// Apply update
 	eng.hm.Store(req.Key, hash, Value{
 		Data:      req.Value,
 		Timestamp: req.Timestamp,
+		NodeID:    req.NodeId,
 		Tombstone: false,
 	})
 
@@ -420,12 +436,18 @@ func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) error {
 	hash := hashFunc(req.Key)
 
 	existing, ok := eng.hm.Load(req.Key, hash)
-	if ok && existing.Timestamp >= req.Timestamp {
-		return nil
+	if ok {
+		if existing.Timestamp > req.Timestamp {
+			return nil
+		}
+		if existing.Timestamp == req.Timestamp && existing.NodeID >= req.NodeId {
+			return nil
+		}
 	}
 
 	eng.hm.Store(req.Key, hash, Value{
 		Timestamp: req.Timestamp,
+		NodeID:    req.NodeId,
 		Tombstone: true,
 	})
 	if err := eng.wal.publish(req.Key, hash, req); err != nil {

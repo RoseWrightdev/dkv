@@ -26,7 +26,7 @@ func setupBenchmarkEngine(b *testing.B, distributed bool) (Engine, func()) {
 	if !distributed {
 		builder.SingleNode()
 	} else {
-		builder.SetGrpcPort(0).SetGossipInterval(10 * time.Second)
+		builder.SetGossipInterval(10 * time.Second)
 	}
 
 	eng, err := builder.GetEngine()

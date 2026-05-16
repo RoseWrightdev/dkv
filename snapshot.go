@@ -106,12 +106,7 @@ func (sss *SnapShotService) create() error {
 	if err != nil {
 		return err
 	}
-	defer func(file *os.File) {
-		err := file.Close()
-		if err != nil {
-
-		}
-	}(file)
+	defer file.Close()
 
 	// Stream the data directly from the engine to the encoder
 	encoder := gob.NewEncoder(file)

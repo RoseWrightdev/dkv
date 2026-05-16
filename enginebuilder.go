@@ -88,8 +88,8 @@ func (eb *EngineBuilder) SetCluster(cb *ClusterConfigBuilder) *EngineBuilder {
 // Proxy methods for ClusterConfigBuilder
 // These allow for a flatter API while maintaining modularity under the hood.
 
-func (eb *EngineBuilder) SetNodeName(name string) *EngineBuilder {
-	eb.clusterBuilder.SetNodeName(name)
+func (eb *EngineBuilder) SetNodeID(id string) *EngineBuilder {
+	eb.clusterBuilder.SetNodeID(id)
 	return eb
 }
 

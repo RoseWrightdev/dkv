@@ -23,7 +23,7 @@ func TestGossipReplication(t *testing.T) {
 		Default().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
 		SetSssPath(filepath.Join(n1Dir, "sss.gob")).
-		SetNodeName("node1").
+		SetNodeID("node1").
 		SetBindPort(8001).
 		SetGrpcPort(9001).
 		GetEngine()
@@ -39,7 +39,7 @@ func TestGossipReplication(t *testing.T) {
 		Default().
 		SetWalPath(filepath.Join(n2Dir, "wal")).
 		SetSssPath(filepath.Join(n2Dir, "sss.gob")).
-		SetNodeName("node2").
+		SetNodeID("node2").
 		SetBindPort(8002).
 		SetSeedNodes([]string{"127.0.0.1:8001"}).
 		SetGrpcPort(9002).

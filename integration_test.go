@@ -77,7 +77,7 @@ func TestClusterScale(t *testing.T) {
 			FastTest().
 			SetWalPath(filepath.Join(nodeDir, "wal")).
 			SetSssPath(filepath.Join(nodeDir, "sss.gob")).
-			SetNodeName(name).
+			SetNodeID(name).
 			SetBindPort(mlPort).
 			SetGrpcPort(0) // Dynamic
 
@@ -150,7 +150,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
 		SetSssPath(filepath.Join(tmpDir, "n1-sss.gob")).
-		SetNodeName("node1").
+		SetNodeID("node1").
 		SetBindPort(mlPort1).
 		SetGrpcPort(0).
 		GetEngine()
@@ -170,7 +170,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n2-wal")).
 		SetSssPath(filepath.Join(tmpDir, "n2-sss.gob")).
-		SetNodeName("node2").
+		SetNodeID("node2").
 		SetBindPort(0).
 		SetGrpcPort(0).
 		SetSeedNodes([]string{fmt.Sprintf("127.0.0.1:%d", mlPort1)}).

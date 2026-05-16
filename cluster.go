@@ -25,8 +25,8 @@ type ClusterConfig struct {
 	// SingleNode explicitly disables the distribution layer when set to true.
 	// DKV is distributed by default.
 	SingleNode bool
-	// NodeName is a unique identifier for this node in the cluster.
-	NodeName string
+	// NodeID is a unique identifier for this node in the cluster.
+	NodeID string
 	// BindAddr is the address memberlist will bind to for gossip (UDP/TCP).
 	BindAddr string
 	// BindPort is the port memberlist will use.
@@ -87,8 +87,8 @@ func newClusterService(
 	mlConfig.Delegate = cs
 	mlConfig.Events = cs
 
-	if config.NodeName != "" {
-		mlConfig.Name = config.NodeName
+	if config.NodeID != "" {
+		mlConfig.Name = config.NodeID
 	}
 	if config.BindAddr != "" {
 		mlConfig.BindAddr = config.BindAddr

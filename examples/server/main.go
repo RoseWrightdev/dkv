@@ -11,7 +11,7 @@ func main() {
 	// Initialize the Engine using the flat fluent API
 	eng, err := dkv.NewEngineBuilder().
 		Default().
-		SetNodeName("node-1").
+		SetNodeID("node-1").
 		SetBindPort(7946).
 		SetGrpcPort(50051).
 		SetWalPath("data/wal").

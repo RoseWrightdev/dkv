@@ -24,7 +24,7 @@ func TestAntiEntropySync(t *testing.T) {
 		SetWalPath(filepath.Join(n1Dir, "wal")).
 		SetSssPath(filepath.Join(n1Dir, "sss.gob")).
 		SetGossipInterval(100 * time.Millisecond).
-		SetNodeName("node1").
+		SetNodeID("node1").
 		SetBindPort(9001).
 		SetGrpcPort(9002).
 		GetEngine()
@@ -49,7 +49,7 @@ func TestAntiEntropySync(t *testing.T) {
 		SetWalPath(filepath.Join(n2Dir, "wal")).
 		SetSssPath(filepath.Join(n2Dir, "sss.gob")).
 		SetGossipInterval(100 * time.Millisecond).
-		SetNodeName("node2").
+		SetNodeID("node2").
 		SetBindPort(9003).
 		SetSeedNodes([]string{"127.0.0.1:9001"}).
 		SetGrpcPort(9004).

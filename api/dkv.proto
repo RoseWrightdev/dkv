@@ -49,6 +49,7 @@ message SetRequest {
   string key = 1;
   bytes value = 2;
   int64 timestamp = 3;
+  string node_id = 4;
 }
 
 message SetResponse {}
@@ -56,6 +57,7 @@ message SetResponse {}
 message DeleteRequest {
   string key = 1;
   int64 timestamp = 2;
+  string node_id = 3;
 }
 
 message DeleteResponse {}

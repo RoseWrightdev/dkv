@@ -22,9 +22,9 @@ func (cb *ClusterConfigBuilder) SingleNode() *ClusterConfigBuilder {
 	return cb
 }
 
-// SetNodeName sets a unique identifier for this node in the cluster.
-func (cb *ClusterConfigBuilder) SetNodeName(name string) *ClusterConfigBuilder {
-	cb.config.NodeName = name
+// SetNodeID sets a unique identifier for this node in the cluster.
+func (cb *ClusterConfigBuilder) SetNodeID(id string) *ClusterConfigBuilder {
+	cb.config.NodeID = id
 	return cb
 }
 

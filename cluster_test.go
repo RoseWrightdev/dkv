@@ -11,7 +11,7 @@ import (
 func TestClusterMembership(t *testing.T) {
 	// Start first node
 	c1 := ClusterConfig{
-		NodeName: "node1",
+		NodeID: "node1",
 		BindPort: 7001,
 		GrpcPort: 8001,
 	}
@@ -23,7 +23,7 @@ func TestClusterMembership(t *testing.T) {
 
 	// Start second node and join first
 	c2 := ClusterConfig{
-		NodeName:  "node2",
+		NodeID:  "node2",
 		BindPort:  7002,
 		SeedNodes: []string{"127.0.0.1:7001"},
 		GrpcPort:  8002,
