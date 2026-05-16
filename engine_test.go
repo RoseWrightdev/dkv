@@ -3,6 +3,7 @@ package dkv
 import (
 	"testing"
 
+	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -65,4 +66,71 @@ func TestEnginePersistence(t *testing.T) {
 	v, ok = eng2.Get(key3)
 	assert.True(t, ok)
 	assert.Equal(t, val3, v)
+}
+
+func TestEngine_LWW(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	e, _ := newEngine(mockConfig)
+	eng := e.(*engine)
+	eng.Start()
+	defer eng.Stop()
+
+	key := "lww-key"
+	val1 := []byte("old-value")
+	val2 := []byte("new-value")
+
+	ts1 := int64(1000)
+	eng.clock.Update(ts1)
+	assert.NoError(t, eng.Set(key, val1))
+
+	ts2 := int64(2000)
+	eng.clock.Update(ts2)
+	assert.NoError(t, eng.Set(key, val2))
+	got, _ := eng.Get(key)
+	assert.Equal(t, val2, got)
+
+	// Set with older timestamp (should be ignored)
+	ts3 := int64(1500)
+	// We call applyGossipSet directly to simulate a delayed gossip arrival
+	err := eng.applyGossipSet(&pb.SetRequest{
+		Key:       key,
+		Value:     []byte("delayed-old-value"),
+		Timestamp: ts3,
+	})
+	assert.NoError(t, err)
+	got, _ = eng.Get(key)
+	assert.Equal(t, val2, got, "Older timestamp should not overwrite newer data")
+}
+
+func TestEngine_TombstoneLWW(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	e, _ := newEngine(mockConfig)
+	eng := e.(*engine)
+	eng.Start()
+	defer eng.Stop()
+
+	key := "tomb-key"
+	val := []byte("data")
+
+	ts1 := int64(1000)
+	eng.clock.Update(ts1)
+	eng.Set(key, val)
+
+	ts2 := int64(2000)
+	eng.clock.Update(ts2)
+	eng.Delete(key)
+
+	_, ok := eng.Get(key)
+	assert.False(t, ok, "Key should be deleted")
+
+	// Late-arriving Set with older timestamp
+	ts3 := int64(1500)
+	err := eng.applyGossipSet(&pb.SetRequest{
+		Key:       key,
+		Value:     []byte("zombie"),
+		Timestamp: ts3,
+	})
+	assert.NoError(t, err)
+	_, ok = eng.Get(key)
+	assert.False(t, ok, "Old set should not resurrect a newer tombstone")
 }
