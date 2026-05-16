@@ -3,23 +3,30 @@ package main
 import (
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/rosewrightdev/dkv"
 )
 
 func main() {
+	// Initialize the Engine using the flat fluent API
 	eng, err := dkv.NewEngineBuilder().
 		Default().
-		SetSssPath("sss.json").
-		SetWalPath("wal.binpb").
-		SetSssInterval(3 * time.Minute).
-		SetWalSyncInterval(500 * time.Microsecond).
+		SetNodeName("node-1").
+		SetBindPort(7946).
+		SetGrpcPort(50051).
+		SetWalPath("data/wal").
+		SetSssPath("data/snapshot.bin").
 		GetEngine()
+
 	if err != nil {
 		panic(err)
 	}
 
+	// Start background services
+	eng.Start()
+	defer eng.Stop()
+
+	// Run the gRPC Server
 	listener, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		panic(err)
@@ -30,5 +37,4 @@ func main() {
 	if err := s.Run(listener); err != nil {
 		panic(err)
 	}
-	defer s.Stop()
 }

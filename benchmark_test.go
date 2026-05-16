@@ -196,7 +196,7 @@ func BenchmarkEngine_Recover(b *testing.B) {
 	defer os.RemoveAll(tmpDir)
 
 	// Pre-fill a WAL and Snapshot
-	eng, err := NewEngineBuilder().GetEngineDefault(tmpDir, tmpDir+"/sss.gob")
+	eng, err := NewEngineBuilder().Default().SingleNode().SetWalPath(tmpDir).SetSssPath(tmpDir + "/sss.gob").GetEngine()
 	if err != nil {
 		b.Fatal(err)
 	}

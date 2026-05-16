@@ -14,16 +14,18 @@ type EngineBuilder struct {
 	walSegments     int
 	evictionService Evictor
 	clock           Clock
-	clusterConfig   ClusterConfig
+	clusterBuilder  *ClusterConfigBuilder
 	gossipInterval  time.Duration
 }
 
 func NewEngineBuilder() *EngineBuilder {
-	return &EngineBuilder{}
+	return &EngineBuilder{
+		clusterBuilder: NewClusterConfigBuilder(),
+	}
 }
 
 func NewDefaultEngine(walPath, sssPath string) (Engine, error) {
-	return NewEngineBuilder().GetEngineDefault(walPath, sssPath)
+	return NewEngineBuilder().Default().SetWalPath(walPath).SetSssPath(sssPath).GetEngine()
 }
 
 func (eb *EngineBuilder) Default() *EngineBuilder {
@@ -34,10 +36,7 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.evictionService = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
 	eb.clock = NewHLC()
 	eb.gossipInterval = 10 * time.Second
-	eb.clusterConfig = ClusterConfig{
-		SingleNode: false, // Distributed by default
-		BindPort:   7946,
-	}
+	eb.clusterBuilder = NewClusterConfigBuilder()
 	return eb
 }
 
@@ -81,13 +80,46 @@ func (eb *EngineBuilder) SetClock(clock Clock) *EngineBuilder {
 	return eb
 }
 
-func (eb *EngineBuilder) SetClusterConfig(config ClusterConfig) *EngineBuilder {
-	eb.clusterConfig = config
+func (eb *EngineBuilder) SetCluster(cb *ClusterConfigBuilder) *EngineBuilder {
+	eb.clusterBuilder = cb
+	return eb
+}
+
+// Proxy methods for ClusterConfigBuilder
+// These allow for a flatter API while maintaining modularity under the hood.
+
+func (eb *EngineBuilder) SetNodeName(name string) *EngineBuilder {
+	eb.clusterBuilder.SetNodeName(name)
+	return eb
+}
+
+func (eb *EngineBuilder) SetBindAddr(addr string) *EngineBuilder {
+	eb.clusterBuilder.SetBindAddr(addr)
+	return eb
+}
+
+func (eb *EngineBuilder) SetBindPort(port int) *EngineBuilder {
+	eb.clusterBuilder.SetBindPort(port)
+	return eb
+}
+
+func (eb *EngineBuilder) SetAdvertiseAddr(addr string) *EngineBuilder {
+	eb.clusterBuilder.SetAdvertiseAddr(addr)
+	return eb
+}
+
+func (eb *EngineBuilder) SetSeedNodes(seeds []string) *EngineBuilder {
+	eb.clusterBuilder.SetSeedNodes(seeds)
+	return eb
+}
+
+func (eb *EngineBuilder) SetGrpcPort(port int) *EngineBuilder {
+	eb.clusterBuilder.SetGrpcPort(port)
 	return eb
 }
 
 func (eb *EngineBuilder) SingleNode() *EngineBuilder {
-	eb.clusterConfig.SingleNode = true
+	eb.clusterBuilder.SingleNode()
 	return eb
 }
 
@@ -98,31 +130,42 @@ func (eb *EngineBuilder) SetGossipInterval(interval time.Duration) *EngineBuilde
 
 func (eb *EngineBuilder) GetEngine() (Engine, error) {
 	if isUnit(eb.walPath) {
-		return nil, fmt.Errorf("required eb.walPath is unset cogfigure eb.walPath with SetWalPath(path string)")
+		return nil, fmt.Errorf("required eb.walPath is unset; configure eb.walPath with SetWalPath(path string)")
 	}
 
 	if isUnit(eb.sssPath) {
-		return nil, fmt.Errorf("required eb.sssPath is unset cogfigure eb.sssPath with SetSssPath(path string)")
+		return nil, fmt.Errorf("required eb.sssPath is unset; configure eb.sssPath with SetSssPath(path string)")
 	}
 
 	if isUnit(eb.walSyncInterval) {
-		return nil, fmt.Errorf("required eb.walSyncInterval is unset cogfigure eb.walSyncInterval with SetWalSyncInterval(interval time.Duration)")
+		return nil, fmt.Errorf("required eb.walSyncInterval is unset; configure eb.walSyncInterval with SetWalSyncInterval(interval time.Duration)")
 	}
 
 	if isUnit(eb.sssInterval) {
-		return nil, fmt.Errorf("required eb.sssInterval is unset cogfigure eb.sssInterval with SetSssInterval(interval time.Duration)")
+		return nil, fmt.Errorf("required eb.sssInterval is unset; configure eb.sssInterval with SetSssInterval(interval time.Duration)")
 	}
 
 	if isUnit(eb.walBufferSize) {
-		return nil, fmt.Errorf("required eb.walBufferSize is unset cogfigure eb.walBufferSize with SetWalBufferSize(size uint32)")
+		return nil, fmt.Errorf("required eb.walBufferSize is unset; configure eb.walBufferSize with SetWalBufferSize(size uint32)")
 	}
 
 	if isUnit(eb.walSegments) {
-		return nil, fmt.Errorf("required eb.walSegments is unset configure eb.walSegments with SetWalSegments(count int)")
+		return nil, fmt.Errorf("required eb.walSegments is unset; configure eb.walSegments with SetWalSegments(count int)")
 	}
 
 	if eb.clock == nil {
-		return nil, fmt.Errorf("required eb.clock is unset configure eb.clock with SetClock(clock Clock)")
+		return nil, fmt.Errorf("required eb.clock is unset; configure eb.clock with SetClock(clock Clock)")
+	}
+
+	clusterConfig := eb.clusterBuilder.Build()
+
+	if !clusterConfig.SingleNode {
+		if clusterConfig.GrpcPort == 0 {
+			return nil, fmt.Errorf("required GrpcPort is unset for distributed mode; configure it via ClusterConfigBuilder")
+		}
+		if isUnit(eb.gossipInterval) {
+			return nil, fmt.Errorf("required eb.gossipInterval is unset for distributed mode; configure it via SetGossipInterval")
+		}
 	}
 
 	config := EngineConfig{
@@ -134,15 +177,11 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 		walSegments:     eb.walSegments,
 		evictionService: eb.evictionService,
 		clock:           eb.clock,
-		clusterConfig:   eb.clusterConfig,
+		clusterConfig:   clusterConfig,
 		gossipInterval:  eb.gossipInterval,
 	}
 
 	return newEngine(config)
-}
-
-func (eb *EngineBuilder) GetEngineDefault(walPath, sssPath string) (Engine, error) {
-	return eb.Default().SetWalPath(walPath).SetSssPath(sssPath).GetEngine()
 }
 
 func isUnit[T comparable](val T) bool {

@@ -32,6 +32,7 @@ func TestEngineBuilder(t *testing.T) {
 	lru := NewLRU(LRUConfig{Capacity: 500, TTL: time.Minute, ShardCount: 16})
 	eb.SetEvictionService(lru)
 	eb.SetClock(NewHLC())
+	eb.SingleNode()
 
 	eng, err := eb.GetEngine()
 	assert.Nil(t, err)

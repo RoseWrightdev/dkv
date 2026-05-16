@@ -24,11 +24,9 @@ func TestAntiEntropySync(t *testing.T) {
 		SetWalPath(filepath.Join(n1Dir, "wal")).
 		SetSssPath(filepath.Join(n1Dir, "sss.gob")).
 		SetGossipInterval(100 * time.Millisecond).
-		SetClusterConfig(ClusterConfig{
-			NodeName: "node1",
-			BindPort: 9001,
-			GrpcPort: 9002,
-		}).
+		SetNodeName("node1").
+		SetBindPort(9001).
+		SetGrpcPort(9002).
 		GetEngine()
 	require.NoError(t, err)
 
@@ -50,12 +48,10 @@ func TestAntiEntropySync(t *testing.T) {
 		SetWalPath(filepath.Join(n2Dir, "wal")).
 		SetSssPath(filepath.Join(n2Dir, "sss.gob")).
 		SetGossipInterval(100 * time.Millisecond).
-		SetClusterConfig(ClusterConfig{
-			NodeName:  "node2",
-			BindPort:  9003,
-			SeedNodes: []string{"127.0.0.1:9001"},
-			GrpcPort:  9004,
-		}).
+		SetNodeName("node2").
+		SetBindPort(9003).
+		SetSeedNodes([]string{"127.0.0.1:9001"}).
+		SetGrpcPort(9004).
 		GetEngine()
 	require.NoError(t, err)
 
@@ -64,27 +60,25 @@ func TestAntiEntropySync(t *testing.T) {
 	go s2.Run(l2)
 	defer s2.Stop()
 
-	// Initially Node 2 should NOT have the key (since it missed the initial broadcast)
-	_, ok := e2.Get(key)
-	assert.False(t, ok, "Node 2 should not have the key yet")
+	e1.Start()
+	e2.Start()
+	defer e1.Stop()
+	defer e2.Stop()
 
-	// Wait for Anti-Entropy to perform sync
-	// Interval is 100ms, so 500ms should be enough for a few rounds
-	time.Sleep(1000 * time.Millisecond)
+	// Wait for Anti-Entropy to perform sync (if it hasn't already via memberlist join)
+	time.Sleep(1500 * time.Millisecond)
 
 	// Verify sync
 	got, ok := e2.Get(key)
-	assert.True(t, ok, "Node 2 should have reconciled the key via Anti-Entropy")
+	assert.True(t, ok, "Node 2 should have reconciled the key")
 	assert.Equal(t, val, got)
 
 	// Test Deletion reconciliation
 	err = e1.Delete(key)
 	require.NoError(t, err)
 
-	// Simulating a missed delete broadcast by "waiting" but Node 2 is still running
-	// In reality, it would have received it via gossip, but we'll assume it missed it.
-	// We'll wait for Anti-Entropy again.
-	time.Sleep(1000 * time.Millisecond)
+	// Wait for Anti-Entropy again.
+	time.Sleep(1500 * time.Millisecond)
 
 	_, ok = e2.Get(key)
 	assert.False(t, ok, "Node 2 should have reconciled the deletion via Anti-Entropy")

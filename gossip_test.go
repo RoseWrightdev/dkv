@@ -23,10 +23,9 @@ func TestGossipReplication(t *testing.T) {
 		Default().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
 		SetSssPath(filepath.Join(n1Dir, "sss.gob")).
-		SetClusterConfig(dkv.ClusterConfig{
-			NodeName: "node1",
-			BindPort: 8001,
-		}).
+		SetNodeName("node1").
+		SetBindPort(8001).
+		SetGrpcPort(9001).
 		GetEngine()
 	require.NoError(t, err)
 	e1.Start()
@@ -40,11 +39,10 @@ func TestGossipReplication(t *testing.T) {
 		Default().
 		SetWalPath(filepath.Join(n2Dir, "wal")).
 		SetSssPath(filepath.Join(n2Dir, "sss.gob")).
-		SetClusterConfig(dkv.ClusterConfig{
-			NodeName:  "node2",
-			BindPort:  8002,
-			SeedNodes: []string{"127.0.0.1:8001"},
-		}).
+		SetNodeName("node2").
+		SetBindPort(8002).
+		SetSeedNodes([]string{"127.0.0.1:8001"}).
+		SetGrpcPort(9002).
 		GetEngine()
 	require.NoError(t, err)
 	e2.Start()
