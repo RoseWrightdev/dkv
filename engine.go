@@ -169,6 +169,7 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 	if !ok || iv.Tombstone {
 		return nil, false
 	}
+	eng.evictionService.publish(key, hash)
 	return iv.Data, true
 }
 

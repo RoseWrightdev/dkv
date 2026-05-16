@@ -60,6 +60,15 @@ func BenchmarkEngine_Get(b *testing.B) {
 	}
 }
 
+func BenchmarkEngine_Delete(b *testing.B) {
+	eng, cleanup := setupBenchmarkEngine(b, false)
+	defer cleanup()
+	_ = eng.Set("key", []byte("val"))
+	for b.Loop() {
+		_ = eng.Delete("key")
+	}
+}
+
 func BenchmarkEngine_Set_Parallel(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b, false)
 	defer cleanup()

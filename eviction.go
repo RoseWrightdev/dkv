@@ -83,7 +83,7 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 			ctx:      ctx,
 			cancel:   cancel,
 			ch:       make(chan lruMsg, max(shardCap/2, 1024)),
-			delCh:    make(chan uint64, max(shardCap/4, 1024)),
+			delCh:    make(chan uint64, max(shardCap/2, 1024)),
 			evictCh:  make(chan string, max(shardCap/4, 1024)),
 			capacity: shardCap,
 			cache:    make(map[hashKey]*entry),
