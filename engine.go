@@ -21,7 +21,7 @@ type Engine interface {
 	Start()
 	Stop()
 	Snapshot() error
-	SyncPull(knownDigests map[int32]uint64) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
+	SyncPull(knownDigests map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 }
 
@@ -374,7 +374,7 @@ func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) {
 	}
 }
 
-func (eng *engine) SyncPull(knownDigests map[int32]uint64) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+func (eng *engine) SyncPull(knownDigests map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
 	localDigests := eng.hm.Digests()
 	var sets []*pb.SetRequest
 	var deletes []*pb.DeleteRequest
@@ -384,7 +384,7 @@ func (eng *engine) SyncPull(knownDigests map[int32]uint64) ([]*pb.SetRequest, []
 		if !ok || localHash != remoteHash {
 			// Shard mismatch, collect all entries for this shard
 			// In a more advanced version, we would use Merkle trees here
-			shard := eng.hm[shardID]
+			shard := eng.hm[int(shardID)]
 			shard.mu.RLock()
 			for k, v := range shard.m {
 				if v.Tombstone {
@@ -406,7 +406,7 @@ func (eng *engine) SyncPull(knownDigests map[int32]uint64) ([]*pb.SetRequest, []
 	return sets, deletes, nil
 }
 
-func (eng *engine) Digests() map[int32]uint64 {
+func (eng *engine) Digests() map[ShardID]ShardDigest {
 	return eng.hm.Digests()
 }
 

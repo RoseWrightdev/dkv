@@ -3,6 +3,8 @@ package dkv
 import "sync"
 
 type Key = string
+type ShardID = int32
+type ShardDigest = uint64
 
 const shardCount = 128
 
@@ -67,10 +69,10 @@ func (sm *shardedMap) Range(fn func(k, v any) bool) {
 	}
 }
 
-func (sm *shardedMap) Digests() map[int32]uint64 {
-	digests := make(map[int32]uint64)
+func (sm *shardedMap) Digests() map[ShardID]ShardDigest {
+	digests := make(map[ShardID]ShardDigest)
 	for i := range shardCount {
-		digests[int32(i)] = sm[i].digest()
+		digests[ShardID(i)] = sm[i].digest()
 	}
 	return digests
 }

@@ -12,7 +12,7 @@ import (
 
 // Reconciler defines the interface required by the anti-entropy service to perform state comparison and updates.
 type Reconciler interface {
-	Digests() map[int32]uint64
+	Digests() map[ShardID]ShardDigest
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 }
 

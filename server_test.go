@@ -39,7 +39,7 @@ func (m *mockEngine) Snapshot() error {
 	return args.Error(0)
 }
 
-func (m *mockEngine) SyncPull(knownDigests map[int32]uint64) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+func (m *mockEngine) SyncPull(knownDigests map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
 	args := m.Called(knownDigests)
 	return args.Get(0).([]*pb.SetRequest), args.Get(1).([]*pb.DeleteRequest), args.Error(2)
 }
@@ -49,18 +49,23 @@ func (m *mockEngine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest
 	return args.Error(0)
 }
 
+func (m *mockEngine) Digests() map[ShardID]ShardDigest {
+	args := m.Called()
+	return args.Get(0).(map[ShardID]ShardDigest)
+}
+
 func TestServerHandlers(t *testing.T) {
 	me := new(mockEngine)
 	srv := &server{eng: me}
 
 	t.Run("Pull_Success", func(t *testing.T) {
-		digests := map[int32]uint64{1: 123}
+		digestsProto := map[int32]uint64{1: 123}
 		sets := []*pb.SetRequest{{Key: "k1", Value: []byte("v1")}}
 		deletes := []*pb.DeleteRequest{{Key: "k2"}}
 
-		me.On("SyncPull", digests).Return(sets, deletes, nil).Once()
+		me.On("SyncPull", digestsProto).Return(sets, deletes, nil).Once()
 
-		resp, err := srv.Pull(context.Background(), &pb.PullRequest{KnownDigests: digests})
+		resp, err := srv.Pull(context.Background(), &pb.PullRequest{KnownDigests: digestsProto})
 		assert.NoError(t, err)
 		assert.Equal(t, sets, resp.Entries)
 		assert.Equal(t, deletes, resp.Deletions)
