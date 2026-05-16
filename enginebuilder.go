@@ -15,7 +15,7 @@ type EngineBuilder struct {
 	evictionService Evictor
 	clock           Clock
 	clusterConfig   ClusterConfig
-	syncInterval    time.Duration
+	gossipInterval  time.Duration
 }
 
 func NewEngineBuilder() *EngineBuilder {
@@ -33,7 +33,7 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.walSegments = 16
 	eb.evictionService = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
 	eb.clock = NewHLC()
-	eb.syncInterval = 10 * time.Second
+	eb.gossipInterval = 10 * time.Second
 	eb.clusterConfig = ClusterConfig{
 		SingleNode: false, // Distributed by default
 		BindPort:   7946,
@@ -91,8 +91,8 @@ func (eb *EngineBuilder) SingleNode() *EngineBuilder {
 	return eb
 }
 
-func (eb *EngineBuilder) SetSyncInterval(interval time.Duration) *EngineBuilder {
-	eb.syncInterval = interval
+func (eb *EngineBuilder) SetGossipInterval(interval time.Duration) *EngineBuilder {
+	eb.gossipInterval = interval
 	return eb
 }
 
@@ -135,7 +135,7 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 		evictionService: eb.evictionService,
 		clock:           eb.clock,
 		clusterConfig:   eb.clusterConfig,
-		syncInterval:    eb.syncInterval,
+		gossipInterval:  eb.gossipInterval,
 	}
 
 	return newEngine(config)

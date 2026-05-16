@@ -23,7 +23,7 @@ func TestAntiEntropySync(t *testing.T) {
 		Default().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
 		SetSssPath(filepath.Join(n1Dir, "sss.gob")).
-		SetSyncInterval(100 * time.Millisecond).
+		SetGossipInterval(100 * time.Millisecond).
 		SetClusterConfig(ClusterConfig{
 			NodeName: "node1",
 			BindPort: 9001,
@@ -49,7 +49,7 @@ func TestAntiEntropySync(t *testing.T) {
 		Default().
 		SetWalPath(filepath.Join(n2Dir, "wal")).
 		SetSssPath(filepath.Join(n2Dir, "sss.gob")).
-		SetSyncInterval(100 * time.Millisecond).
+		SetGossipInterval(100 * time.Millisecond).
 		SetClusterConfig(ClusterConfig{
 			NodeName:  "node2",
 			BindPort:  9003,

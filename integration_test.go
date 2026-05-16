@@ -162,7 +162,7 @@ func TestDistributedCluster(t *testing.T) {
 			Default().
 			SetWalPath(filepath.Join(nodeDir, "wal")).
 			SetSssPath(filepath.Join(nodeDir, "sss.gob")).
-			SetSyncInterval(500 * time.Millisecond).
+			SetGossipInterval(500 * time.Millisecond).
 			SetClusterConfig(dkv.ClusterConfig{
 				NodeName:  name,
 				BindPort:  gossipPort,

@@ -39,9 +39,10 @@ func TestClusterMembership(t *testing.T) {
 	members := s1.Members()
 	assert.GreaterOrEqual(t, len(members), 2)
 
-	hasPort := func(list []string, port string) bool {
+	hasPort := func(list []PeerAddress, port string) bool {
 		for _, m := range list {
-			if len(m) >= len(port) && m[len(m)-len(port):] == port {
+			s := string(m)
+			if len(s) >= len(port) && s[len(s)-len(port):] == port {
 				return true
 			}
 		}

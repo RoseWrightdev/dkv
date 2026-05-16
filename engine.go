@@ -48,7 +48,7 @@ type EngineConfig struct {
 	evictionService Evictor
 	clock           Clock
 	clusterConfig   ClusterConfig
-	syncInterval    time.Duration
+	gossipInterval  time.Duration
 }
 
 // snapshotEntry is used for streaming serialization
@@ -115,7 +115,9 @@ func newEngine(config EngineConfig) (Engine, error) {
 		eng.cluster = cs
 	}
 
-	eng.entropy = newAntiEntropyService(eng, config.syncInterval)
+	if !config.clusterConfig.SingleNode {
+		eng.entropy = newAntiEntropyService(eng.cluster, eng, config.gossipInterval)
+	}
 
 	return eng, nil
 }
@@ -127,11 +129,15 @@ func (eng *engine) Start() {
 	if err := eng.cluster.start(); err != nil {
 		slog.Error("Failed to start cluster service", "error", err)
 	}
-	eng.entropy.start()
+	if eng.entropy != nil {
+		eng.entropy.start()
+	}
 }
 
 func (eng *engine) Stop() {
-	eng.entropy.stop()
+	if eng.entropy != nil {
+		eng.entropy.stop()
+	}
 	if err := eng.cluster.stop(); err != nil {
 		slog.Error("Failed to stop cluster service", "error", err)
 	}
@@ -398,6 +404,10 @@ func (eng *engine) SyncPull(knownDigests map[int32]uint64) ([]*pb.SetRequest, []
 		}
 	}
 	return sets, deletes, nil
+}
+
+func (eng *engine) Digests() map[int32]uint64 {
+	return eng.hm.Digests()
 }
 
 func (eng *engine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {

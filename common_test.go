@@ -16,6 +16,7 @@ var mockConfig EngineConfig = EngineConfig{
 	walBufferSize:   uint32(64 * 1024),
 	walSegments:     4,
 	evictionService: NewLRU(LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
+	gossipInterval:  10 * time.Second,
 	clock:           NewHLC(),
 	clusterConfig:   ClusterConfig{SingleNode: true},
 }

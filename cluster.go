@@ -8,10 +8,13 @@ import (
 	"github.com/hashicorp/memberlist"
 )
 
+// PeerAddress represents the network address (IP:Port) of a DKV node.
+type PeerAddress string
+
 // Cluster defines the interface for distributed node discovery and replication.
 type Cluster interface {
 	Broadcast(msg []byte)
-	Members() []string
+	Members() []PeerAddress
 	start() error
 	stop() error
 }
@@ -101,16 +104,16 @@ func (cs *ClusterService) Broadcast(msg []byte) {
 }
 
 // Members returns the gRPC API addresses of all active peers discovered via gossip.
-func (cs *ClusterService) Members() []string {
+func (cs *ClusterService) Members() []PeerAddress {
 	if cs.memberList == nil {
 		return nil
 	}
 
 	members := cs.memberList.Members()
-	addrs := make([]string, 0, len(members))
+	addrs := make([]PeerAddress, 0, len(members))
 	for _, m := range members {
 		if len(m.Meta) > 0 {
-			addrs = append(addrs, fmt.Sprintf("%s:%s", m.Addr.String(), string(m.Meta)))
+			addrs = append(addrs, PeerAddress(fmt.Sprintf("%s:%s", m.Addr.String(), string(m.Meta))))
 		}
 	}
 	return addrs
@@ -188,10 +191,10 @@ func (cs *ClusterService) NotifyUpdate(node *memberlist.Node) {
 // NopCluster is a non-functional implementation of the Cluster interface used when distribution is disabled.
 type NopCluster struct{}
 
-func (n *NopCluster) Broadcast([]byte)  {}
-func (n *NopCluster) Members() []string { return nil }
-func (n *NopCluster) start() error      { return nil }
-func (n *NopCluster) stop() error       { return nil }
+func (n *NopCluster) Broadcast([]byte)       {}
+func (n *NopCluster) Members() []PeerAddress { return nil }
+func (n *NopCluster) start() error           { return nil }
+func (n *NopCluster) stop() error            { return nil }
 
 type broadcast struct {
 	msg []byte

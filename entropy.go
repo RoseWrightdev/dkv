@@ -2,6 +2,7 @@ package dkv
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand"
 	"time"
@@ -9,29 +10,47 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 )
 
+// Reconciler defines the interface required by the anti-entropy service to perform state comparison and updates.
+type Reconciler interface {
+	Digests() map[int32]uint64
+	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
+}
+
 // AntiEntropyService performs periodic state reconciliation between nodes.
+// It detects divergence in storage shards and pulls missing data from peers.
 type AntiEntropyService struct {
-	eng      *engine
+	cluster  Cluster
+	storage  Reconciler
 	interval time.Duration
 	stopChan chan struct{}
 }
 
-func newAntiEntropyService(eng *engine, interval time.Duration) *AntiEntropyService {
+// newAntiEntropyService initializes a new AntiEntropyService instance.
+func newAntiEntropyService(cluster Cluster, storage Reconciler, interval time.Duration) *AntiEntropyService {
+	if cluster == nil {
+		panic("anti-entropy requires a cluster implementation")
+	}
+	if storage == nil {
+		panic("anti-entropy requires a reconciler implementation")
+	}
+
 	return &AntiEntropyService{
-		eng:      eng,
+		cluster:  cluster,
+		storage:  storage,
 		interval: interval,
 		stopChan: make(chan struct{}),
 	}
 }
 
+// start begins the background reconciliation loop.
 func (s *AntiEntropyService) start() {
 	if s.interval <= 0 {
-		slog.Debug("Anti-entropy disabled (interval <= 0)")
-		return
+		panic(fmt.Sprintf("invalid anti-entropy interval: %v", s.interval))
 	}
 	go s.run()
 }
 
+// stop gracefully terminates the background reconciliation loop.
 func (s *AntiEntropyService) stop() {
 	select {
 	case <-s.stopChan:
@@ -57,27 +76,25 @@ func (s *AntiEntropyService) run() {
 }
 
 func (s *AntiEntropyService) performSync() {
-	if s.eng.cluster == nil {
-		return
-	}
-
-	members := s.eng.cluster.Members()
+	members := s.cluster.Members()
 	if len(members) == 0 {
 		return
 	}
 
-	// Pick a random member
+	// Pick a random member to reconcile with.
 	target := members[rand.Intn(len(members))]
 
-	client, err := NewInsecureClient(target, 2*time.Second)
+	// We use the gRPC client to perform the pull operation.
+	// We intentionally create a fresh client to avoid long-lived connection issues during membership churn.
+	client, err := NewInsecureClient(string(target), 2*time.Second)
 	if err != nil {
-		slog.Debug("Failed to connect to peer for sync", "peer", target, "error", err)
+		slog.Debug("Failed to connect to peer for anti-entropy sync", "peer", target, "error", err)
 		return
 	}
 	defer client.Close()
 
-	// Get local digests
-	localDigests := s.eng.hm.Digests()
+	// Compare shard digests to identify divergence.
+	localDigests := s.storage.Digests()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -89,11 +106,13 @@ func (s *AntiEntropyService) performSync() {
 	}
 
 	if len(resp.Entries) > 0 || len(resp.Deletions) > 0 {
-		slog.Info("Anti-entropy synced entries from peer", 
-			"peer", target, 
-			"sets", len(resp.Entries), 
+		slog.Info("Anti-entropy detected divergence and synced state",
+			"peer", target,
+			"sets", len(resp.Entries),
 			"deletes", len(resp.Deletions))
-		
-		_ = s.eng.SyncPush(resp.Entries, resp.Deletions)
+
+		if err := s.storage.SyncPush(resp.Entries, resp.Deletions); err != nil {
+			slog.Error("Failed to apply synced state from anti-entropy", "error", err)
+		}
 	}
 }
