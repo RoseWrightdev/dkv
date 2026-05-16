@@ -33,9 +33,15 @@ type engine struct {
 	setRequestPool    sync.Pool
 	deleteRequestPool sync.Pool
 	snapshotEntryPool sync.Pool
-	clock             Clock
+	walEntryPool         sync.Pool
+	walSetWrapperPool    sync.Pool
+	walDeleteWrapperPool sync.Pool
+	clock                Clock
 	cluster           Cluster
+	clusterConfig     ClusterConfig
 	entropy           *AntiEntropyService
+	startOnce         sync.Once
+	stopOnce          sync.Once
 }
 
 type EngineConfig struct {
@@ -66,9 +72,10 @@ func newEngine(config EngineConfig) (Engine, error) {
 	}
 
 	eng := &engine{
-		hm:    newShardedMap(),
-		wal:   wal,
-		clock: config.clock,
+		hm:            newShardedMap(),
+		wal:           wal,
+		clock:         config.clock,
+		clusterConfig: config.clusterConfig,
 	}
 
 	eng.setRequestPool = sync.Pool{
@@ -86,6 +93,24 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.snapshotEntryPool = sync.Pool{
 		New: func() any {
 			return &snapshotEntry{}
+		},
+	}
+
+	eng.walEntryPool = sync.Pool{
+		New: func() any {
+			return &pb.WalEntry{}
+		},
+	}
+
+	eng.walSetWrapperPool = sync.Pool{
+		New: func() any {
+			return &pb.WalEntry_Set{}
+		},
+	}
+
+	eng.walDeleteWrapperPool = sync.Pool{
+		New: func() any {
+			return &pb.WalEntry_Delete{}
 		},
 	}
 
@@ -123,27 +148,31 @@ func newEngine(config EngineConfig) (Engine, error) {
 }
 
 func (eng *engine) Start() {
-	eng.sss.start()
-	eng.wal.start()
-	eng.evictionService.start()
-	if err := eng.cluster.start(); err != nil {
-		panic(fmt.Sprintf("failed to start cluster service: %v", err))
-	}
-	if eng.entropy != nil {
-		eng.entropy.start()
-	}
+	eng.startOnce.Do(func() {
+		eng.sss.start()
+		eng.wal.start()
+		eng.evictionService.start()
+		if err := eng.cluster.start(); err != nil {
+			panic(fmt.Sprintf("failed to start cluster service: %v", err))
+		}
+		if eng.entropy != nil {
+			eng.entropy.start()
+		}
+	})
 }
 
 func (eng *engine) Stop() {
-	if eng.entropy != nil {
-		eng.entropy.stop()
-	}
-	eng.sss.stop()
-	eng.wal.stop()
-	eng.evictionService.stop()
-	if err := eng.cluster.stop(); err != nil {
-		panic(fmt.Sprintf("failed to stop cluster service: %v", err))
-	}
+	eng.stopOnce.Do(func() {
+		if eng.entropy != nil {
+			eng.entropy.stop()
+		}
+		eng.sss.stop()
+		eng.wal.stop()
+		eng.evictionService.stop()
+		if err := eng.cluster.stop(); err != nil {
+			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
+		}
+	})
 }
 
 func (eng *engine) Get(key Key) ([]byte, bool) {
@@ -178,9 +207,18 @@ func (eng *engine) Set(key Key, value []byte) error {
 		Tombstone: false,
 	})
 
-	entry := pb.WalEntry{Entry: &pb.WalEntry_Set{Set: req}}
-	if data, err := proto.Marshal(&entry); err == nil {
-		eng.cluster.Broadcast(data)
+	if !eng.clusterConfig.SingleNode {
+		entry := eng.walEntryPool.Get().(*pb.WalEntry)
+		wrapper := eng.walSetWrapperPool.Get().(*pb.WalEntry_Set)
+		wrapper.Set = req
+		entry.Entry = wrapper
+		if data, err := proto.Marshal(entry); err == nil {
+			eng.cluster.Broadcast(data)
+		}
+		entry.Entry = nil
+		wrapper.Set = nil
+		eng.walSetWrapperPool.Put(wrapper)
+		eng.walEntryPool.Put(entry)
 	}
 
 	eng.setRequestPool.Put(req)
@@ -207,9 +245,18 @@ func (eng *engine) Delete(key Key) error {
 		Tombstone: true,
 	})
 
-	entry := pb.WalEntry{Entry: &pb.WalEntry_Delete{Delete: req}}
-	if data, err := proto.Marshal(&entry); err == nil {
-		eng.cluster.Broadcast(data)
+	if !eng.clusterConfig.SingleNode {
+		entry := eng.walEntryPool.Get().(*pb.WalEntry)
+		wrapper := eng.walDeleteWrapperPool.Get().(*pb.WalEntry_Delete)
+		wrapper.Delete = req
+		entry.Entry = wrapper
+		if data, err := proto.Marshal(entry); err == nil {
+			eng.cluster.Broadcast(data)
+		}
+		entry.Entry = nil
+		wrapper.Delete = nil
+		eng.walDeleteWrapperPool.Put(wrapper)
+		eng.walEntryPool.Put(entry)
 	}
 
 	req.Reset()
@@ -237,9 +284,18 @@ func (eng *engine) Evict(key Key) error {
 		Tombstone: true,
 	})
 
-	entry := pb.WalEntry{Entry: &pb.WalEntry_Delete{Delete: req}}
-	if data, err := proto.Marshal(&entry); err == nil {
-		eng.cluster.Broadcast(data)
+	if !eng.clusterConfig.SingleNode {
+		entry := eng.walEntryPool.Get().(*pb.WalEntry)
+		wrapper := eng.walDeleteWrapperPool.Get().(*pb.WalEntry_Delete)
+		wrapper.Delete = req
+		entry.Entry = wrapper
+		if data, err := proto.Marshal(entry); err == nil {
+			eng.cluster.Broadcast(data)
+		}
+		entry.Entry = nil
+		wrapper.Delete = nil
+		eng.walDeleteWrapperPool.Put(wrapper)
+		eng.walEntryPool.Put(entry)
 	}
 
 	req.Reset()
@@ -253,29 +309,30 @@ func (eng *engine) Snapshot() error {
 }
 
 func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
-	var err error
-	eng.hm.Range(func(k, v any) bool {
-		iv := v.(Value)
-		entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
-		entry.Key = k.(Key)
-		entry.Data = iv.Data
-		entry.Timestamp = iv.Timestamp
-		entry.Tombstone = iv.Tombstone
+	for i := range shardCount {
+		shard := eng.hm[i]
+		shard.mu.RLock()
+		for k, v := range shard.m {
+			entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
+			entry.Key = k
+			entry.Data = v.Data
+			entry.Timestamp = v.Timestamp
+			entry.Tombstone = v.Tombstone
 
-		if e := enc.Encode(entry); e != nil {
-			err = e
+			if err := enc.Encode(entry); err != nil {
+				shard.mu.RUnlock()
+				entry.Key = ""
+				entry.Data = nil
+				eng.snapshotEntryPool.Put(entry)
+				return err
+			}
 			entry.Key = ""
 			entry.Data = nil
 			eng.snapshotEntryPool.Put(entry)
-			return false
 		}
-
-		entry.Key = ""
-		entry.Data = nil
-		eng.snapshotEntryPool.Put(entry)
-		return true
-	})
-	return err
+		shard.mu.RUnlock()
+	}
+	return nil
 }
 
 func (eng *engine) recover(sssPath string) error {
@@ -289,15 +346,24 @@ func (eng *engine) recover(sssPath string) error {
 		dec := gob.NewDecoder(file)
 		count := 0
 		for {
-			var entry snapshotEntry
-			if err := dec.Decode(&entry); err != nil {
-				break // End of file or error
+			entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
+			if err := dec.Decode(entry); err != nil {
+				entry.Key = ""
+				entry.Data = nil
+				eng.snapshotEntryPool.Put(entry)
+				if err == io.EOF {
+					break
+				}
+				return err
 			}
 			eng.hm.Store(entry.Key, hashFunc(entry.Key), Value{
 				Data:      entry.Data,
 				Timestamp: entry.Timestamp,
 				Tombstone: entry.Tombstone,
 			})
+			entry.Key = ""
+			entry.Data = nil
+			eng.snapshotEntryPool.Put(entry)
 			count++
 		}
 		slog.Info("Loaded state from snapshot", "path", sssPath, "keys", count)

@@ -2,6 +2,7 @@ package dkv
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 
@@ -65,8 +66,10 @@ func NewServer(eng Engine) *Grpc {
 }
 
 func (s *Grpc) Run(listener net.Listener) error {
+	if listener == nil {
+		return fmt.Errorf("dkv: cannot run server with nil listener")
+	}
 	slog.Info("Grpc server running on " + listener.Addr().String())
-	s.eng.Start()
 	err := s.inner.Serve(listener)
 	return err
 }

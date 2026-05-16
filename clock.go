@@ -1,7 +1,7 @@
 package dkv
 
 import (
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -22,74 +22,79 @@ const (
 )
 
 type HLC struct {
-	mu           sync.Mutex
-	lastPhysical int64
-	logical      int64
+	state atomic.Uint64
 }
 
 // NewHLC initializes a new Hybrid Logical Clock.
 func NewHLC() *HLC {
-	return &HLC{
-		lastPhysical: time.Now().UnixMilli(),
-	}
+	return &HLC{}
 }
 
 // Now returns the current HLC timestamp and advances the local state.
 func (c *HLC) Now() int64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	for {
+		old := c.state.Load()
+		oldPhysical := int64(old >> logicalBits)
+		oldLogical := int64(old & logicalMask)
 
-	now := time.Now().UnixMilli()
+		now := time.Now().UnixMilli()
+		var newPhysical, newLogical int64
 
-	if now > c.lastPhysical {
-		c.lastPhysical = now
-		c.logical = 0
-	} else {
-		// Physical clock is lagging or stable; increment logical counter.
-		c.logical++
+		if now > oldPhysical {
+			newPhysical = now
+			newLogical = 0
+		} else {
+			newPhysical = oldPhysical
+			newLogical = oldLogical + 1
+		}
+
+		newVal := uint64((newPhysical << logicalBits) | (newLogical & logicalMask))
+		if c.state.CompareAndSwap(old, newVal) {
+			return int64(newVal)
+		}
 	}
-
-	return c.assemble(c.lastPhysical, c.logical)
 }
 
 // Update incorporates a remote timestamp to maintain causality.
 // Should be called on every incoming message containing a timestamp.
 func (c *HLC) Update(remote int64) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	remoteU := uint64(remote)
+	remotePhysical := int64(remoteU >> logicalBits)
+	remoteLogical := int64(remoteU & logicalMask)
 
-	remotePhysical, remoteLogical := c.disassemble(remote)
-	now := time.Now().UnixMilli()
+	for {
+		old := c.state.Load()
+		oldPhysical := int64(old >> logicalBits)
+		oldLogical := int64(old & logicalMask)
 
-	maxPhysical := now
-	if remotePhysical > maxPhysical {
-		maxPhysical = remotePhysical
-	}
-	if c.lastPhysical > maxPhysical {
-		maxPhysical = c.lastPhysical
-	}
-
-	if maxPhysical == c.lastPhysical && maxPhysical == remotePhysical {
-		if remoteLogical > c.logical {
-			c.logical = remoteLogical
+		now := time.Now().UnixMilli()
+		
+		maxPhysical := now
+		if remotePhysical > maxPhysical {
+			maxPhysical = remotePhysical
 		}
-		c.logical++
-	} else if maxPhysical == c.lastPhysical {
-		c.logical++
-	} else if maxPhysical == remotePhysical {
-		c.lastPhysical = remotePhysical
-		c.logical = remoteLogical + 1
-	} else {
-		c.lastPhysical = maxPhysical
-		c.logical = 0
+		if oldPhysical > maxPhysical {
+			maxPhysical = oldPhysical
+		}
+
+		var newPhysical, newLogical int64
+		if maxPhysical == oldPhysical && maxPhysical == remotePhysical {
+			newPhysical = oldPhysical
+			newLogical = max(oldLogical, remoteLogical) + 1
+		} else if maxPhysical == oldPhysical {
+			newPhysical = oldPhysical
+			newLogical = oldLogical + 1
+		} else if maxPhysical == remotePhysical {
+			newPhysical = remotePhysical
+			newLogical = remoteLogical + 1
+		} else {
+			newPhysical = maxPhysical
+			newLogical = 0
+		}
+
+		newVal := uint64((newPhysical << logicalBits) | (newLogical & logicalMask))
+		if c.state.CompareAndSwap(old, newVal) {
+			return
+		}
 	}
 }
-
-func (c *HLC) assemble(physical, logical int64) int64 {
-	return (physical << logicalBits) | (logical & logicalMask)
-}
-
-func (c *HLC) disassemble(ts int64) (int64, int64) {
-	return ts >> logicalBits, ts & logicalMask
-}
-

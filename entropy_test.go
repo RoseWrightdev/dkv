@@ -31,7 +31,8 @@ func TestAntiEntropySync(t *testing.T) {
 	require.NoError(t, err)
 
 	s1 := NewServer(e1)
-	l1, _ := net.Listen("tcp", "127.0.0.1:9002")
+	l1, err := net.Listen("tcp", "127.0.0.1:9002")
+	require.NoError(t, err)
 	go s1.Run(l1)
 	defer s1.Stop()
 
@@ -56,7 +57,8 @@ func TestAntiEntropySync(t *testing.T) {
 	require.NoError(t, err)
 
 	s2 := NewServer(e2)
-	l2, _ := net.Listen("tcp", "127.0.0.1:9004")
+	l2, err := net.Listen("tcp", "127.0.0.1:9004")
+	require.NoError(t, err)
 	go s2.Run(l2)
 	defer s2.Stop()
 

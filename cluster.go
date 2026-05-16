@@ -62,22 +62,17 @@ func newClusterService(
 		mergeRemoteState: mergeRemoteState,
 	}
 
+	assertNotNil(onMessage, fmt.Errorf("onMessage must be defined for cluster service"))
+	assertNotNil(getLocalState, fmt.Errorf("getLocalState must be defined for cluster service"))
+	assertNotNil(mergeRemoteState, fmt.Errorf("mergeRemoteState must be defined for cluster service"))
+
 	mlConfig := memberlist.DefaultLocalConfig()
 	mlConfig.Delegate = cs
 	mlConfig.Events = cs
-
-	if config.NodeName != "" {
-		mlConfig.Name = config.NodeName
-	}
-	if config.BindAddr != "" {
-		mlConfig.BindAddr = config.BindAddr
-	}
-	if config.BindPort != 0 {
-		mlConfig.BindPort = config.BindPort
-	}
-	if config.AdvertiseAddr != "" {
-		mlConfig.AdvertiseAddr = config.AdvertiseAddr
-	}
+	mlConfig.Name = config.NodeName
+	mlConfig.BindAddr = config.BindAddr
+	mlConfig.BindPort = config.BindPort
+	mlConfig.AdvertiseAddr = config.AdvertiseAddr
 
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {
@@ -148,13 +143,11 @@ func (cs *ClusterService) stop() error {
 // memberlist.Delegate implementation
 
 func (cs *ClusterService) NodeMeta(limit int) []byte {
-	return []byte(fmt.Sprintf("%d", cs.config.GrpcPort))
+	return fmt.Appendf(nil, "%d", cs.config.GrpcPort)
 }
 
 func (cs *ClusterService) NotifyMsg(b []byte) {
-	if cs.onMessage != nil {
-		cs.onMessage(b)
-	}
+	cs.onMessage(b)
 }
 
 func (cs *ClusterService) GetBroadcasts(overhead, limit int) [][]byte {

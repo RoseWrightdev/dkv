@@ -97,7 +97,8 @@ func TestClusterScale(t *testing.T) {
 		require.NoError(t, err)
 		engines = append(engines, eng)
 
-		lis, _ := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", grpcPort))
+		lis, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", grpcPort))
+		require.NoError(t, err)
 		server := dkv.NewServer(eng)
 		go func() { _ = server.Run(lis) }()
 
@@ -118,7 +119,7 @@ func TestClusterScale(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Parallel writes to different nodes
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		go func(id int) {
 			k := fmt.Sprintf("key-%d", id)
 			v := []byte(fmt.Sprintf("val-%d", id))
@@ -130,7 +131,7 @@ func TestClusterScale(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Verify replication (read from different nodes)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		k := fmt.Sprintf("key-%d", i)
 		v := []byte(fmt.Sprintf("val-%d", i))
 		client := clients[(i+1)%count]
@@ -158,7 +159,8 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		SetGrpcPort(14001).
 		GetEngine()
 
-	lis1, _ := net.Listen("tcp", "127.0.0.1:14001")
+	lis1, err := net.Listen("tcp", "127.0.0.1:14001")
+	require.NoError(t, err)
 	server1 := dkv.NewServer(eng1)
 	go func() { _ = server1.Run(lis1) }()
 	eng1.Start()
@@ -183,7 +185,8 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		SetGrpcPort(14002).
 		GetEngine()
 
-	lis2, _ := net.Listen("tcp", "127.0.0.1:14002")
+	lis2, err := net.Listen("tcp", "127.0.0.1:14002")
+	require.NoError(t, err)
 	server2 := dkv.NewServer(eng2)
 	go func() { _ = server2.Run(lis2) }()
 	eng2.Start()
