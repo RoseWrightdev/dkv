@@ -16,11 +16,9 @@ type mockWal struct {
 
 func (mw *mockWal) publish(key Key, hash hashKey, msg proto.Message) error { return nil }
 func (mw *mockWal) replay() (map[Key]Value, error)  { return nil, nil }
-func (mw *mockWal) clear() error                    { mw.clearCalled = true; return nil }
-func (mw *mockWal) stop()                           {}
-func (mw *mockWal) start()                          {}
-
-
+func (mw *mockWal) clear() error                             { mw.clearCalled = true; return nil }
+func (mw *mockWal) stop()                                    {}
+func (mw *mockWal) start()                                   {}
 
 func TestNewSnapShotService(t *testing.T) {
 	defer cleanupEngineMocks(t)
@@ -39,12 +37,12 @@ func TestCreateNewSnapShot(t *testing.T) {
 
 	mw := &mockWal{}
 	mockData := map[Key]Value{
-		"user:1": []byte("alice"),
-		"user:2": []byte("bob"),
+		"user:1": {Data: []byte("alice"), Timestamp: 100},
+		"user:2": {Data: []byte("bob"), Timestamp: 100},
 	}
 	callBack := func(enc *gob.Encoder) error {
 		for k, v := range mockData {
-			if err := enc.Encode(snapshotEntry{Key: k, Value: v}); err != nil {
+			if err := enc.Encode(snapshotEntry{Key: k, Data: v.Data, Timestamp: v.Timestamp, Tombstone: v.Tombstone}); err != nil {
 				return err
 			}
 		}
@@ -66,7 +64,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 		if err := dec.Decode(&entry); err != nil {
 			break
 		}
-		decoded[entry.Key] = entry.Value
+		decoded[entry.Key] = Value{Data: entry.Data, Timestamp: entry.Timestamp, Tombstone: entry.Tombstone}
 	}
 	assert.Equal(t, mockData, decoded)
 

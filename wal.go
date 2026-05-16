@@ -213,7 +213,10 @@ func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *s
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 
-	seg.wrt.Flush()
+	err := seg.wrt.Flush()
+	if err != nil {
+		return err
+	}
 	if _, err := seg.file.Seek(0, 0); err != nil {
 		return err
 	}
@@ -252,15 +255,22 @@ func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *s
 		resultsMu.Lock()
 		switch kv := entry.Entry.(type) {
 		case *pb.WalEntry_Set:
-			results[kv.Set.Key] = kv.Set.Value
+			results[kv.Set.Key] = Value{
+				Data:      kv.Set.Value,
+				Timestamp: kv.Set.Timestamp,
+				Tombstone: false,
+			}
 		case *pb.WalEntry_Delete:
-			results[kv.Delete.Key] = nil
+			results[kv.Delete.Key] = Value{
+				Timestamp: kv.Delete.Timestamp,
+				Tombstone: true,
+			}
 		}
 		resultsMu.Unlock()
 		w.entryPool.Put(entry)
 	}
 
-	_, err := seg.file.Seek(0, io.SeekEnd)
+	_, err = seg.file.Seek(0, io.SeekEnd)
 	return err
 }
 

@@ -10,14 +10,14 @@ import (
 )
 
 type SnapShotService struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	ch       chan struct{}
-	wg       sync.WaitGroup
-	file     *os.File
-	path     string
-	interval time.Duration
-	wal      Waler
+	ctx         context.Context
+	cancel      context.CancelFunc
+	ch          chan struct{}
+	wg          sync.WaitGroup
+	file        *os.File
+	path        string
+	interval    time.Duration
+	wal         Waler
 	encCallBack func(*gob.Encoder) error
 }
 
@@ -114,8 +114,14 @@ func (sss *SnapShotService) create() error {
 		return err
 	}
 
-	file.Sync()
-	file.Close()
+	err = file.Sync()
+	if err != nil {
+		return err
+	}
+	err = file.Close()
+	if err != nil {
+		return err
+	}
 
 	if err := os.Rename(tmpPath, sss.path); err != nil {
 		return err
@@ -124,7 +130,10 @@ func (sss *SnapShotService) create() error {
 	newFile, err := os.OpenFile(sss.path, os.O_CREATE|os.O_RDWR, 0644)
 	if err == nil {
 		if sss.file != nil {
-			sss.file.Close()
+			err := sss.file.Close()
+			if err != nil {
+				return err
+			}
 		}
 		sss.file = newFile
 	}

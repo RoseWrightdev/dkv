@@ -8,6 +8,25 @@ service DkvService {
   rpc Get(GetRequest) returns (GetResponse) {}
   rpc Set(SetRequest) returns (SetResponse) {}
   rpc Delete(DeleteRequest) returns (DeleteResponse) {}
+  
+  // Anti-Entropy Sync
+  rpc Pull(PullRequest) returns (PullResponse) {}
+  rpc Push(PushRequest) returns (PushResponse) {}
+}
+
+message PushRequest {
+  repeated SetRequest entries = 1;
+  repeated DeleteRequest deletions = 2;
+}
+message PushResponse {}
+
+message PullRequest {
+  map<int32, uint64> known_digests = 1;
+}
+
+message PullResponse {
+  repeated SetRequest entries = 1;
+  repeated DeleteRequest deletions = 2;
 }
 
 message WalEntry {
@@ -30,6 +49,7 @@ message SetRequest {
   string key = 1;
   bytes value = 2;
   int64 timestamp = 3;
+  string node_id = 4;
 }
 
 message SetResponse {}
@@ -37,5 +57,7 @@ message SetResponse {}
 message DeleteRequest {
   string key = 1;
   int64 timestamp = 2;
+  string node_id = 3;
 }
+
 message DeleteResponse {}

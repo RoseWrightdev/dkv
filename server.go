@@ -2,6 +2,7 @@ package dkv
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 
@@ -36,6 +37,21 @@ func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResp
 	return &pb.DeleteResponse{}, nil
 }
 
+func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, error) {
+	sets, deletes, err := s.eng.SyncPull(in.KnownDigests)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.PullResponse{Entries: sets, Deletions: deletes}, nil
+}
+
+func (s *server) Push(_ context.Context, in *pb.PushRequest) (*pb.PushResponse, error) {
+	if err := s.eng.SyncPush(in.Entries, in.Deletions); err != nil {
+		return nil, err
+	}
+	return &pb.PushResponse{}, nil
+}
+
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
@@ -50,8 +66,10 @@ func NewServer(eng Engine) *Grpc {
 }
 
 func (s *Grpc) Run(listener net.Listener) error {
+	if listener == nil {
+		return fmt.Errorf("dkv: cannot run server with nil listener")
+	}
 	slog.Info("Grpc server running on " + listener.Addr().String())
-	s.eng.Start()
 	err := s.inner.Serve(listener)
 	return err
 }

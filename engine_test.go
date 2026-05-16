@@ -1,8 +1,11 @@
 package dkv
 
 import (
+	"fmt"
+	"sync"
 	"testing"
 
+	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -65,4 +68,152 @@ func TestEnginePersistence(t *testing.T) {
 	v, ok = eng2.Get(key3)
 	assert.True(t, ok)
 	assert.Equal(t, val3, v)
+}
+
+func TestEngine_DeletePersistence(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	eng, _ := newEngine(mockConfig)
+	eng.Start()
+	
+	key, val := "del-persist", []byte("data")
+	eng.Set(key, val)
+	eng.Delete(key)
+	eng.Stop()
+
+	// Recover
+	eng2, _ := newEngine(mockConfig)
+	eng2.Start()
+	defer eng2.Stop()
+
+	_, ok := eng2.Get(key)
+	assert.False(t, ok, "Key should still be deleted after recovery")
+}
+
+func TestEngine_LWW(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	e, _ := newEngine(mockConfig)
+	eng := e.(*engine)
+	eng.Start()
+	defer eng.Stop()
+
+	key := "lww-key"
+	val1 := []byte("old-value")
+	val2 := []byte("new-value")
+
+	ts1 := int64(1000)
+	eng.clock.Update(ts1)
+	assert.NoError(t, eng.Set(key, val1))
+
+	ts2 := int64(2000)
+	eng.clock.Update(ts2)
+	assert.NoError(t, eng.Set(key, val2))
+	got, _ := eng.Get(key)
+	assert.Equal(t, val2, got)
+
+	// Set with older timestamp (should be ignored)
+	ts3 := int64(1500)
+	// We call applyGossipSet directly to simulate a delayed gossip arrival
+	err := eng.applyGossipSet(&pb.SetRequest{
+		Key:       key,
+		Value:     []byte("delayed-old-value"),
+		Timestamp: ts3,
+	})
+	assert.NoError(t, err)
+	got, _ = eng.Get(key)
+	assert.Equal(t, val2, got, "Older timestamp should not overwrite newer data")
+}
+
+func TestEngine_TombstoneLWW(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	e, _ := newEngine(mockConfig)
+	eng := e.(*engine)
+	eng.Start()
+	defer eng.Stop()
+
+	key := "tomb-key"
+	val := []byte("data")
+
+	ts1 := int64(1000)
+	eng.clock.Update(ts1)
+	eng.Set(key, val)
+
+	ts2 := int64(2000)
+	eng.clock.Update(ts2)
+	eng.Delete(key)
+
+	_, ok := eng.Get(key)
+	assert.False(t, ok, "Key should be deleted")
+
+	// Late-arriving Set with older timestamp
+	ts3 := int64(1500)
+	err := eng.applyGossipSet(&pb.SetRequest{
+		Key:       key,
+		Value:     []byte("zombie"),
+		Timestamp: ts3,
+	})
+	assert.NoError(t, err)
+	_, ok = eng.Get(key)
+	assert.False(t, ok, "Old set should not resurrect a newer tombstone")
+}
+
+func TestEngine_SyncLogic(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	e1, _ := newEngine(mockConfig)
+	eng1 := e1.(*engine)
+	eng1.Start()
+	defer eng1.Stop()
+
+	e2, _ := newEngine(mockConfig)
+	eng2 := e2.(*engine)
+	eng2.Start()
+	defer eng2.Stop()
+
+	// 1. Setup eng1 with data
+	key1, val1 := "sync-1", []byte("data-1")
+	eng1.Set(key1, val1)
+
+	// 2. eng2 is empty, it pulls from eng1
+	digests2 := eng2.hm.Digests()
+	sets, deletes, err := eng1.SyncPull(digests2)
+	assert.NoError(t, err)
+	assert.Len(t, sets, 1)
+	assert.Len(t, deletes, 0)
+	assert.Equal(t, key1, sets[0].Key)
+
+	// 3. eng2 pushes the updates
+	err = eng2.SyncPush(sets, deletes)
+	assert.NoError(t, err)
+	
+	got, ok := eng2.Get(key1)
+	assert.True(t, ok)
+	assert.Equal(t, val1, got)
+}
+
+func TestEngine_Concurrency(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	e, _ := newEngine(mockConfig)
+	eng := e.(*engine)
+	eng.Start()
+	defer eng.Stop()
+
+	const (
+		goroutines = 10
+		iterations = 100
+	)
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for g := 0; g < goroutines; g++ {
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				key := fmt.Sprintf("k-%d-%d", id, i)
+				_ = eng.Set(key, []byte("v"))
+				_, _ = eng.Get(key)
+			}
+		}(g)
+	}
+
+	wg.Wait()
 }

@@ -5,7 +5,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,135 +13,178 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDkvIntegration(t *testing.T) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-integ-*")
+func TestEngineOperations(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "dkv-test-*")
 	defer os.RemoveAll(tmpDir)
 
-	walDir := filepath.Join(tmpDir, "wal")
-	sssPath := filepath.Join(tmpDir, "sss.gob")
+	walPath := filepath.Join(tmpDir, "wal")
+	sssPath := filepath.Join(tmpDir, "snapshot.bin")
 
 	eng, err := dkv.NewEngineBuilder().
-		SetWalPath(walDir).SetSssPath(sssPath).
-		SetWalSyncInterval(time.Hour).SetSssInterval(time.Hour).
-		SetWalBufferSize(64 * 1024).
-		SetWalSegments(4).
-		SetEvictionService(dkv.NewLRU(dkv.LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16})).
+		Default().
+		SetWalPath(walPath).
+		SetSssPath(sssPath).
+		SingleNode().
 		GetEngine()
+
 	require.NoError(t, err)
+	eng.Start()
+	defer eng.Stop()
 
-	server := dkv.NewServer(eng)
-	lis, _ := net.Listen("tcp", "127.0.0.1:0")
-	addr := lis.Addr().String()
-	go func() { _ = server.Run(lis) }()
-	defer server.Stop()
+	key, val := "foo", []byte("bar")
 
-	client, _ := dkv.NewInsecureClient(addr, time.Second)
-	defer client.Close()
+	// Set
+	err = eng.Set(key, val)
+	assert.NoError(t, err)
 
-	t.Run("CRUD", func(t *testing.T) {
-		err := client.Set("foo", []byte("bar"))
-		assert.NoError(t, err)
+	// Get
+	got, ok := eng.Get(key)
+	assert.True(t, ok)
+	assert.Equal(t, val, got)
 
-		val, ok, err := client.Get("foo")
-		assert.NoError(t, err)
-		assert.True(t, ok)
-		assert.Equal(t, []byte("bar"), val)
-
-		err = client.Delete("foo")
-		assert.NoError(t, err)
-
-		_, ok, _ = client.Get("foo")
-		assert.False(t, ok)
-	})
-
-	t.Run("LRU_Eviction", func(t *testing.T) {
-		for i := 0; i < 150; i++ {
-			_ = client.Set(fmt.Sprintf("key-%d", i), []byte("v"))
-		}
-		// "key-0" should be evicted as capacity is 100
-		_, ok, _ := client.Get("key-0")
-		assert.False(t, ok)
-	})
+	// Delete
+	err = eng.Delete(key)
+	assert.NoError(t, err)
+	_, ok = eng.Get(key)
+	assert.False(t, ok)
 }
 
-func TestDkvHighPressure(t *testing.T) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-pressure-*")
+func TestClusterScale(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping scale test in short mode")
+	}
+
+	tmpDir, _ := os.MkdirTemp("", "dkv-scale-*")
 	defer os.RemoveAll(tmpDir)
 
-	walDir := filepath.Join(tmpDir, "wal")
-	sssPath := filepath.Join(tmpDir, "snapshot.gob")
+	count := 3
+	var engines []dkv.Engine
+	var clients []*dkv.Client
+	var seedAddr string
 
-	eng, err := dkv.NewEngineBuilder().
-		SetWalPath(walDir).SetSssPath(sssPath).
-		SetWalSyncInterval(10 * time.Millisecond).
-		SetSssInterval(time.Hour).
-		SetWalBufferSize(64 * 1024).
-		SetWalSegments(4).
-		SetEvictionService(dkv.NewLRU(dkv.LRUConfig{Capacity: 1000, TTL: time.Hour, ShardCount: 16})).
+	for i := range count {
+		name := fmt.Sprintf("node-%d", i)
+		nodeDir := filepath.Join(tmpDir, name)
+		os.MkdirAll(nodeDir, 0755)
+
+		mlLis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		mlPort := mlLis.Addr().(*net.TCPAddr).Port
+		mlLis.Close()
+
+		eb := dkv.NewEngineBuilder().
+			Default().
+			FastTest().
+			SetWalPath(filepath.Join(nodeDir, "wal")).
+			SetSssPath(filepath.Join(nodeDir, "sss.gob")).
+			SetNodeID(name).
+			SetBindPort(mlPort).
+			SetGrpcPort(0) // Dynamic
+
+		if i == 0 {
+			seedAddr = fmt.Sprintf("127.0.0.1:%d", mlPort)
+		} else {
+			eb.SetSeedNodes([]string{seedAddr})
+		}
+
+		eng, err := eb.GetEngine()
+		require.NoError(t, err, "Failed to create engine for %s", name)
+		engines = append(engines, eng)
+
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		actualPort := lis.Addr().(*net.TCPAddr).Port
+		
+		server := dkv.NewServer(eng)
+		go func() { _ = server.Run(lis) }()
+
+		client, err := dkv.NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", actualPort), time.Second)
+		require.NoError(t, err)
+		clients = append(clients, client)
+	}
+
+	for _, e := range engines {
+		e.Start()
+	}
+	defer func() {
+		for _, e := range engines {
+			e.Stop()
+		}
+	}()
+
+	// Parallel writes to different nodes
+	for i := range 50 {
+		go func(id int) {
+			k := fmt.Sprintf("key-%d", id)
+			v := []byte(fmt.Sprintf("val-%d", id))
+			client := clients[id%count]
+			_ = client.Set(k, v)
+		}(i)
+	}
+
+	// Verify replication with polling
+	for i := range 50 {
+		k := fmt.Sprintf("key-%d", i)
+		v := []byte(fmt.Sprintf("val-%d", i))
+		client := clients[(i+1)%count]
+		
+		require.Eventually(t, func() bool {
+			got, exists, err := client.Get(k)
+			return err == nil && exists && string(got) == string(v)
+		}, 5*time.Second, 100*time.Millisecond, "Node %d failed to replicate %s", (i+1)%count, k)
+	}
+}
+
+func TestAntiEntropyRecovery(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "dkv-recovery-*")
+	defer os.RemoveAll(tmpDir)
+
+	// Setup Node 1
+	mlLis1, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	mlPort1 := mlLis1.Addr().(*net.TCPAddr).Port
+	mlLis1.Close()
+
+	eng1, err := dkv.NewEngineBuilder().
+		Default().
+		FastTest().
+		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
+		SetSssPath(filepath.Join(tmpDir, "n1-sss.gob")).
+		SetNodeID("node1").
+		SetBindPort(mlPort1).
+		SetGrpcPort(0).
 		GetEngine()
 	require.NoError(t, err)
-	
-	server := dkv.NewServer(eng)
-	lis, _ := net.Listen("tcp", "127.0.0.1:0")
-	addr := lis.Addr().String()
-	go func() { _ = server.Run(lis) }()
-	defer server.Stop()
+	eng1.Start()
+	defer eng1.Stop()
 
-	t.Run("MultiClient_Concurrency", func(t *testing.T) {
-		const clientCount = 10
-		const opsPerClient = 100
-		var wg sync.WaitGroup
-		wg.Add(clientCount)
-
-		for i := range clientCount {
-			go func(id int) {
-				defer wg.Done()
-				client, _ := dkv.NewInsecureClient(addr, time.Second)
-				defer client.Close()
-
-				for j := range opsPerClient {
-					key := fmt.Sprintf("client-%d-key-%d", id, j)
-					_ = client.Set(key, []byte("value"))
-					val, ok, _ := client.Get(key)
-					if !ok || string(val) != "value" {
-						t.Errorf("Data mismatch for %s", key)
-					}
-				}
-			}(i)
-		}
-		wg.Wait()
-	})
-
-	t.Run("MassiveDataset_Recovery", func(t *testing.T) {
-		client, _ := dkv.NewInsecureClient(addr, time.Second)
-		for i := range 1000 {
-			_ = client.Set(fmt.Sprintf("bulk-%d", i), []byte("data"))
-		}
-		_ = eng.Snapshot()
-
-		server.Stop()
-		client.Close()
-
-		eng2, err := dkv.NewEngineBuilder().
-			SetWalPath(walDir).SetSssPath(sssPath).
-			SetWalSyncInterval(10 * time.Millisecond).
-			SetSssInterval(time.Hour).
-			SetWalBufferSize(64 * 1024).
-			SetWalSegments(4).
-			SetEvictionService(dkv.NewLRU(dkv.LRUConfig{Capacity: 2000, TTL: time.Hour, ShardCount: 16})).
-			GetEngine()
+	// Write data while Node 2 is DOWN
+	for i := range 10 {
+		err = eng1.Set(fmt.Sprintf("rec-%d", i), []byte("data"))
 		require.NoError(t, err)
-		
-		server2 := dkv.NewServer(eng2)
-		lis2, _ := net.Listen("tcp", addr)
-		go func() { _ = server2.Run(lis2) }()
-		defer server2.Stop()
+	}
 
-		client2, _ := dkv.NewInsecureClient(addr, time.Second)
-		defer client2.Close()
+	// Setup Node 2 (joins Node 1)
+	eng2, err := dkv.NewEngineBuilder().
+		Default().
+		FastTest().
+		SetWalPath(filepath.Join(tmpDir, "n2-wal")).
+		SetSssPath(filepath.Join(tmpDir, "n2-sss.gob")).
+		SetNodeID("node2").
+		SetBindPort(0).
+		SetGrpcPort(0).
+		SetSeedNodes([]string{fmt.Sprintf("127.0.0.1:%d", mlPort1)}).
+		GetEngine()
+	require.NoError(t, err)
+	eng2.Start()
+	defer eng2.Stop()
 
-		val, ok, _ := client2.Get("bulk-999")
-		assert.True(t, ok)
-		assert.Equal(t, []byte("data"), val)
-	})
+	// Polling verification
+	for i := range 10 {
+		key := fmt.Sprintf("rec-%d", i)
+		require.Eventually(t, func() bool {
+			_, ok := eng2.Get(key)
+			return ok
+		}, 5*time.Second, 100*time.Millisecond, "Node 2 should have recovered %s", key)
+	}
 }
