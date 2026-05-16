@@ -127,7 +127,7 @@ func (eng *engine) Start() {
 	eng.wal.start()
 	eng.evictionService.start()
 	if err := eng.cluster.start(); err != nil {
-		slog.Error("Failed to start cluster service", "error", err)
+		panic(fmt.Sprintf("failed to start cluster service: %v", err))
 	}
 	if eng.entropy != nil {
 		eng.entropy.start()
@@ -138,12 +138,12 @@ func (eng *engine) Stop() {
 	if eng.entropy != nil {
 		eng.entropy.stop()
 	}
-	if err := eng.cluster.stop(); err != nil {
-		slog.Error("Failed to stop cluster service", "error", err)
-	}
 	eng.sss.stop()
 	eng.wal.stop()
 	eng.evictionService.stop()
+	if err := eng.cluster.stop(); err != nil {
+		panic(fmt.Sprintf("failed to stop cluster service: %v", err))
+	}
 }
 
 func (eng *engine) Get(key Key) ([]byte, bool) {
