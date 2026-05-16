@@ -27,6 +27,7 @@ func TestAntiEntropySync(t *testing.T) {
 		SetNodeID("node1").
 		SetBindPort(9001).
 		SetGrpcPort(9002).
+		SetInsecure().
 		GetEngine()
 	require.NoError(t, err)
 
@@ -53,6 +54,7 @@ func TestAntiEntropySync(t *testing.T) {
 		SetBindPort(9003).
 		SetSeedNodes([]string{"127.0.0.1:9001"}).
 		SetGrpcPort(9004).
+		SetInsecure().
 		GetEngine()
 	require.NoError(t, err)
 

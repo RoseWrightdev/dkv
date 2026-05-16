@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 var mockConfig EngineConfig = EngineConfig{
@@ -19,7 +20,8 @@ var mockConfig EngineConfig = EngineConfig{
 	evictionService: NewLRU(LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
 	gossipInterval:  10 * time.Second,
 	clock:           NewHLC(),
-	clusterConfig:   ClusterConfig{SingleNode: true},
+	clusterConfig:        ClusterConfig{SingleNode: true},
+	transportCredentials: insecure.NewCredentials(),
 }
 
 func init() {

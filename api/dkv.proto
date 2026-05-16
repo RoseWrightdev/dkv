@@ -21,7 +21,13 @@ message PushRequest {
 message PushResponse {}
 
 message PullRequest {
-  map<int32, uint64> known_digests = 1;
+  fixed64 root_digest = 1;
+  map<uint32, fixed64> shard_digests = 2;
+  map<uint32, ShardDigests> sub_digests = 3;
+}
+
+message ShardDigests {
+  repeated fixed64 sub_hashes = 1 [packed=true];
 }
 
 message PullResponse {

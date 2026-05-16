@@ -33,10 +33,21 @@ func TestShardedMap_Digests(t *testing.T) {
 	sm.Store("a", 0, Value{Timestamp: 1})
 	sm.Store("b", 1, Value{Timestamp: 1})
 
-	digests := sm.Digests()
+	digests := make(map[ShardID]ShardDigest)
+	for i := range shardCount {
+		digests[ShardID(i)] = make([]Digest, subBucketCount)
+	}
+	sm.FillDigests(digests)
 	assert.Len(t, digests, int(shardCount))
 	assert.NotEqual(t, digests[0], digests[1])
-	assert.Equal(t, uint64(0), digests[2], "Empty shard should have 0 digest")
+	
+	// Check empty shard
+	emptyDigest := make([]Digest, subBucketCount)
+	assert.Equal(t, emptyDigest, digests[2], "Empty shard should have empty sub-hashes")
+
+	// Verify sub-bucket indexing for shard 0
+	// hash 0 maps to shard 0, subIndex 0
+	assert.NotEqual(t, uint64(0), digests[0][0])
 }
 
 func TestShardedMap_Concurrency(t *testing.T) {

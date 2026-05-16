@@ -21,7 +21,8 @@ func setupBenchmarkEngine(b *testing.B, distributed bool) (Engine, func()) {
 		SetWalSyncInterval(time.Hour).
 		SetSssInterval(time.Hour).
 		SetWalBufferSize(1024 * 1024).
-		SetWalSegments(4)
+		SetWalSegments(4).
+		SetInsecure()
 
 	if !distributed {
 		builder.SingleNode()
@@ -106,7 +107,7 @@ func BenchmarkEngine_PayloadSizes(b *testing.B) {
 	if !testing.Short() {
 		sizes = append(sizes, 1024*1024) // 1MB
 	}
-	
+
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Size-%d", size), func(b *testing.B) {
 			eng, cleanup := setupBenchmarkEngine(b, false)
@@ -138,7 +139,7 @@ func BenchmarkEngine_Snapshot(b *testing.B) {
 func BenchmarkEngine_Recover(b *testing.B) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-rec-*")
 	defer os.RemoveAll(tmpDir)
-	eng, _ := NewEngineBuilder().Default().SingleNode().SetWalPath(tmpDir).SetSssPath(tmpDir + "/s.bin").GetEngine()
+	eng, _ := NewEngineBuilder().Default().SingleNode().SetWalPath(tmpDir).SetSssPath(tmpDir + "/s.bin").SetInsecure().GetEngine()
 	eng.Start()
 	count := 5000
 	if !testing.Short() {
@@ -152,7 +153,7 @@ func BenchmarkEngine_Recover(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		e, _ := NewEngineBuilder().Default().SingleNode().SetWalPath(tmpDir).SetSssPath(tmpDir + "/s.bin").GetEngine()
+		e, _ := NewEngineBuilder().Default().SingleNode().SetWalPath(tmpDir).SetSssPath(tmpDir + "/s.bin").SetInsecure().GetEngine()
 		e.Start()
 		e.Stop()
 	}
@@ -215,6 +216,85 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 		defer client.Close()
 		for pb.Next() {
 			_ = client.Set("key", val)
+		}
+	})
+}
+
+func BenchmarkReconciliation_Hierarchical(b *testing.B) {
+	e, err := NewEngineBuilder().Default().
+		SetWalPath(b.TempDir()).
+		SetSssPath(b.TempDir() + "/snapshot.db").
+		SingleNode().
+		SetInsecure().
+		GetEngine()
+	if err != nil {
+		b.Fatalf("Failed to create engine: %v", err)
+	}
+	eng := e.(*engine)
+	eng.Start()
+	defer eng.Stop()
+
+	// Fill with some data
+	for i := range 10000 {
+		eng.Set(fmt.Sprintf("key-%d", i), []byte("value"))
+	}
+
+	root := eng.RootDigest()
+	shards := make(map[ShardID]Digest)
+	buckets := make(map[ShardID]ShardDigest)
+	for i := range shardCount {
+		buckets[ShardID(i)] = make([]Digest, subBucketCount)
+	}
+	eng.FillShardDigests(shards)
+	eng.FillDigests(buckets)
+
+	b.Run("RootDigest", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = eng.RootDigest()
+		}
+	})
+
+	b.Run("FillShardDigests", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			eng.FillShardDigests(shards)
+		}
+	})
+
+	b.Run("FillDigests", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			eng.FillDigests(buckets)
+		}
+	})
+
+	b.Run("SyncPull_Identical", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_, _, _ = eng.SyncPull(root, shards, buckets)
+		}
+	})
+
+	// Create a mismatch in one bucket
+	eng.Set("mismatch-key", []byte("mismatch-value"))
+
+	b.Run("SyncPull_SingleMismatch", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_, _, _ = eng.SyncPull(root, shards, buckets)
+		}
+	})
+
+	// Create mismatch in ALL shards
+	for i := range shardCount {
+		eng.Set(fmt.Sprintf("mismatch-%d", i), []byte("val"))
+	}
+
+	b.Run("SyncPull_FullDivergence", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_, _, _ = eng.SyncPull(root, shards, buckets)
 		}
 	})
 }

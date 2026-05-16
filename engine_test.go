@@ -173,8 +173,13 @@ func TestEngine_SyncLogic(t *testing.T) {
 	eng1.Set(key1, val1)
 
 	// 2. eng2 is empty, it pulls from eng1
-	digests2 := eng2.hm.Digests()
-	sets, deletes, err := eng1.SyncPull(digests2)
+	root2 := eng2.RootDigest()
+	shards2 := make(map[ShardID]Digest)
+	buckets2 := make(map[ShardID]ShardDigest)
+	eng2.FillShardDigests(shards2)
+	eng2.FillDigests(buckets2)
+
+	sets, deletes, err := eng1.SyncPull(root2, shards2, buckets2)
 	assert.NoError(t, err)
 	assert.Len(t, sets, 1)
 	assert.Len(t, deletes, 0)

@@ -35,8 +35,9 @@ func TestEngineBuilder(t *testing.T) {
 		ShardCount: 16,
 	})
 	eb.SetEvictionService(lru)
-	eb.SetClock(NewHLC())
+	eb.SetClock(NewHLC()).SetInsecure()
 	eb.SingleNode()
+	eb.SetInsecure()
 
 	eng, err := eb.GetEngine()
 	assert.Nil(t, err)
@@ -55,35 +56,42 @@ func TestEngineBuilder(t *testing.T) {
 
 func TestEngineBuilder_Validation(t *testing.T) {
 	t.Run("MissingWalPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetSssPath("tmp").SetClock(NewHLC())
+		eb := NewEngineBuilder().Default().SetSssPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.walPath = ""
 		_, err := eb.GetEngine()
 		assert.ErrorContains(t, err, "required eb.walPath is unset")
 	})
 
 	t.Run("MissingSssPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(NewHLC())
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.sssPath = ""
 		_, err := eb.GetEngine()
 		assert.ErrorContains(t, err, "required eb.sssPath is unset")
 	})
 
 	t.Run("MissingWalSyncInterval", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetClock(NewHLC())
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.walSyncInterval = 0
 		_, err := eb.GetEngine()
 		assert.ErrorContains(t, err, "required eb.walSyncInterval is unset")
 	})
 
+	t.Run("MissingCredentials", func(t *testing.T) {
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb.creds = nil
+		_, err := eb.GetEngine()
+		assert.ErrorContains(t, err, "transport credentials are required")
+	})
+
 	t.Run("MissingClock", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp")
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetInsecure()
 		eb.clock = nil
 		_, err := eb.GetEngine()
 		assert.ErrorContains(t, err, "required eb.clock is unset")
 	})
 
 	t.Run("MissingGossipInterval_InDistributedMode", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetClock(NewHLC())
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.clusterBuilder.config.SingleNode = false
 		eb.gossipInterval = 0
 		_, err := eb.GetEngine()

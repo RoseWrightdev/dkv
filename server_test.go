@@ -39,8 +39,8 @@ func (m *mockEngine) Snapshot() error {
 	return args.Error(0)
 }
 
-func (m *mockEngine) SyncPull(knownDigests map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	args := m.Called(knownDigests)
+func (m *mockEngine) SyncPull(root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	args := m.Called(root, shards, buckets)
 	return args.Get(0).([]*pb.SetRequest), args.Get(1).([]*pb.DeleteRequest), args.Error(2)
 }
 
@@ -49,23 +49,41 @@ func (m *mockEngine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest
 	return args.Error(0)
 }
 
-func (m *mockEngine) Digests() map[ShardID]ShardDigest {
-	args := m.Called()
-	return args.Get(0).(map[ShardID]ShardDigest)
+func (m *mockEngine) RootDigest() RootDigest {
+	return m.Called().Get(0).(RootDigest)
+}
+
+func (m *mockEngine) FillShardDigests(dst map[ShardID]Digest) {
+	m.Called(dst)
+}
+
+func (m *mockEngine) FillDigests(dst map[ShardID]ShardDigest) {
+	m.Called(dst)
 }
 
 func TestServerHandlers(t *testing.T) {
 	me := new(mockEngine)
-	srv := &server{eng: me}
+	srv := &server{
+		eng:   me,
+		pools: newServerPools(),
+	}
 
 	t.Run("Pull_Success", func(t *testing.T) {
-		digestsProto := map[int32]uint64{1: 123}
+		root := RootDigest(12345)
+		buckets := map[ShardID]ShardDigest{1: make([]Digest, 64)}
+		buckets[1][0] = 123
+		
 		sets := []*pb.SetRequest{{Key: "k1", Value: []byte("v1")}}
 		deletes := []*pb.DeleteRequest{{Key: "k2"}}
 
-		me.On("SyncPull", digestsProto).Return(sets, deletes, nil).Once()
+		me.On("SyncPull", root, mock.Anything, mock.Anything).Return(sets, deletes, nil).Once()
 
-		resp, err := srv.Pull(context.Background(), &pb.PullRequest{KnownDigests: digestsProto})
+		req := &pb.PullRequest{
+			RootDigest:   root,
+			ShardDigests: map[uint32]uint64{1: 123},
+			SubDigests:   map[uint32]*pb.ShardDigests{1: {SubHashes: buckets[1]}},
+		}
+		resp, err := srv.Pull(context.Background(), req)
 		assert.NoError(t, err)
 		assert.Equal(t, sets, resp.Entries)
 		assert.Equal(t, deletes, resp.Deletions)
@@ -84,7 +102,7 @@ func TestServerHandlers(t *testing.T) {
 	})
 
 	t.Run("Pull_Error", func(t *testing.T) {
-		me.On("SyncPull", mock.Anything).Return([]*pb.SetRequest{}, []*pb.DeleteRequest{}, assert.AnError).Once()
+		me.On("SyncPull", mock.Anything, mock.Anything, mock.Anything).Return([]*pb.SetRequest{}, []*pb.DeleteRequest{}, assert.AnError).Once()
 
 		_, err := srv.Pull(context.Background(), &pb.PullRequest{})
 		assert.Error(t, err)

@@ -26,6 +26,7 @@ func TestGossipReplication(t *testing.T) {
 		SetNodeID("node1").
 		SetBindPort(8001).
 		SetGrpcPort(9001).
+		SetInsecure().
 		GetEngine()
 	require.NoError(t, err)
 	e1.Start()
@@ -43,6 +44,7 @@ func TestGossipReplication(t *testing.T) {
 		SetBindPort(8002).
 		SetSeedNodes([]string{"127.0.0.1:8001"}).
 		SetGrpcPort(9002).
+		SetInsecure().
 		GetEngine()
 	require.NoError(t, err)
 	e2.Start()

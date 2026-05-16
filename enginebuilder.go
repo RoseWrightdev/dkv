@@ -3,6 +3,8 @@ package dkv
 import (
 	"fmt"
 	"time"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // EngineBuilder provides a fluent API for constructing and configuring a dkv engine.
@@ -17,6 +19,7 @@ type EngineBuilder struct {
 	clock           Clock
 	clusterBuilder  *ClusterConfigBuilder
 	gossipInterval  time.Duration
+	creds           credentials.TransportCredentials
 }
 
 func NewEngineBuilder() *EngineBuilder {
@@ -129,6 +132,16 @@ func (eb *EngineBuilder) SetGossipInterval(interval time.Duration) *EngineBuilde
 	return eb
 }
 
+func (eb *EngineBuilder) SetTransportCredentials(creds credentials.TransportCredentials) *EngineBuilder {
+	eb.creds = creds
+	return eb
+}
+
+func (eb *EngineBuilder) SetInsecure() *EngineBuilder {
+	eb.creds = insecure.NewCredentials()
+	return eb
+}
+
 func (eb *EngineBuilder) FastTest() *EngineBuilder {
 	eb.clusterBuilder.EnableFastTest()
 	return eb
@@ -150,6 +163,10 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 
 	if isUnit(eb.sssInterval) {
 		return nil, fmt.Errorf("required eb.sssInterval is unset; configure eb.sssInterval with SetSssInterval(interval time.Duration)")
+	}
+
+	if eb.creds == nil {
+		return nil, fmt.Errorf("transport credentials are required; use SetTransportCredentials(creds) or SetInsecure() for development")
 	}
 
 	if isUnit(eb.walBufferSize) {
@@ -182,8 +199,9 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 		walSegments:     eb.walSegments,
 		evictionService: eb.evictionService,
 		clock:           eb.clock,
-		clusterConfig:   clusterConfig,
-		gossipInterval:  eb.gossipInterval,
+		clusterConfig:        clusterConfig,
+		gossipInterval:       eb.gossipInterval,
+		transportCredentials: eb.creds,
 	}
 
 	return newEngine(config)

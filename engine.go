@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -21,7 +22,10 @@ type Engine interface {
 	Start()
 	Stop()
 	Snapshot() error
-	SyncPull(knownDigests map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
+	RootDigest() RootDigest
+	FillShardDigests(dst map[ShardID]Digest)
+	FillDigests(dst map[ShardID]ShardDigest)
+	SyncPull(root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 }
 
@@ -47,6 +51,9 @@ type resourcePools struct {
 	walSetWrappers    sync.Pool
 	walDeleteWrappers sync.Pool
 	pullRequests      sync.Pool
+	shardDigests      sync.Pool
+	shardMaps         sync.Pool
+	bucketMaps        sync.Pool
 }
 
 type EngineConfig struct {
@@ -59,7 +66,8 @@ type EngineConfig struct {
 	evictionService Evictor
 	clock           Clock
 	clusterConfig   ClusterConfig
-	gossipInterval  time.Duration
+	gossipInterval       time.Duration
+	transportCredentials credentials.TransportCredentials
 }
 
 // snapshotEntry is used for streaming serialization
@@ -76,6 +84,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 		return nil, err
 	}
 
+	// todo: refactor toplevel engine pool
 	eng := &engine{
 		hm:            newShardedMap(),
 		wal:           wal,
@@ -101,7 +110,27 @@ func newEngine(config EngineConfig) (Engine, error) {
 				New: func() any { return &pb.WalEntry_Delete{} },
 			},
 			pullRequests: sync.Pool{
-				New: func() any { return &pb.PullRequest{} },
+				New: func() any {
+					return &pb.PullRequest{
+						ShardDigests: make(map[uint32]uint64, shardCount),
+						SubDigests:   make(map[uint32]*pb.ShardDigests, shardCount),
+					}
+				},
+			},
+			shardDigests: sync.Pool{
+				New: func() any { return &pb.ShardDigests{} },
+			},
+			shardMaps: sync.Pool{
+				New: func() any { return make(map[ShardID]Digest) },
+			},
+			bucketMaps: sync.Pool{
+				New: func() any {
+					m := make(map[ShardID]ShardDigest, shardCount)
+					for i := range shardCount {
+						m[ShardID(i)] = make([]Digest, subBucketCount)
+					}
+					return m
+				},
 			},
 		},
 	}
@@ -133,7 +162,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	}
 
 	if !config.clusterConfig.SingleNode {
-		eng.entropy = newAntiEntropyService(eng.cluster, eng, eng.pools, config.gossipInterval)
+		eng.entropy = newAntiEntropyService(eng.cluster, eng, eng.pools, config.gossipInterval, config.transportCredentials)
 	}
 
 	return eng, nil
@@ -313,23 +342,25 @@ func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 	for i := range shardCount {
 		shard := eng.hm[i]
 		shard.mu.RLock()
-		for k, v := range shard.m {
-			entry := eng.pools.snapshotEntries.Get().(*snapshotEntry)
-			entry.Key = k
-			entry.Data = v.Data
-			entry.Timestamp = v.Timestamp
-			entry.Tombstone = v.Tombstone
+		for b := range subBucketCount {
+			for k, v := range shard.buckets[b] {
+				entry := eng.pools.snapshotEntries.Get().(*snapshotEntry)
+				entry.Key = k
+				entry.Data = v.Data
+				entry.Timestamp = v.Timestamp
+				entry.Tombstone = v.Tombstone
 
-			if err := enc.Encode(entry); err != nil {
-				shard.mu.RUnlock()
+				if err := enc.Encode(entry); err != nil {
+					shard.mu.RUnlock()
+					entry.Key = ""
+					entry.Data = nil
+					eng.pools.snapshotEntries.Put(entry)
+					return err
+				}
 				entry.Key = ""
 				entry.Data = nil
 				eng.pools.snapshotEntries.Put(entry)
-				return err
 			}
-			entry.Key = ""
-			entry.Data = nil
-			eng.pools.snapshotEntries.Put(entry)
 		}
 		shard.mu.RUnlock()
 	}
@@ -462,40 +493,103 @@ func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) error {
 	return nil
 }
 
-func (eng *engine) SyncPull(knownDigests map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	localDigests := eng.hm.Digests()
+func (eng *engine) RootDigest() RootDigest {
+	return eng.hm.RootDigest()
+}
+
+func (eng *engine) FillShardDigests(dst map[ShardID]Digest) {
+	eng.hm.FillShardDigests(dst)
+}
+
+func (eng *engine) FillDigests(dst map[ShardID]ShardDigest) {
+	eng.hm.FillDigests(dst)
+}
+
+// SyncPull performs a hierarchical anti-entropy reconciliation against a remote node's state.
+// It uses a 3-level Merkle-style comparison tree to pinpoint divergence with minimal bandwidth:
+//
+// 1. Root Level: Single global hash check (O(1)).
+//
+// 2. Shard Level: 128 intermediate shard hashes.
+//
+// 3. Bucket Level: 64 sub-bucket hashes per mismatched shard.
+//
+// It returns only the specific records (Sets/Deletes) needed to bring the remote node into sync.
+func (eng *engine) SyncPull(root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	// Level 1: Global check. If the root hash matches, the entire database is identical.
+	if root == eng.RootDigest() {
+		return nil, nil, nil
+	}
+
+	localShardDigests := eng.pools.shardMaps.Get().(map[ShardID]Digest)
+	localBuckets := eng.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
+	defer func() {
+		for k := range localShardDigests { delete(localShardDigests, k) }
+		for k := range localBuckets { delete(localBuckets, k) }
+		eng.pools.shardMaps.Put(localShardDigests)
+		eng.pools.bucketMaps.Put(localBuckets)
+	}()
+
+	eng.hm.FillShardDigests(localShardDigests)
+	eng.hm.FillDigests(localBuckets)
+	
 	var sets []*pb.SetRequest
 	var deletes []*pb.DeleteRequest
 
-	for shardID, localHash := range localDigests {
-		remoteHash, ok := knownDigests[shardID]
-		if !ok || localHash != remoteHash {
+	for shardID, localShardHash := range localShardDigests {
+		remoteShardHash, hasShard := shards[shardID]
+		
+		// Level 2: Shard check
+		if hasShard && localShardHash == remoteShardHash {
+			continue
+		}
+
+		remoteBuckets, hasBuckets := buckets[shardID]
+		localBucketHashes := localBuckets[shardID]
+
+		// Level 3: Determine which sub-buckets need syncing using a bitmask. Each bit
+		// corresponds to a sub-bucket index (0-63). To fit perfectly in a cache line.
+		var mismatchMask uint64
+		if !hasBuckets || len(remoteBuckets) != len(localBucketHashes) {
+			// If the remote node is missing the bucket hashes entirely, 
+			// mark all 64 bits for synchronization.
+			mismatchMask = ^uint64(0)
+		} else {
+			// Compare each sub-bucket hash and set the corresponding bit if they differ.
+			for i := range subBucketCount {
+				if localBucketHashes[i] != remoteBuckets[i] {
+					mismatchMask |= (1 << i)
+				}
+			}
+		}
+
+		if mismatchMask > 0 {
 			shard := eng.hm[int(shardID)]
 			shard.mu.RLock()
-			for k, v := range shard.m {
-				if v.Tombstone {
-					req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
-					req.Key = k
-					req.Timestamp = v.Timestamp
-					req.NodeId = v.NodeID
-					deletes = append(deletes, req)
-				} else {
-					req := eng.pools.setRequests.Get().(*pb.SetRequest)
-					req.Key = k
-					req.Value = v.Data
-					req.Timestamp = v.Timestamp
-					req.NodeId = v.NodeID
-					sets = append(sets, req)
+			for b := range subBucketCount {
+				if (mismatchMask & (1 << b)) != 0 {
+					for k, v := range shard.buckets[b] {
+						if v.Tombstone {
+							req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
+							req.Key = k
+							req.Timestamp = v.Timestamp
+							req.NodeId = v.NodeID
+							deletes = append(deletes, req)
+						} else {
+							req := eng.pools.setRequests.Get().(*pb.SetRequest)
+							req.Key = k
+							req.Value = v.Data
+							req.Timestamp = v.Timestamp
+							req.NodeId = v.NodeID
+							sets = append(sets, req)
+						}
+					}
 				}
 			}
 			shard.mu.RUnlock()
 		}
 	}
 	return sets, deletes, nil
-}
-
-func (eng *engine) Digests() map[ShardID]ShardDigest {
-	return eng.hm.Digests()
 }
 
 func (eng *engine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {

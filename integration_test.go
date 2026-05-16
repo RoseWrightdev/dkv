@@ -25,6 +25,7 @@ func TestEngineOperations(t *testing.T) {
 		SetWalPath(walPath).
 		SetSssPath(sssPath).
 		SingleNode().
+		SetInsecure().
 		GetEngine()
 
 	require.NoError(t, err)
@@ -79,7 +80,8 @@ func TestClusterScale(t *testing.T) {
 			SetSssPath(filepath.Join(nodeDir, "sss.gob")).
 			SetNodeID(name).
 			SetBindPort(mlPort).
-			SetGrpcPort(0) // Dynamic
+			SetGrpcPort(0).
+			SetInsecure()
 
 		if i == 0 {
 			seedAddr = fmt.Sprintf("127.0.0.1:%d", mlPort)
@@ -153,6 +155,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		SetNodeID("node1").
 		SetBindPort(mlPort1).
 		SetGrpcPort(0).
+		SetInsecure().
 		GetEngine()
 	require.NoError(t, err)
 	eng1.Start()
@@ -174,6 +177,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		SetBindPort(0).
 		SetGrpcPort(0).
 		SetSeedNodes([]string{fmt.Sprintf("127.0.0.1:%d", mlPort1)}).
+		SetInsecure().
 		GetEngine()
 	require.NoError(t, err)
 	eng2.Start()

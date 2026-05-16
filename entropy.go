@@ -8,11 +8,14 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"google.golang.org/grpc/credentials"
 )
 
 // Reconciler defines the interface required by the anti-entropy service for state comparison.
 type Reconciler interface {
-	Digests() map[ShardID]ShardDigest
+	RootDigest() RootDigest
+	FillShardDigests(dst map[ShardID]Digest)
+	FillDigests(dst map[ShardID]ShardDigest)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 }
 
@@ -23,11 +26,12 @@ type AntiEntropyService struct {
 	storage  Reconciler
 	pools    *resourcePools
 	interval time.Duration
+	creds    credentials.TransportCredentials
 	stopChan chan struct{}
 }
 
 // newAntiEntropyService initializes a new AntiEntropyService instance.
-func newAntiEntropyService(cluster Cluster, storage Reconciler, pools *resourcePools, interval time.Duration) *AntiEntropyService {
+func newAntiEntropyService(cluster Cluster, storage Reconciler, pools *resourcePools, interval time.Duration, creds credentials.TransportCredentials) *AntiEntropyService {
 	if cluster == nil {
 		panic("anti-entropy requires a cluster implementation")
 	}
@@ -40,6 +44,7 @@ func newAntiEntropyService(cluster Cluster, storage Reconciler, pools *resourceP
 		storage:  storage,
 		pools:    pools,
 		interval: interval,
+		creds:    creds,
 		stopChan: make(chan struct{}),
 	}
 }
@@ -83,31 +88,22 @@ func (s *AntiEntropyService) performSync() {
 		return
 	}
 
-	// Pick a random member to reconcile with.
 	target := members[rand.Intn(len(members))]
-
-	// We use the gRPC client to perform the pull operation.
-	// We intentionally create a fresh client to avoid long-lived connection issues during membership churn.
-	client, err := NewInsecureClient(string(target), 2*time.Second)
+	client, err := NewClient(string(target), 2*time.Second, s.creds)
 	if err != nil {
 		slog.Debug("Failed to connect to peer for anti-entropy sync", "peer", target, "error", err)
 		return
 	}
 	defer client.Close()
 
-	// Compare shard digests to identify divergence.
-	localDigests := s.storage.Digests()
-
+	req := s.pools.pullRequests.Get().(*pb.PullRequest)
+	s.preparePullRequest(req)
+	
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	req := s.pools.pullRequests.Get().(*pb.PullRequest)
-	req.KnownDigests = localDigests
-	
 	resp, err := client.api.Pull(ctx, req)
-	
-	req.KnownDigests = nil
-	s.pools.pullRequests.Put(req)
+	s.cleanupPullRequest(req)
 
 	if err != nil {
 		slog.Error("Anti-entropy pull failed", "peer", target, "error", err)
@@ -116,12 +112,51 @@ func (s *AntiEntropyService) performSync() {
 
 	if len(resp.Entries) > 0 || len(resp.Deletions) > 0 {
 		slog.Info("Anti-entropy detected divergence and synced state",
-			"peer", target,
-			"sets", len(resp.Entries),
-			"deletes", len(resp.Deletions))
+			"peer", target, "sets", len(resp.Entries), "deletes", len(resp.Deletions))
 
 		if err := s.storage.SyncPush(resp.Entries, resp.Deletions); err != nil {
 			slog.Error("Failed to apply synced state from anti-entropy", "error", err)
 		}
 	}
+}
+
+func (s *AntiEntropyService) preparePullRequest(req *pb.PullRequest) {
+	localShards := s.pools.shardMaps.Get().(map[ShardID]Digest)
+	localBuckets := s.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
+	defer func() {
+		for k := range localShards { delete(localShards, k) }
+		for k := range localBuckets { delete(localBuckets, k) }
+		s.pools.shardMaps.Put(localShards)
+		s.pools.bucketMaps.Put(localBuckets)
+	}()
+
+	s.storage.FillShardDigests(localShards)
+	s.storage.FillDigests(localBuckets)
+
+	req.RootDigest = uint64(s.storage.RootDigest())
+	
+	// Prepare Shard Digests
+	for k := range req.ShardDigests { delete(req.ShardDigests, k) }
+	for id, h := range localShards {
+		req.ShardDigests[uint32(id)] = uint64(h)
+	}
+
+	// Prepare Sub-Bucket Digests
+	for k := range req.SubDigests { delete(req.SubDigests, k) }
+	for id, hashes := range localBuckets {
+		sd := s.pools.shardDigests.Get().(*pb.ShardDigests)
+		sd.SubHashes = hashes
+		req.SubDigests[uint32(id)] = sd
+	}
+}
+
+func (s *AntiEntropyService) cleanupPullRequest(req *pb.PullRequest) {
+	for _, sd := range req.SubDigests {
+		sd.SubHashes = nil
+		s.pools.shardDigests.Put(sd)
+	}
+	for k := range req.SubDigests {
+		delete(req.SubDigests, k)
+	}
+	s.pools.pullRequests.Put(req)
 }
