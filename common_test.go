@@ -1,6 +1,7 @@
 package dkv
 
 import (
+	"log/slog"
 	"os"
 	"testing"
 	"time"
@@ -19,6 +20,12 @@ var mockConfig EngineConfig = EngineConfig{
 	gossipInterval:  10 * time.Second,
 	clock:           NewHLC(),
 	clusterConfig:   ClusterConfig{SingleNode: true},
+}
+
+func init() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelError,
+	})))
 }
 
 func cleanupEngineMocks(t *testing.T) {

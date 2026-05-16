@@ -10,8 +10,8 @@ func NewClusterConfigBuilder() *ClusterConfigBuilder {
 	return &ClusterConfigBuilder{
 		config: ClusterConfig{
 			SingleNode: false, // Distributed by default
-			BindPort:   7946,
-			GrpcPort:   50051,
+			BindPort:   0,     // Auto-port by default
+			GrpcPort:   0,     // Auto-port by default
 		},
 	}
 }
@@ -55,6 +55,12 @@ func (cb *ClusterConfigBuilder) SetSeedNodes(seeds []string) *ClusterConfigBuild
 // SetGrpcPort sets the port of the DKV gRPC API.
 func (cb *ClusterConfigBuilder) SetGrpcPort(port int) *ClusterConfigBuilder {
 	cb.config.GrpcPort = port
+	return cb
+}
+
+// EnableFastTest optimizes cluster timing for rapid test execution.
+func (cb *ClusterConfigBuilder) EnableFastTest() *ClusterConfigBuilder {
+	cb.config.FastTest = true
 	return cb
 }
 

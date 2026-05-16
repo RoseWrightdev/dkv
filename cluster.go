@@ -2,6 +2,7 @@ package dkv
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
@@ -36,6 +37,8 @@ type ClusterConfig struct {
 	SeedNodes []string
 	// GrpcPort is the port of the DKV gRPC API, shared with peers via metadata.
 	GrpcPort int
+	// FastTest optimizes internal intervals for rapid test execution.
+	FastTest bool
 }
 
 // ClusterService manages the lifecycle of the node within a gossip-based cluster.
@@ -67,12 +70,29 @@ func newClusterService(
 	assertNotNil(mergeRemoteState, fmt.Errorf("mergeRemoteState must be defined for cluster service"))
 
 	mlConfig := memberlist.DefaultLocalConfig()
+	if config.FastTest {
+		mlConfig = memberlist.DefaultLANConfig()
+		mlConfig.PushPullInterval = 500 * time.Millisecond
+		mlConfig.GossipInterval = 20 * time.Millisecond
+		mlConfig.ProbeInterval = 100 * time.Millisecond
+		mlConfig.SuspicionMult = 2
+	}
+	mlConfig.LogOutput = io.Discard
 	mlConfig.Delegate = cs
 	mlConfig.Events = cs
-	mlConfig.Name = config.NodeName
-	mlConfig.BindAddr = config.BindAddr
+
+	if config.NodeName != "" {
+		mlConfig.Name = config.NodeName
+	}
+	if config.BindAddr != "" {
+		mlConfig.BindAddr = config.BindAddr
+	} else {
+		mlConfig.BindAddr = "127.0.0.1"
+	}
 	mlConfig.BindPort = config.BindPort
-	mlConfig.AdvertiseAddr = config.AdvertiseAddr
+	if config.AdvertiseAddr != "" {
+		mlConfig.AdvertiseAddr = config.AdvertiseAddr
+	}
 
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {

@@ -128,6 +128,11 @@ func (eb *EngineBuilder) SetGossipInterval(interval time.Duration) *EngineBuilde
 	return eb
 }
 
+func (eb *EngineBuilder) FastTest() *EngineBuilder {
+	eb.clusterBuilder.EnableFastTest()
+	return eb
+}
+
 func (eb *EngineBuilder) GetEngine() (Engine, error) {
 	if isUnit(eb.walPath) {
 		return nil, fmt.Errorf("required eb.walPath is unset; configure eb.walPath with SetWalPath(path string)")
@@ -160,9 +165,7 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 	clusterConfig := eb.clusterBuilder.Build()
 
 	if !clusterConfig.SingleNode {
-		if clusterConfig.GrpcPort == 0 {
-			return nil, fmt.Errorf("required GrpcPort is unset for distributed mode; configure it via ClusterConfigBuilder")
-		}
+		// GrpcPort 0 is allowed for dynamic allocation (e.g., in tests)
 		if isUnit(eb.gossipInterval) {
 			return nil, fmt.Errorf("required eb.gossipInterval is unset for distributed mode; configure it via SetGossipInterval")
 		}
