@@ -464,22 +464,22 @@ func (eng *engine) SyncPull(knownDigests map[ShardID]ShardDigest) ([]*pb.SetRequ
 	for shardID, localHash := range localDigests {
 		remoteHash, ok := knownDigests[shardID]
 		if !ok || localHash != remoteHash {
-			// Shard mismatch, collect all entries for this shard
-			// In a more advanced version, we would use Merkle trees here
 			shard := eng.hm[int(shardID)]
 			shard.mu.RLock()
 			for k, v := range shard.m {
 				if v.Tombstone {
-					deletes = append(deletes, &pb.DeleteRequest{
-						Key:       k,
-						Timestamp: v.Timestamp,
-					})
+					req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
+					req.Key = k
+					req.Timestamp = v.Timestamp
+					req.NodeId = v.NodeID
+					deletes = append(deletes, req)
 				} else {
-					sets = append(sets, &pb.SetRequest{
-						Key:       k,
-						Value:     v.Data,
-						Timestamp: v.Timestamp,
-					})
+					req := eng.pools.setRequests.Get().(*pb.SetRequest)
+					req.Key = k
+					req.Value = v.Data
+					req.Timestamp = v.Timestamp
+					req.NodeId = v.NodeID
+					sets = append(sets, req)
 				}
 			}
 			shard.mu.RUnlock()

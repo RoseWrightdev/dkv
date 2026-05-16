@@ -16,8 +16,9 @@ type Value struct {
 }
 
 type shard struct {
-	mu sync.RWMutex
-	m  map[Key]Value
+	mu            sync.RWMutex
+	m             map[Key]Value
+	rollingDigest uint64
 }
 
 type shardedMap [shardCount]*shard
@@ -42,36 +43,41 @@ func (sm *shardedMap) Load(key Key, hash hashKey) (Value, bool) {
 	return val, ok
 }
 
-func (sm *shardedMap) Store(key Key, hash hashKey, value Value) {
+func (sm *shardedMap) Store(key Key, hash hashKey, val Value) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
-	shard.m[key] = value
-	shard.mu.Unlock()
+	defer shard.mu.Unlock()
+
+	// Update rolling digest incrementally
+	if existing, ok := shard.m[key]; ok {
+		// XOR out the old contribution
+		shard.rollingDigest ^= uint64(hash) ^ uint64(existing.Timestamp)
+	}
+
+	// XOR in the new contribution
+	shard.rollingDigest ^= uint64(hash) ^ uint64(val.Timestamp)
+	shard.m[key] = val
 }
 
 func (sm *shardedMap) Delete(key Key, hash hashKey) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
-	delete(shard.m, key)
-	shard.mu.Unlock()
+	defer shard.mu.Unlock()
+
+	if existing, ok := shard.m[key]; ok {
+		// XOR out the contribution before deleting
+		shard.rollingDigest ^= uint64(hash) ^ uint64(existing.Timestamp)
+		delete(shard.m, key)
+	}
 }
 
 func (sm *shardedMap) Digests() map[ShardID]ShardDigest {
 	digests := make(map[ShardID]ShardDigest)
 	for i := range shardCount {
-		digests[ShardID(i)] = sm[i].digest()
+		shard := sm[i]
+		shard.mu.RLock()
+		digests[ShardID(i)] = shard.rollingDigest
+		shard.mu.RUnlock()
 	}
 	return digests
-}
-
-func (s *shard) digest() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	var h uint64
-	for k, v := range s.m {
-		kh := hashFunc(k)
-		// XOR is commutative, making the digest order-independent
-		h ^= uint64(kh) ^ uint64(v.Timestamp)
-	}
-	return h
 }
