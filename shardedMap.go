@@ -55,20 +55,6 @@ func (sm *shardedMap) Delete(key Key, hash hashKey) {
 	shard.mu.Unlock()
 }
 
-func (sm *shardedMap) Range(fn func(k, v any) bool) {
-	for i := range shardCount {
-		shard := sm[i]
-		shard.mu.RLock()
-		for k, v := range shard.m {
-			if !fn(k, v) {
-				shard.mu.RUnlock()
-				return
-			}
-		}
-		shard.mu.RUnlock()
-	}
-}
-
 func (sm *shardedMap) Digests() map[ShardID]ShardDigest {
 	digests := make(map[ShardID]ShardDigest)
 	for i := range shardCount {
