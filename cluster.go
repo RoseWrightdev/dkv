@@ -90,9 +90,6 @@ func newClusterService(
 
 // Broadcast serializes and spreads a message across the cluster using epidemic gossip.
 func (cs *ClusterService) Broadcast(msg []byte) {
-	if cs.broadcasts == nil {
-		return
-	}
 	cs.broadcasts.QueueBroadcast(&broadcast{
 		msg: msg,
 	})
@@ -100,10 +97,6 @@ func (cs *ClusterService) Broadcast(msg []byte) {
 
 // Members returns the gRPC API addresses of all active peers discovered via gossip.
 func (cs *ClusterService) Members() []PeerAddress {
-	if cs.memberList == nil {
-		return nil
-	}
-
 	members := cs.memberList.Members()
 	addrs := make([]PeerAddress, 0, len(members))
 	for _, m := range members {
@@ -162,9 +155,7 @@ func (cs *ClusterService) LocalState(join bool) []byte {
 }
 
 func (cs *ClusterService) MergeRemoteState(buf []byte, join bool) {
-	if cs.mergeRemoteState != nil {
-		cs.mergeRemoteState(buf)
-	}
+	cs.mergeRemoteState(buf)
 }
 
 // memberlist.EventDelegate implementation
@@ -178,7 +169,7 @@ func (cs *ClusterService) NotifyLeave(node *memberlist.Node) {
 }
 
 func (cs *ClusterService) NotifyUpdate(node *memberlist.Node) {
-	slog.Debug("Cluster member updated", "name", node.Name)
+	slog.Debug("Cluster member updated", "name", node.Name, "addr", node.Addr.String())
 }
 
 // NopCluster is a non-functional implementation of the Cluster interface used when distribution is disabled.
