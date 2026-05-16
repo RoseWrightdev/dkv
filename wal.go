@@ -16,7 +16,7 @@ import (
 
 type Waler interface {
 	publish(key Key, hash hashKey, msg proto.Message) error
-	replay() (map[Key]internalValue, error)
+	replay() (map[Key]Value, error)
 	clear() error
 	start()
 	stop()
@@ -188,8 +188,8 @@ func (w *Wal) publish(key Key, hash hashKey, msg proto.Message) error {
 	return nil
 }
 
-func (w *Wal) replay() (map[Key]internalValue, error) {
-	results := make(map[Key]internalValue)
+func (w *Wal) replay() (map[Key]Value, error) {
+	results := make(map[Key]Value)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var firstErr error
@@ -209,7 +209,7 @@ func (w *Wal) replay() (map[Key]internalValue, error) {
 	return results, firstErr
 }
 
-func (w *Wal) replaySegment(seg *walSegment, results map[Key]internalValue, resultsMu *sync.Mutex) error {
+func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *sync.Mutex) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 
@@ -255,15 +255,15 @@ func (w *Wal) replaySegment(seg *walSegment, results map[Key]internalValue, resu
 		resultsMu.Lock()
 		switch kv := entry.Entry.(type) {
 		case *pb.WalEntry_Set:
-			results[kv.Set.Key] = internalValue{
+			results[kv.Set.Key] = Value{
 				Data:      kv.Set.Value,
 				Timestamp: kv.Set.Timestamp,
-				IsDeleted: false,
+				Tombstone: false,
 			}
 		case *pb.WalEntry_Delete:
-			results[kv.Delete.Key] = internalValue{
+			results[kv.Delete.Key] = Value{
 				Timestamp: kv.Delete.Timestamp,
-				IsDeleted: true,
+				Tombstone: true,
 			}
 		}
 		resultsMu.Unlock()

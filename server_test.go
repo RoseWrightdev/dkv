@@ -13,7 +13,7 @@ type mockEngine struct {
 	mock.Mock
 }
 
-func (m *mockEngine) Get(key Key) (Value, bool) {
+func (m *mockEngine) Get(key Key) ([]byte, bool) {
 	args := m.Called(key)
 	if v := args.Get(0); v != nil {
 		return v.([]byte), args.Bool(1)
@@ -21,7 +21,7 @@ func (m *mockEngine) Get(key Key) (Value, bool) {
 	return nil, args.Bool(1)
 }
 
-func (m *mockEngine) Set(key Key, value Value) error {
+func (m *mockEngine) Set(key Key, value []byte) error {
 	args := m.Called(key, value)
 	return args.Error(0)
 }

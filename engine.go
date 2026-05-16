@@ -12,8 +12,8 @@ import (
 )
 
 type Engine interface {
-	Get(key Key) (Value, bool)
-	Set(key Key, value Value) error
+	Get(key Key) ([]byte, bool)
+	Set(key Key, value []byte) error
 	Delete(key Key) error
 	Start()
 	Stop()
@@ -51,9 +51,9 @@ type EngineConfig struct {
 // snapshotEntry is used for streaming serialization
 type snapshotEntry struct {
 	Key       Key
-	Value     Value
+	Data      []byte
 	Timestamp int64
-	IsDeleted bool
+	Tombstone bool
 }
 
 func newEngine(config EngineConfig) (Engine, error) {
@@ -133,17 +133,16 @@ func (eng *engine) Stop() {
 	eng.evictionService.stop()
 }
 
-func (eng *engine) Get(key Key) (Value, bool) {
-	hash := hashFunc(key)
-	eng.evictionService.publish(key, hash)
+func (eng *engine) Get(key Key) ([]byte, bool) {
+	hash := hashKey(hashFunc(key))
 	iv, ok := eng.hm.Load(key, hash)
-	if !ok || iv.IsDeleted {
+	if !ok || iv.Tombstone {
 		return nil, false
 	}
 	return iv.Data, true
 }
 
-func (eng *engine) Set(key Key, value Value) error {
+func (eng *engine) Set(key Key, value []byte) error {
 	hash := hashFunc(key)
 	eng.evictionService.publish(key, hash)
 	
@@ -160,10 +159,10 @@ func (eng *engine) Set(key Key, value Value) error {
 		return err
 	}
 
-	eng.hm.Store(key, hash, internalValue{
+	eng.hm.Store(key, hash, Value{
 		Data:      value,
 		Timestamp: ts,
-		IsDeleted: false,
+		Tombstone: false,
 	})
 
 	if eng.cluster != nil {
@@ -192,9 +191,9 @@ func (eng *engine) Delete(key Key) error {
 	if err != nil {
 		return err
 	}
-	eng.hm.Store(key, hash, internalValue{
+	eng.hm.Store(key, hash, Value{
 		Timestamp: ts,
-		IsDeleted: true,
+		Tombstone: true,
 	})
 
 	if eng.cluster != nil {
@@ -224,9 +223,9 @@ func (eng *engine) Evict(key Key) error {
 	if err != nil {
 		return err
 	}
-	eng.hm.Store(key, hash, internalValue{
+	eng.hm.Store(key, hash, Value{
 		Timestamp: ts,
-		IsDeleted: true,
+		Tombstone: true,
 	})
 
 	if eng.cluster != nil {
@@ -249,22 +248,22 @@ func (eng *engine) Snapshot() error {
 func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 	var err error
 	eng.hm.Range(func(k, v any) bool {
-		iv := v.(internalValue)
+		iv := v.(Value)
 		entry := eng.snapshotEntryPool.Get().(*snapshotEntry)
 		entry.Key = k.(Key)
-		entry.Value = iv.Data
+		entry.Data = iv.Data
 		entry.Timestamp = iv.Timestamp
-		entry.IsDeleted = iv.IsDeleted
+		entry.Tombstone = iv.Tombstone
 		
 		if e := enc.Encode(entry); e != nil {
 			err = e
 			entry.Key = ""
-			entry.Value = nil
+			entry.Data = nil
 			eng.snapshotEntryPool.Put(entry)
 			return false
 		}
 		entry.Key = ""
-		entry.Value = nil
+		entry.Data = nil
 		eng.snapshotEntryPool.Put(entry)
 		return true
 	})
@@ -286,10 +285,10 @@ func (eng *engine) recover(sssPath string) error {
 			if err := dec.Decode(&entry); err != nil {
 				break // End of file or error
 			}
-			eng.hm.Store(entry.Key, hashFunc(entry.Key), internalValue{
-				Data:      entry.Value,
+			eng.hm.Store(entry.Key, hashFunc(entry.Key), Value{
+				Data:      entry.Data,
 				Timestamp: entry.Timestamp,
-				IsDeleted: entry.IsDeleted,
+				Tombstone: entry.Tombstone,
 			})
 			count++
 		}
@@ -336,10 +335,10 @@ func (eng *engine) applyGossipSet(req *pb.SetRequest) {
 	}
 
 	// Apply update
-	eng.hm.Store(req.Key, hash, internalValue{
+	eng.hm.Store(req.Key, hash, Value{
 		Data:      req.Value,
 		Timestamp: req.Timestamp,
-		IsDeleted: false,
+		Tombstone: false,
 	})
 
 	// Also write to WAL for persistence
@@ -354,9 +353,9 @@ func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) {
 		return
 	}
 
-	eng.hm.Store(req.Key, hash, internalValue{
+	eng.hm.Store(req.Key, hash, Value{
 		Timestamp: req.Timestamp,
-		IsDeleted: true,
+		Tombstone: true,
 	})
 	_ = eng.wal.publish(req.Key, hash, req)
 }
@@ -374,7 +373,7 @@ func (eng *engine) SyncPull(knownDigests map[int32]uint64) ([]*pb.SetRequest, []
 			shard := eng.hm[shardID]
 			shard.mu.RLock()
 			for k, v := range shard.m {
-				if v.IsDeleted {
+				if v.Tombstone {
 					deletes = append(deletes, &pb.DeleteRequest{
 						Key:       k,
 						Timestamp: v.Timestamp,

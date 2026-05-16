@@ -15,8 +15,8 @@ Establish a mechanism for nodes to distinguish between old and new data without 
     *   Regenerated gRPC and Protobuf bindings.
     *   *Rationale*: Distributed systems require a common reference point for ordering events. Physical time (Wall Clock) was chosen for its simplicity in an AP system.
 2.  **Internal Storage Refactoring (`shardedMap.go`)**:
-    *   Changed storage type from `[]byte` to `internalValue` struct.
-    *   Added `IsDeleted` (Tombstone) flag to handle distributed deletions.
+    *   Changed storage type from `[]byte` to `Value` struct.
+    *   Added `Tombstone` (Tombstone) flag to handle distributed deletions.
     *   *Rationale*: To correctly propagate a delete, we must store the fact that a key was deleted at a specific time; otherwise, an older `Set` might "resurrect" the key during a sync.
 3.  **Clock Integration (`clock.go`)**:
     *   Defined `Clock` interface and `MonotonicClock` implementation.

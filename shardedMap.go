@@ -3,19 +3,18 @@ package dkv
 import "sync"
 
 type Key = string
-type Value = []byte
 
 const shardCount = 128
 
-type internalValue struct {
+type Value struct {
 	Data      []byte
 	Timestamp int64
-	IsDeleted bool
+	Tombstone bool
 }
 
 type shard struct {
 	mu sync.RWMutex
-	m  map[Key]internalValue
+	m  map[Key]Value
 }
 
 type shardedMap [shardCount]*shard
@@ -23,7 +22,7 @@ type shardedMap [shardCount]*shard
 func newShardedMap() *shardedMap {
 	var sm shardedMap
 	for i := range shardCount {
-		sm[i] = &shard{m: make(map[Key]internalValue)}
+		sm[i] = &shard{m: make(map[Key]Value)}
 	}
 	return &sm
 }
@@ -32,7 +31,7 @@ func (sm *shardedMap) getShardByHash(hash hashKey) *shard {
 	return sm[hash%shardCount]
 }
 
-func (sm *shardedMap) Load(key Key, hash hashKey) (internalValue, bool) {
+func (sm *shardedMap) Load(key Key, hash hashKey) (Value, bool) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.RLock()
 	val, ok := shard.m[key]
@@ -40,7 +39,7 @@ func (sm *shardedMap) Load(key Key, hash hashKey) (internalValue, bool) {
 	return val, ok
 }
 
-func (sm *shardedMap) Store(key Key, hash hashKey, value internalValue) {
+func (sm *shardedMap) Store(key Key, hash hashKey, value Value) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	shard.m[key] = value
