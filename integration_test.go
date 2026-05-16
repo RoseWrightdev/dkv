@@ -62,7 +62,7 @@ func TestClusterScale(t *testing.T) {
 	var clients []*dkv.Client
 	var seedAddr string
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		name := fmt.Sprintf("node-%d", i)
 		nodeDir := filepath.Join(tmpDir, name)
 		os.MkdirAll(nodeDir, 0755)
@@ -159,7 +159,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	defer eng1.Stop()
 
 	// Write data while Node 2 is DOWN
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		err = eng1.Set(fmt.Sprintf("rec-%d", i), []byte("data"))
 		require.NoError(t, err)
 	}
@@ -180,7 +180,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	defer eng2.Stop()
 
 	// Polling verification
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		key := fmt.Sprintf("rec-%d", i)
 		require.Eventually(t, func() bool {
 			_, ok := eng2.Get(key)
