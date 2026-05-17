@@ -257,6 +257,7 @@ func (s *lruShard) evictOldest() {
 	default:
 	}
 
+	e.key = ""
 	s.pool.Put(e)
 }
 
@@ -279,6 +280,7 @@ func (s *lruShard) evictExpired() {
 		default:
 		}
 
+		e.key = ""
 		s.pool.Put(e)
 	}
 }
@@ -290,6 +292,7 @@ func (s *lruShard) delete(hKey hashKey) {
 	if e, ok := s.cache[hKey]; ok {
 		s.remove(e)
 		delete(s.cache, hKey)
+		e.key = ""
 		s.pool.Put(e)
 	}
 }

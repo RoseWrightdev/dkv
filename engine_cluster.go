@@ -64,6 +64,9 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 	if ok && !iv.Tombstone {
 		eng.evictionService.publish(key, hash)
 		return iv.Data, true
+	} else if ok && iv.Tombstone {
+		// We have a local tombstone. Do not proxy the read as the key is known to be deleted.
+		return nil, false
 	}
 
 	// Gateway Proxy: If we don't have it locally, fetch it from an owner

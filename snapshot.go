@@ -15,7 +15,6 @@ type SnapShotService struct {
 	cancel      context.CancelFunc
 	ch          chan struct{}
 	wg          sync.WaitGroup
-	file        *os.File
 	path        string
 	interval    time.Duration
 	wal         Waler
@@ -25,19 +24,11 @@ type SnapShotService struct {
 func newSnapshotService(path string, interval time.Duration, wal Waler, encCallBack func(*gob.Encoder) error) (*SnapShotService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// #nosec G304
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-
 	ch := make(chan struct{}, 1)
 	sss := &SnapShotService{
 		ctx:         ctx,
 		cancel:      cancel,
 		ch:          ch,
-		file:        file,
 		path:        path,
 		interval:    interval,
 		wal:         wal,
@@ -58,9 +49,6 @@ func (sss *SnapShotService) start() {
 func (sss *SnapShotService) stop() {
 	sss.cancel()
 	sss.wg.Wait()
-	if sss.file != nil {
-		_ = sss.file.Close()
-	}
 }
 
 func (sss *SnapShotService) producer(ctx context.Context) {
@@ -139,16 +127,6 @@ func (sss *SnapShotService) create() error {
 		return err
 	}
 
-	newFile, err := os.OpenFile(sss.path, os.O_CREATE|os.O_RDWR, 0600)
-	if err == nil {
-		if sss.file != nil {
-			err := sss.file.Close()
-			if err != nil {
-				return err
-			}
-		}
-		sss.file = newFile
-	}
 
 	if err := sss.wal.clear(offsets); err != nil {
 		return err

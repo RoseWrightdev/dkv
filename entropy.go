@@ -138,12 +138,6 @@ func (s *EntropyService) preparePullRequest(req *pb.PullRequest) {
 	localShards := s.pools.shardMaps.Get().(map[ShardID]Digest)
 	localBuckets := s.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
 	defer func() {
-		for k := range localShards {
-			delete(localShards, k)
-		}
-		for k := range localBuckets {
-			delete(localBuckets, k)
-		}
 		s.pools.shardMaps.Put(localShards)
 		s.pools.bucketMaps.Put(localBuckets)
 	}()

@@ -123,12 +123,6 @@ func (eng *engine) SyncPull(requesterID NodeID, root RootDigest, shards map[Shar
 	localShardDigests := eng.pools.shardMaps.Get().(map[ShardID]Digest)
 	localBuckets := eng.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
 	defer func() {
-		for k := range localShardDigests {
-			delete(localShardDigests, k)
-		}
-		for k := range localBuckets {
-			delete(localBuckets, k)
-		}
 		eng.pools.shardMaps.Put(localShardDigests)
 		eng.pools.bucketMaps.Put(localBuckets)
 	}()

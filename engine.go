@@ -240,6 +240,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 	eng.hm.Store(key, hash, Value{
 		Data:      value,
 		Timestamp: ts,
+		NodeID:    string(eng.clusterConfig.NodeID),
 		Tombstone: false,
 	})
 
@@ -280,6 +281,7 @@ func (eng *engine) Delete(key Key) error {
 	}
 	eng.hm.Store(key, hash, Value{
 		Timestamp: ts,
+		NodeID:    string(eng.clusterConfig.NodeID),
 		Tombstone: true,
 	})
 
@@ -324,6 +326,7 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 	}
 	eng.hm.Store(key, hash, Value{
 		Timestamp: ts,
+		NodeID:    string(eng.clusterConfig.NodeID),
 		Tombstone: true,
 	})
 
