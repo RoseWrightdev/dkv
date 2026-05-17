@@ -24,6 +24,7 @@ type Reconciler interface {
 type AntiEntropyService struct {
 	cluster  Cluster
 	storage  Reconciler
+	nodeID   NodeID
 	pools    *resourcePools
 	interval time.Duration
 	creds    credentials.TransportCredentials
@@ -31,7 +32,7 @@ type AntiEntropyService struct {
 }
 
 // newAntiEntropyService initializes a new AntiEntropyService instance.
-func newAntiEntropyService(cluster Cluster, storage Reconciler, pools *resourcePools, interval time.Duration, creds credentials.TransportCredentials) *AntiEntropyService {
+func newAntiEntropyService(nodeID NodeID, cluster Cluster, storage Reconciler, pools *resourcePools, interval time.Duration, creds credentials.TransportCredentials) *AntiEntropyService {
 	if cluster == nil {
 		panic("anti-entropy requires a cluster implementation")
 	}
@@ -42,6 +43,7 @@ func newAntiEntropyService(cluster Cluster, storage Reconciler, pools *resourceP
 	return &AntiEntropyService{
 		cluster:  cluster,
 		storage:  storage,
+		nodeID:   nodeID,
 		pools:    pools,
 		interval: interval,
 		creds:    creds,
@@ -98,7 +100,7 @@ func (s *AntiEntropyService) performSync() {
 
 	req := s.pools.pullRequests.Get().(*pb.PullRequest)
 	s.preparePullRequest(req)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -124,8 +126,12 @@ func (s *AntiEntropyService) preparePullRequest(req *pb.PullRequest) {
 	localShards := s.pools.shardMaps.Get().(map[ShardID]Digest)
 	localBuckets := s.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
 	defer func() {
-		for k := range localShards { delete(localShards, k) }
-		for k := range localBuckets { delete(localBuckets, k) }
+		for k := range localShards {
+			delete(localShards, k)
+		}
+		for k := range localBuckets {
+			delete(localBuckets, k)
+		}
 		s.pools.shardMaps.Put(localShards)
 		s.pools.bucketMaps.Put(localBuckets)
 	}()
@@ -133,16 +139,21 @@ func (s *AntiEntropyService) preparePullRequest(req *pb.PullRequest) {
 	s.storage.FillShardDigests(localShards)
 	s.storage.FillDigests(localBuckets)
 
+	req.NodeId = string(s.nodeID)
 	req.RootDigest = uint64(s.storage.RootDigest())
-	
+
 	// Prepare Shard Digests
-	for k := range req.ShardDigests { delete(req.ShardDigests, k) }
+	for k := range req.ShardDigests {
+		delete(req.ShardDigests, k)
+	}
 	for id, h := range localShards {
 		req.ShardDigests[uint32(id)] = uint64(h)
 	}
 
 	// Prepare Sub-Bucket Digests
-	for k := range req.SubDigests { delete(req.SubDigests, k) }
+	for k := range req.SubDigests {
+		delete(req.SubDigests, k)
+	}
 	for id, hashes := range localBuckets {
 		sd := s.pools.shardDigests.Get().(*pb.ShardDigests)
 		sd.SubHashes = hashes

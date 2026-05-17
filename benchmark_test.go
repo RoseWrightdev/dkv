@@ -272,7 +272,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	b.Run("SyncPull_Identical", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			_, _, _ = eng.SyncPull(root, shards, buckets)
+			_, _, _ = eng.SyncPull("node-1", root, shards, buckets)
 		}
 	})
 
@@ -282,7 +282,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	b.Run("SyncPull_SingleMismatch", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			_, _, _ = eng.SyncPull(root, shards, buckets)
+			_, _, _ = eng.SyncPull("node-1", root, shards, buckets)
 		}
 	})
 
@@ -294,7 +294,19 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	b.Run("SyncPull_FullDivergence", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			_, _, _ = eng.SyncPull(root, shards, buckets)
+			_, _, _ = eng.SyncPull("node-1", root, shards, buckets)
 		}
 	})
+}
+func BenchmarkHashRing_GetNode(b *testing.B) {
+	ring := NewHashRing()
+	for i := range 10 {
+		ring.AddNode(NodeID(fmt.Sprintf("node-%d", i)))
+	}
+
+	key := "some-very-long-key-to-hash"
+	
+	for b.Loop() {
+		_ = ring.GetNode(key)
+	}
 }

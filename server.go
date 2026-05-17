@@ -60,7 +60,7 @@ func newServerPools() *serverPools {
 }
 
 func (s *server) Get(_ context.Context, in *pb.GetRequest) (*pb.GetResponse, error) {
-	val, ok := s.eng.Get(in.GetKey())
+	val, ok := s.eng.Get(Key(in.GetKey()))
 	resp := s.pools.getResponses.Get().(*pb.GetResponse)
 	resp.Value = val
 	resp.Exists = ok
@@ -105,7 +105,7 @@ func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, 
 		buckets[ShardID(id)] = sd.SubHashes
 	}
 
-	sets, deletes, err := s.eng.SyncPull(in.RootDigest, shards, buckets)
+	sets, deletes, err := s.eng.SyncPull(NodeID(in.NodeId), in.RootDigest, shards, buckets)
 	if err != nil {
 		return nil, err
 	}

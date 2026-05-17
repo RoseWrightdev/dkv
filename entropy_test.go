@@ -24,10 +24,11 @@ func TestAntiEntropySync(t *testing.T) {
 		SetWalPath(filepath.Join(n1Dir, "wal")).
 		SetSssPath(filepath.Join(n1Dir, "sss.gob")).
 		SetGossipInterval(100 * time.Millisecond).
-		SetNodeID("node1").
+		SetNodeID(NodeID("node1")).
 		SetBindPort(9001).
 		SetGrpcPort(9002).
 		SetInsecure().
+		SetReplicationFactor(2).
 		GetEngine()
 	require.NoError(t, err)
 
@@ -37,11 +38,6 @@ func TestAntiEntropySync(t *testing.T) {
 	go s1.Run(l1)
 	defer s1.Stop()
 
-	// Write data to Node 1
-	key, val := "entropy-key", []byte("eventual-data")
-	err = e1.Set(key, val)
-	require.NoError(t, err)
-
 	// Setup Node 2 and join Node 1
 	n2Dir := filepath.Join(tmpDir, "node2")
 	os.MkdirAll(n2Dir, 0755)
@@ -50,11 +46,12 @@ func TestAntiEntropySync(t *testing.T) {
 		SetWalPath(filepath.Join(n2Dir, "wal")).
 		SetSssPath(filepath.Join(n2Dir, "sss.gob")).
 		SetGossipInterval(100 * time.Millisecond).
-		SetNodeID("node2").
+		SetNodeID(NodeID("node2")).
 		SetBindPort(9003).
 		SetSeedNodes([]string{"127.0.0.1:9001"}).
 		SetGrpcPort(9004).
 		SetInsecure().
+		SetReplicationFactor(2).
 		GetEngine()
 	require.NoError(t, err)
 
@@ -69,11 +66,20 @@ func TestAntiEntropySync(t *testing.T) {
 	defer e1.Stop()
 	defer e2.Stop()
 
+	// Wait for cluster to stabilize
+	time.Sleep(500 * time.Millisecond)
+
+	// Write data to Node 1 (using a key it owns in the final topology)
+	key := FindKeyForNode(e1, "node1")
+	val := []byte("eventual-data")
+	err = e1.Set(key, val)
+	require.NoError(t, err)
+
 	// Wait for Anti-Entropy to perform sync (if it hasn't already via memberlist join)
 	time.Sleep(1500 * time.Millisecond)
 
 	// Verify sync
-	got, ok := e2.Get(key)
+	got, ok := e2.Get(Key(key))
 	assert.True(t, ok, "Node 2 should have reconciled the key")
 	assert.Equal(t, val, got)
 
@@ -84,6 +90,6 @@ func TestAntiEntropySync(t *testing.T) {
 	// Wait for Anti-Entropy again.
 	time.Sleep(1500 * time.Millisecond)
 
-	_, ok = e2.Get(key)
+	_, ok = e2.Get(Key(key))
 	assert.False(t, ok, "Node 2 should have reconciled the deletion via Anti-Entropy")
 }

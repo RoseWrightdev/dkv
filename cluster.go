@@ -16,6 +16,9 @@ type PeerAddress string
 type Cluster interface {
 	Broadcast(msg []byte)
 	Members() []PeerAddress
+	Owner(key Key) NodeID
+	GetOwners(key Key, n int) []NodeID
+	AddressForNode(nodeID NodeID) string
 	start() error
 	stop() error
 }
@@ -25,8 +28,10 @@ type ClusterConfig struct {
 	// SingleNode explicitly disables the distribution layer when set to true.
 	// dkv is distributed by default.
 	SingleNode bool
+	// ReplicationFactor determines how many copies of each key are stored in the cluster.
+	ReplicationFactor int
 	// NodeID is a unique identifier for this node in the cluster.
-	NodeID string
+	NodeID NodeID
 	// BindAddr is the address memberlist will bind to for gossip (UDP/TCP).
 	BindAddr string
 	// BindPort is the port memberlist will use.
@@ -49,6 +54,7 @@ type ClusterService struct {
 	onMessage        func([]byte)
 	getLocalState    func() []byte
 	mergeRemoteState func([]byte)
+	ring             *HashRing
 }
 
 // newClusterService initializes a new ClusterService instance.
@@ -58,11 +64,13 @@ func newClusterService(
 	getLocalState func() []byte,
 	mergeRemoteState func([]byte),
 ) (*ClusterService, error) {
+	ring := NewHashRing()
 	cs := &ClusterService{
 		config:           config,
 		onMessage:        onMessage,
 		getLocalState:    getLocalState,
 		mergeRemoteState: mergeRemoteState,
+		ring:             ring,
 	}
 
 	if onMessage == nil {
@@ -88,7 +96,7 @@ func newClusterService(
 	mlConfig.Events = cs
 
 	if config.NodeID != "" {
-		mlConfig.Name = config.NodeID
+		mlConfig.Name = string(config.NodeID)
 	}
 	if config.BindAddr != "" {
 		mlConfig.BindAddr = config.BindAddr
@@ -100,6 +108,7 @@ func newClusterService(
 		mlConfig.AdvertiseAddr = config.AdvertiseAddr
 	}
 
+	mlConfig.Events = cs
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memberlist: %w", err)
@@ -131,6 +140,45 @@ func (cs *ClusterService) Members() []PeerAddress {
 		}
 	}
 	return addrs
+}
+
+// AddressForNode returns the gRPC address for a given node ID.
+func (cs *ClusterService) AddressForNode(nodeID NodeID) string {
+	for _, m := range cs.memberList.Members() {
+		if m.Name == string(nodeID) {
+			if len(m.Meta) > 0 {
+				return fmt.Sprintf("%s:%s", m.Addr.String(), string(m.Meta))
+			}
+			break
+		}
+	}
+	return ""
+}
+
+// Owner returns the NodeID of the peer responsible for the given key.
+func (cs *ClusterService) Owner(key Key) NodeID {
+	return cs.ring.GetNode(key)
+}
+
+func (cs *ClusterService) GetOwners(key Key, n int) []NodeID {
+	return cs.ring.GetOwners(key, n)
+}
+
+// NotifyJoin is called by memberlist when a new node joins.
+func (cs *ClusterService) NotifyJoin(node *memberlist.Node) {
+	slog.Info("Node joined cluster", "node", node.Name, "addr", node.Addr.String())
+	cs.ring.AddNode(NodeID(node.Name))
+}
+
+// NotifyLeave is called by memberlist when a node leaves.
+func (cs *ClusterService) NotifyLeave(node *memberlist.Node) {
+	slog.Info("Node left cluster", "node", node.Name)
+	cs.ring.RemoveNode(NodeID(node.Name))
+}
+
+// NotifyUpdate is called by memberlist when a node's metadata changes.
+func (cs *ClusterService) NotifyUpdate(node *memberlist.Node) {
+	// Ring distribution depends only on node name, so update is a no-op.
 }
 
 func (cs *ClusterService) start() error {
@@ -184,27 +232,16 @@ func (cs *ClusterService) MergeRemoteState(buf []byte, join bool) {
 	cs.mergeRemoteState(buf)
 }
 
-// memberlist.EventDelegate implementation
-
-func (cs *ClusterService) NotifyJoin(node *memberlist.Node) {
-	slog.Debug("Cluster member joined", "name", node.Name, "addr", node.Addr.String())
-}
-
-func (cs *ClusterService) NotifyLeave(node *memberlist.Node) {
-	slog.Debug("Cluster member left", "name", node.Name, "addr", node.Addr.String())
-}
-
-func (cs *ClusterService) NotifyUpdate(node *memberlist.Node) {
-	slog.Debug("Cluster member updated", "name", node.Name, "addr", node.Addr.String())
-}
-
 // NopCluster is a non-functional implementation of the Cluster interface used when distribution is disabled.
 type NopCluster struct{}
 
-func (n *NopCluster) Broadcast([]byte)       {}
-func (n *NopCluster) Members() []PeerAddress { return nil }
-func (n *NopCluster) start() error           { return nil }
-func (n *NopCluster) stop() error            { return nil }
+func (n *NopCluster) Broadcast([]byte)             {}
+func (n *NopCluster) Members() []PeerAddress       { return nil }
+func (n *NopCluster) Owner(Key) NodeID             { return "" }
+func (n *NopCluster) GetOwners(Key, int) []NodeID  { return nil }
+func (n *NopCluster) AddressForNode(NodeID) string { return "" }
+func (n *NopCluster) start() error                 { return nil }
+func (n *NopCluster) stop() error                  { return nil }
 
 type broadcast struct {
 	msg []byte

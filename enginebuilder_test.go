@@ -101,7 +101,7 @@ func TestEngineBuilder_Validation(t *testing.T) {
 
 func TestEngineBuilder_ProxyMethods(t *testing.T) {
 	eb := NewEngineBuilder()
-	eb.SetNodeID("test-node").
+	eb.SetNodeID(NodeID("test-node")).
 		SetBindAddr("127.0.0.1").
 		SetBindPort(1234).
 		SetAdvertiseAddr("1.2.3.4").
@@ -109,7 +109,7 @@ func TestEngineBuilder_ProxyMethods(t *testing.T) {
 		SetGrpcPort(8080)
 
 	cfg := eb.clusterBuilder.Build()
-	assert.Equal(t, "test-node", cfg.NodeID)
+	assert.Equal(t, NodeID("test-node"), cfg.NodeID)
 	assert.Equal(t, "127.0.0.1", cfg.BindAddr)
 	assert.Equal(t, 1234, cfg.BindPort)
 	assert.Equal(t, "1.2.3.4", cfg.AdvertiseAddr)

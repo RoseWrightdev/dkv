@@ -3,6 +3,7 @@ package dkv
 import (
 	"fmt"
 	"time"
+
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -92,8 +93,13 @@ func (eb *EngineBuilder) SetCluster(cb *ClusterConfigBuilder) *EngineBuilder {
 // Proxy methods for ClusterConfigBuilder
 // These allow for a flatter API while maintaining modularity under the hood.
 
-func (eb *EngineBuilder) SetNodeID(id string) *EngineBuilder {
+func (eb *EngineBuilder) SetNodeID(id NodeID) *EngineBuilder {
 	eb.clusterBuilder.SetNodeID(id)
+	return eb
+}
+
+func (eb *EngineBuilder) SetReplicationFactor(n int) *EngineBuilder {
+	eb.clusterBuilder.SetReplicationFactor(n)
 	return eb
 }
 
@@ -191,14 +197,14 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 	}
 
 	config := EngineConfig{
-		walPath:         eb.walPath,
-		sssPath:         eb.sssPath,
-		walSyncInterval: eb.walSyncInterval,
-		sssInterval:     eb.sssInterval,
-		walBufferSize:   eb.walBufferSize,
-		walSegments:     eb.walSegments,
-		evictionService: eb.evictionService,
-		clock:           eb.clock,
+		walPath:              eb.walPath,
+		sssPath:              eb.sssPath,
+		walSyncInterval:      eb.walSyncInterval,
+		sssInterval:          eb.sssInterval,
+		walBufferSize:        eb.walBufferSize,
+		walSegments:          eb.walSegments,
+		evictionService:      eb.evictionService,
+		clock:                eb.clock,
 		clusterConfig:        clusterConfig,
 		gossipInterval:       eb.gossipInterval,
 		transportCredentials: eb.creds,

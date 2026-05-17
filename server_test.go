@@ -31,6 +31,11 @@ func (m *mockEngine) Delete(key Key) error {
 	return args.Error(0)
 }
 
+func (m *mockEngine) Owner(key Key) NodeID {
+	args := m.Called(key)
+	return NodeID(args.String(0))
+}
+
 func (m *mockEngine) Start() { m.Called() }
 func (m *mockEngine) Stop()  { m.Called() }
 
@@ -39,8 +44,8 @@ func (m *mockEngine) Snapshot() error {
 	return args.Error(0)
 }
 
-func (m *mockEngine) SyncPull(root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	args := m.Called(root, shards, buckets)
+func (m *mockEngine) SyncPull(requesterID NodeID, root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	args := m.Called(requesterID, root, shards, buckets)
 	return args.Get(0).([]*pb.SetRequest), args.Get(1).([]*pb.DeleteRequest), args.Error(2)
 }
 
@@ -72,11 +77,11 @@ func TestServerHandlers(t *testing.T) {
 		root := RootDigest(12345)
 		buckets := map[ShardID]ShardDigest{1: make([]Digest, 64)}
 		buckets[1][0] = 123
-		
+
 		sets := []*pb.SetRequest{{Key: "k1", Value: []byte("v1")}}
 		deletes := []*pb.DeleteRequest{{Key: "k2"}}
 
-		me.On("SyncPull", root, mock.Anything, mock.Anything).Return(sets, deletes, nil).Once()
+		me.On("SyncPull", mock.Anything, root, mock.Anything, mock.Anything).Return(sets, deletes, nil).Once()
 
 		req := &pb.PullRequest{
 			RootDigest:   root,
@@ -102,7 +107,7 @@ func TestServerHandlers(t *testing.T) {
 	})
 
 	t.Run("Pull_Error", func(t *testing.T) {
-		me.On("SyncPull", mock.Anything, mock.Anything, mock.Anything).Return([]*pb.SetRequest{}, []*pb.DeleteRequest{}, assert.AnError).Once()
+		me.On("SyncPull", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*pb.SetRequest{}, []*pb.DeleteRequest{}, assert.AnError).Once()
 
 		_, err := srv.Pull(context.Background(), &pb.PullRequest{})
 		assert.Error(t, err)

@@ -19,7 +19,7 @@ func TestEngineOperations(t *testing.T) {
 
 	err = eng.Set("key", bytes)
 	assert.Nil(t, err)
-	val, ok := eng.Get("key")
+	val, ok := eng.Get(Key("key"))
 	assert.Equal(t, val, bytes)
 	assert.True(t, ok)
 
@@ -27,7 +27,7 @@ func TestEngineOperations(t *testing.T) {
 	bytes = append(bytes, byte(1))
 	err = eng.Set("key", bytes)
 	assert.Nil(t, err)
-	val, ok = eng.Get("key")
+	val, ok = eng.Get(Key("key"))
 	assert.True(t, ok)
 	assert.Equal(t, val, bytes)
 
@@ -61,11 +61,11 @@ func TestEnginePersistence(t *testing.T) {
 	eng2.Start()
 	defer eng2.Stop()
 
-	v, ok := eng2.Get(key1)
+	v, ok := eng2.Get(Key(key1))
 	assert.True(t, ok)
 	assert.Equal(t, val1, v)
 
-	v, ok = eng2.Get(key3)
+	v, ok = eng2.Get(Key(key3))
 	assert.True(t, ok)
 	assert.Equal(t, val3, v)
 }
@@ -85,7 +85,7 @@ func TestEngine_DeletePersistence(t *testing.T) {
 	eng2.Start()
 	defer eng2.Stop()
 
-	_, ok := eng2.Get(key)
+	_, ok := eng2.Get(Key(key))
 	assert.False(t, ok, "Key should still be deleted after recovery")
 }
 
@@ -107,7 +107,7 @@ func TestEngine_LWW(t *testing.T) {
 	ts2 := int64(2000)
 	eng.clock.Update(ts2)
 	assert.NoError(t, eng.Set(key, val2))
-	got, _ := eng.Get(key)
+	got, _ := eng.Get(Key(key))
 	assert.Equal(t, val2, got)
 
 	// Set with older timestamp (should be ignored)
@@ -119,7 +119,7 @@ func TestEngine_LWW(t *testing.T) {
 		Timestamp: ts3,
 	})
 	assert.NoError(t, err)
-	got, _ = eng.Get(key)
+	got, _ = eng.Get(Key(key))
 	assert.Equal(t, val2, got, "Older timestamp should not overwrite newer data")
 }
 
@@ -141,7 +141,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 	eng.clock.Update(ts2)
 	eng.Delete(key)
 
-	_, ok := eng.Get(key)
+	_, ok := eng.Get(Key(key))
 	assert.False(t, ok, "Key should be deleted")
 
 	// Late-arriving Set with older timestamp
@@ -152,7 +152,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 		Timestamp: ts3,
 	})
 	assert.NoError(t, err)
-	_, ok = eng.Get(key)
+	_, ok = eng.Get(Key(key))
 	assert.False(t, ok, "Old set should not resurrect a newer tombstone")
 }
 
@@ -179,7 +179,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 	eng2.FillShardDigests(shards2)
 	eng2.FillDigests(buckets2)
 
-	sets, deletes, err := eng1.SyncPull(root2, shards2, buckets2)
+	sets, deletes, err := eng1.SyncPull("node2", root2, shards2, buckets2)
 	assert.NoError(t, err)
 	assert.Len(t, sets, 1)
 	assert.Len(t, deletes, 0)
@@ -189,7 +189,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 	err = eng2.SyncPush(sets, deletes)
 	assert.NoError(t, err)
 	
-	got, ok := eng2.Get(key1)
+	got, ok := eng2.Get(Key(key1))
 	assert.True(t, ok)
 	assert.Equal(t, val1, got)
 }
@@ -215,7 +215,7 @@ func TestEngine_Concurrency(t *testing.T) {
 			for i := 0; i < iterations; i++ {
 				key := fmt.Sprintf("k-%d-%d", id, i)
 				_ = eng.Set(key, []byte("v"))
-				_, _ = eng.Get(key)
+				_, _ = eng.Get(Key(key))
 			}
 		}(g)
 	}

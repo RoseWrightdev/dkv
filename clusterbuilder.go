@@ -23,7 +23,7 @@ func (cb *ClusterConfigBuilder) SingleNode() *ClusterConfigBuilder {
 }
 
 // SetNodeID sets a unique identifier for this node in the cluster.
-func (cb *ClusterConfigBuilder) SetNodeID(id string) *ClusterConfigBuilder {
+func (cb *ClusterConfigBuilder) SetNodeID(id NodeID) *ClusterConfigBuilder {
 	cb.config.NodeID = id
 	return cb
 }
@@ -61,6 +61,12 @@ func (cb *ClusterConfigBuilder) SetGrpcPort(port int) *ClusterConfigBuilder {
 // EnableFastTest optimizes cluster timing for rapid test execution.
 func (cb *ClusterConfigBuilder) EnableFastTest() *ClusterConfigBuilder {
 	cb.config.FastTest = true
+	return cb
+}
+
+// SetReplicationFactor determines how many copies of each key are stored in the cluster.
+func (cb *ClusterConfigBuilder) SetReplicationFactor(n int) *ClusterConfigBuilder {
+	cb.config.ReplicationFactor = n
 	return cb
 }
 
