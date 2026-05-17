@@ -1,6 +1,7 @@
 package dkv
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -10,7 +11,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var mockConfig EngineConfig = EngineConfig{
+var mockConfig = EngineConfig{
 	walPath:         "test_wal_dir",
 	sssPath:         "test_snapshot.bin",
 	walSyncInterval: 100 * time.Millisecond,
@@ -40,4 +41,15 @@ func cleanupEngineMocks(t *testing.T) {
 	if err := os.RemoveAll(mockConfig.walPath); err != nil && !os.IsNotExist(err) {
 		assert.Nil(t, err)
 	}
+}
+
+// FindKeyForNode returns a key that is owned by the given nodeID in the provided engine.
+func FindKeyForNode(e Engine, nodeID string) string {
+	for i := range 1000 {
+		k := fmt.Sprintf("test-key-%d", i)
+		if e.Owner(Key(k)) == NodeID(nodeID) {
+			return k
+		}
+	}
+	panic("could not find key for node")
 }

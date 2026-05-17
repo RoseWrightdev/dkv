@@ -114,6 +114,7 @@ type PullRequest struct {
 	RootDigest    uint64                   `protobuf:"fixed64,1,opt,name=root_digest,json=rootDigest,proto3" json:"root_digest,omitempty"`
 	ShardDigests  map[uint32]uint64        `protobuf:"bytes,2,rep,name=shard_digests,json=shardDigests,proto3" json:"shard_digests,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"fixed64,2,opt,name=value"`
 	SubDigests    map[uint32]*ShardDigests `protobuf:"bytes,3,rep,name=sub_digests,json=subDigests,proto3" json:"sub_digests,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	NodeId        string                   `protobuf:"bytes,4,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -167,6 +168,13 @@ func (x *PullRequest) GetSubDigests() map[uint32]*ShardDigests {
 		return x.SubDigests
 	}
 	return nil
+}
+
+func (x *PullRequest) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
 }
 
 type ShardDigests struct {
@@ -651,13 +659,14 @@ const file_api_dkv_proto_rawDesc = "" +
 	"\vPushRequest\x12)\n" +
 	"\aentries\x18\x01 \x03(\v2\x0f.dkv.SetRequestR\aentries\x120\n" +
 	"\tdeletions\x18\x02 \x03(\v2\x12.dkv.DeleteRequestR\tdeletions\"\x0e\n" +
-	"\fPushResponse\"\xcd\x02\n" +
+	"\fPushResponse\"\xe6\x02\n" +
 	"\vPullRequest\x12\x1f\n" +
 	"\vroot_digest\x18\x01 \x01(\x06R\n" +
 	"rootDigest\x12G\n" +
 	"\rshard_digests\x18\x02 \x03(\v2\".dkv.PullRequest.ShardDigestsEntryR\fshardDigests\x12A\n" +
 	"\vsub_digests\x18\x03 \x03(\v2 .dkv.PullRequest.SubDigestsEntryR\n" +
-	"subDigests\x1a?\n" +
+	"subDigests\x12\x17\n" +
+	"\anode_id\x18\x04 \x01(\tR\x06nodeId\x1a?\n" +
 	"\x11ShardDigestsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\rR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\x06R\x05value:\x028\x01\x1aP\n" +

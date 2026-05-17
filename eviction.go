@@ -9,13 +9,23 @@ import (
 
 type hashKey = uint64
 
+// EvictReason defines the category/reason for cache eviction (e.g. TTL or Capacity).
+type EvictReason int
+
+const (
+	// EvictReasonTTL indicates the entry expired based on its lifespan.
+	EvictReasonTTL EvictReason = iota
+	// EvictReasonCapacity indicates the entry was evicted to free up memory due to reaching limit.
+	EvictReasonCapacity
+)
+
 // Evictor defines the interface for cache invalidation.
 type Evictor interface {
 	publish(key Key, hash hashKey)
 	publishDelete(key Key, hash hashKey)
 	start()
 	stop()
-	SetEvictCallback(func(Key) error)
+	SetEvictCallback(func(Key, EvictReason) error)
 }
 
 type entry struct {
@@ -31,6 +41,11 @@ type lruMsg struct {
 	hash hashKey
 }
 
+type evictMsg struct {
+	key    string
+	reason EvictReason
+}
+
 type lruShard struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -38,27 +53,30 @@ type lruShard struct {
 	mu       sync.Mutex
 	ch       chan lruMsg
 	delCh    chan hashKey
-	evictCh  chan string
+	evictCh  chan evictMsg
 	capacity uint32
 	head     *entry
 	tail     *entry
 	cache    map[hashKey]*entry
 	ttl      time.Duration
-	onEvict  func(Key) error
+	onEvict  func(Key, EvictReason) error
 	pool     *sync.Pool
 }
 
+// LeastRecentlyUsed implements a thread-safe, sharded Least Recently Used (LRU) eviction service.
 type LeastRecentlyUsed struct {
 	shards []*lruShard
 	count  int
 }
 
+// LRUConfig defines the configuration parameters for the LeastRecentlyUsed eviction service.
 type LRUConfig struct {
 	Capacity   uint32
 	TTL        time.Duration
 	ShardCount int
 }
 
+// NewLRU creates and initializes a new LeastRecentlyUsed eviction service.
 func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 	shardCount := config.ShardCount
 	if shardCount <= 0 {
@@ -66,8 +84,11 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 	}
 	shards := make([]*lruShard, shardCount)
 
+	// #nosec G115
+	shardCountU := uint32(shardCount)
+
 	// Distribute capacity across shards
-	shardCap := config.Capacity / uint32(shardCount)
+	shardCap := config.Capacity / shardCountU
 	if shardCap == 0 {
 		panic("dkv: LRU Capacity must be at least equal to ShardCount")
 	}
@@ -85,7 +106,7 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 			cancel:   cancel,
 			ch:       make(chan lruMsg, max(shardCap/2, 1024)),
 			delCh:    make(chan uint64, max(shardCap/2, 1024)),
-			evictCh:  make(chan string, max(shardCap/4, 1024)),
+			evictCh:  make(chan evictMsg, max(shardCap/4, 1024)),
 			capacity: shardCap,
 			cache:    make(map[hashKey]*entry),
 			ttl:      config.TTL,
@@ -135,7 +156,7 @@ func (lru *LeastRecentlyUsed) seen(key Key, hash hashKey) {
 	lru.getShardByHash(hash).seen(key, hash)
 }
 
-func (lru *LeastRecentlyUsed) publishDelete(key Key, hash hashKey) {
+func (lru *LeastRecentlyUsed) publishDelete(_ Key, hash hashKey) {
 	shard := lru.getShardByHash(hash)
 	select {
 	case shard.delCh <- hash:
@@ -144,7 +165,11 @@ func (lru *LeastRecentlyUsed) publishDelete(key Key, hash hashKey) {
 }
 
 func (lru *LeastRecentlyUsed) getShardByHash(hash hashKey) *lruShard {
-	return lru.shards[hash%hashKey(lru.count)]
+	// #nosec G115
+	countU := uint64(lru.count)
+	idx := hash % countU
+	// #nosec G115
+	return lru.shards[int(idx)]
 }
 
 func (s *lruShard) subscriber() {
@@ -182,9 +207,9 @@ func (s *lruShard) evictor() {
 			return
 		case <-ticker.C:
 			s.evictExpired()
-		case key := <-s.evictCh:
+		case msg := <-s.evictCh:
 			if s.onEvict != nil {
-				_ = s.onEvict(key)
+				_ = s.onEvict(msg.key, msg.reason)
 			}
 		}
 	}
@@ -195,6 +220,7 @@ func (s *lruShard) seen(key string, hkey hashKey) {
 	defer s.mu.Unlock()
 
 	now := time.Now()
+	// #nosec G404
 	jitter := time.Duration(rand.Int64N(int64(s.ttl / 10)))
 	expiry := now.Add(s.ttl + jitter)
 
@@ -205,7 +231,10 @@ func (s *lruShard) seen(key string, hkey hashKey) {
 		return
 	}
 
-	if uint32(len(s.cache)) >= s.capacity {
+	cacheLen := len(s.cache)
+	// #nosec G115
+	cacheLenU := uint32(cacheLen)
+	if cacheLenU >= s.capacity {
 		s.evictOldest()
 	}
 
@@ -226,7 +255,7 @@ func (s *lruShard) evictOldest() {
 	delete(s.cache, e.hash)
 
 	select {
-	case s.evictCh <- e.key:
+	case s.evictCh <- evictMsg{key: e.key, reason: EvictReasonCapacity}:
 	default:
 	}
 
@@ -248,7 +277,7 @@ func (s *lruShard) evictExpired() {
 		delete(s.cache, e.hash)
 
 		select {
-		case s.evictCh <- e.key:
+		case s.evictCh <- evictMsg{key: e.key, reason: EvictReasonTTL}:
 		default:
 		}
 
@@ -294,7 +323,8 @@ func (s *lruShard) pushFront(e *entry) {
 	}
 }
 
-func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(Key) error) {
+// SetEvictCallback sets the function to be called when an entry is evicted.
+func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(Key, EvictReason) error) {
 	for _, s := range lru.shards {
 		s.onEvict = fn
 	}

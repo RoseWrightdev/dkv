@@ -19,7 +19,9 @@ func TestClusterMembership(t *testing.T) {
 	noOpMerge := func([]byte) {}
 	s1, err := newClusterService(c1, func([]byte) {}, noOp, noOpMerge)
 	require.NoError(t, err)
-	defer s1.stop()
+	defer func() {
+		_ = s1.stop()
+	}()
 
 	// Start second node and join first
 	c2 := ClusterConfig{
@@ -30,7 +32,9 @@ func TestClusterMembership(t *testing.T) {
 	}
 	s2, err := newClusterService(c2, func([]byte) {}, noOp, noOpMerge)
 	require.NoError(t, err)
-	defer s2.stop()
+	defer func() {
+		_ = s2.stop()
+	}()
 
 	err = s2.start()
 	require.NoError(t, err)

@@ -25,7 +25,8 @@ type SnapShotService struct {
 func newSnapshotService(path string, interval time.Duration, wal Waler, encCallBack func(*gob.Encoder) error) (*SnapShotService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	// #nosec G304
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -58,7 +59,7 @@ func (sss *SnapShotService) stop() {
 	sss.cancel()
 	sss.wg.Wait()
 	if sss.file != nil {
-		sss.file.Close()
+		_ = sss.file.Close()
 	}
 }
 
@@ -104,12 +105,20 @@ func (sss *SnapShotService) queueSnapShot() {
 }
 
 func (sss *SnapShotService) create() error {
+	offsets, err := sss.wal.prepareSnapshot()
+	if err != nil {
+		return err
+	}
+
 	tmpPath := sss.path + ".tmp"
+	// #nosec G304
 	file, err := os.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	// Stream the data directly from the engine to the encoder
 	encoder := gob.NewEncoder(file)
@@ -130,7 +139,7 @@ func (sss *SnapShotService) create() error {
 		return err
 	}
 
-	newFile, err := os.OpenFile(sss.path, os.O_CREATE|os.O_RDWR, 0644)
+	newFile, err := os.OpenFile(sss.path, os.O_CREATE|os.O_RDWR, 0600)
 	if err == nil {
 		if sss.file != nil {
 			err := sss.file.Close()
@@ -141,7 +150,7 @@ func (sss *SnapShotService) create() error {
 		sss.file = newFile
 	}
 
-	if err := sss.wal.clear(); err != nil {
+	if err := sss.wal.clear(offsets); err != nil {
 		return err
 	}
 

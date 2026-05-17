@@ -19,7 +19,7 @@ func TestLRU_Capacity(t *testing.T) {
 	defer lru.stop()
 	
 	evictedKeys := make(chan string, 10)
-	lru.SetEvictCallback(func(key string) error {
+	lru.SetEvictCallback(func(key string, _ EvictReason) error {
 		evictedKeys <- key
 		return nil
 	})
@@ -68,7 +68,7 @@ func TestLRU_BackgroundWorker(t *testing.T) {
 	defer lru.stop()
 	
 	evicted := make(chan string, 1)
-	lru.SetEvictCallback(func(key string) error {
+	lru.SetEvictCallback(func(key string, _ EvictReason) error {
 		evicted <- key
 		return nil
 	})

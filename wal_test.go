@@ -70,7 +70,8 @@ func TestClear(t *testing.T) {
 	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
-	wal.clear()
+	assert.Nil(t, wal.clear(nil))
 	content, err := os.ReadFile(mockConfig.walPath + "/seg_00.log")
+	assert.Nil(t, err)
 	assert.Equal(t, 0, len(content))
 }

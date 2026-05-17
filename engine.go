@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -15,17 +16,19 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Engine defines the core storage and replication engine interface of the dkv node.
 type Engine interface {
 	Get(key Key) ([]byte, bool)
 	Set(key Key, value []byte) error
 	Delete(key Key) error
+	Owner(key Key) NodeID
 	Start()
 	Stop()
 	Snapshot() error
 	RootDigest() RootDigest
 	FillShardDigests(dst map[ShardID]Digest)
 	FillDigests(dst map[ShardID]ShardDigest)
-	SyncPull(root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
+	SyncPull(requesterID NodeID, root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 }
 
@@ -38,9 +41,13 @@ type engine struct {
 	clock           Clock
 	cluster         Cluster
 	clusterConfig   ClusterConfig
+	creds           credentials.TransportCredentials
 	entropy         *AntiEntropyService
 	startOnce       sync.Once
 	stopOnce        sync.Once
+
+	clientMu sync.RWMutex
+	clients  map[string]*Client
 }
 
 type resourcePools struct {
@@ -56,16 +63,17 @@ type resourcePools struct {
 	bucketMaps        sync.Pool
 }
 
+// EngineConfig specifies the parameters required to initialize and run a dkv Engine.
 type EngineConfig struct {
-	walPath         string
-	sssPath         string
-	walSyncInterval time.Duration
-	sssInterval     time.Duration
-	walBufferSize   uint32
-	walSegments     int
-	evictionService Evictor
-	clock           Clock
-	clusterConfig   ClusterConfig
+	walPath              string
+	sssPath              string
+	walSyncInterval      time.Duration
+	sssInterval          time.Duration
+	walBufferSize        uint32
+	walSegments          int
+	evictionService      Evictor
+	clock                Clock
+	clusterConfig        ClusterConfig
 	gossipInterval       time.Duration
 	transportCredentials credentials.TransportCredentials
 }
@@ -90,6 +98,8 @@ func newEngine(config EngineConfig) (Engine, error) {
 		wal:           wal,
 		clock:         config.clock,
 		clusterConfig: config.clusterConfig,
+		creds:         config.transportCredentials,
+		clients:       make(map[string]*Client),
 		pools: &resourcePools{
 			setRequests: sync.Pool{
 				New: func() any { return &pb.SetRequest{} },
@@ -162,7 +172,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	}
 
 	if !config.clusterConfig.SingleNode {
-		eng.entropy = newAntiEntropyService(eng.cluster, eng, eng.pools, config.gossipInterval, config.transportCredentials)
+		eng.entropy = newAntiEntropyService(config.clusterConfig.NodeID, eng.cluster, eng, eng.pools, config.gossipInterval, config.transportCredentials)
 	}
 
 	return eng, nil
@@ -195,18 +205,109 @@ func (eng *engine) Stop() {
 		if err := eng.cluster.stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
 		}
+
+		// Close all cached clients
+		eng.clientMu.Lock()
+		for _, client := range eng.clients {
+			_ = client.Close()
+		}
+		eng.clients = nil
+		eng.clientMu.Unlock()
 	})
+}
+
+func (eng *engine) isLocal(key string) bool {
+	if eng.clusterConfig.SingleNode {
+		return true
+	}
+	rf := eng.clusterConfig.ReplicationFactor
+	if rf <= 0 {
+		rf = 1
+	}
+
+	// In a distributed cluster, we are responsible if we are one of the N owners
+	owners := eng.cluster.GetOwners(key, rf)
+	return slices.Contains(owners, eng.clusterConfig.NodeID)
+}
+
+func (eng *engine) Owner(key Key) NodeID {
+	if eng.clusterConfig.SingleNode {
+		return eng.clusterConfig.NodeID
+	}
+	return eng.cluster.Owner(key)
+}
+
+func (eng *engine) getCachedClient(addr string) (*Client, error) {
+	eng.clientMu.RLock()
+	if eng.clients == nil {
+		eng.clientMu.RUnlock()
+		return nil, fmt.Errorf("engine is stopped")
+	}
+	client, ok := eng.clients[addr]
+	eng.clientMu.RUnlock()
+	if ok {
+		return client, nil
+	}
+
+	eng.clientMu.Lock()
+	defer eng.clientMu.Unlock()
+	if eng.clients == nil {
+		return nil, fmt.Errorf("engine is stopped")
+	}
+	// Double check
+	if client, ok = eng.clients[addr]; ok {
+		return client, nil
+	}
+
+	client, err := NewClient(addr, 1*time.Second, eng.creds)
+	if err != nil {
+		return nil, err
+	}
+	eng.clients[addr] = client
+	return client, nil
 }
 
 // Get retrieves the value associated with a key from the sharded map.
 func (eng *engine) Get(key Key) ([]byte, bool) {
 	hash := hashKey(hashFunc(key))
 	iv, ok := eng.hm.Load(key, hash)
-	if !ok || iv.Tombstone {
-		return nil, false
+	if ok && !iv.Tombstone {
+		eng.evictionService.publish(key, hash)
+		return iv.Data, true
 	}
-	eng.evictionService.publish(key, hash)
-	return iv.Data, true
+
+	// Gateway Proxy: If we don't have it locally, fetch it from an owner
+	if !eng.clusterConfig.SingleNode {
+		rf := eng.clusterConfig.ReplicationFactor
+		if rf <= 0 {
+			rf = 1
+		}
+		owners := eng.cluster.GetOwners(key, rf)
+
+		for _, owner := range owners {
+			if owner == eng.clusterConfig.NodeID {
+				continue // We already checked local storage
+			}
+
+			addr := eng.cluster.AddressForNode(owner)
+			if addr == "" {
+				continue // Try next owner
+			}
+
+			// Proxy the read
+			client, err := eng.getCachedClient(addr)
+			if err != nil {
+				continue // Try next owner
+			}
+			val, ok, err := client.Get(key)
+			if err != nil || !ok {
+				continue
+			}
+			return val, true
+		}
+	}
+
+	return nil, false
 }
 
 // Set persists a key-value pair to the WAL and updates the sharded map.
@@ -220,7 +321,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 	req.Key = key
 	req.Value = value
 	req.Timestamp = ts
-	req.NodeId = eng.clusterConfig.NodeID
+	req.NodeId = string(eng.clusterConfig.NodeID)
 
 	err := eng.wal.publish(key, hash, req)
 
@@ -262,7 +363,7 @@ func (eng *engine) Delete(key Key) error {
 	req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = ts
-	req.NodeId = eng.clusterConfig.NodeID
+	req.NodeId = string(eng.clusterConfig.NodeID)
 
 	err := eng.wal.publish(key, hash, req)
 
@@ -294,8 +395,13 @@ func (eng *engine) Delete(key Key) error {
 	return nil
 }
 
-func (eng *engine) Evict(key Key) error {
+func (eng *engine) Evict(key Key, reason EvictReason) error {
 	hash := hashFunc(key)
+
+	if reason == EvictReasonCapacity {
+		eng.hm.Delete(key, hash)
+		return nil
+	}
 
 	ts := eng.clock.Now()
 
@@ -369,11 +475,14 @@ func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 
 func (eng *engine) recover(sssPath string) error {
 	if info, err := os.Stat(sssPath); err == nil && info.Size() > 0 {
+		// #nosec G304
 		file, err := os.Open(sssPath)
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() {
+			_ = file.Close()
+		}()
 
 		dec := gob.NewDecoder(file)
 		count := 0
@@ -442,6 +551,9 @@ func (eng *engine) onGossipMessage(data []byte) {
 func (eng *engine) applyGossipSet(req *pb.SetRequest) error {
 	eng.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
+	if !eng.isLocal(req.Key) {
+		return nil // Ignore keys we are not responsible for
+	}
 
 	// LWW Conflict Resolution
 	existing, ok := eng.hm.Load(req.Key, hash)
@@ -471,6 +583,9 @@ func (eng *engine) applyGossipSet(req *pb.SetRequest) error {
 func (eng *engine) applyGossipDelete(req *pb.DeleteRequest) error {
 	eng.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
+	if !eng.isLocal(req.Key) {
+		return nil // Ignore keys we are not responsible for
+	}
 
 	existing, ok := eng.hm.Load(req.Key, hash)
 	if ok {
@@ -515,7 +630,7 @@ func (eng *engine) FillDigests(dst map[ShardID]ShardDigest) {
 // 3. Bucket Level: 64 sub-bucket hashes per mismatched shard.
 //
 // It returns only the specific records (Sets/Deletes) needed to bring the remote node into sync.
-func (eng *engine) SyncPull(root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+func (eng *engine) SyncPull(requesterID NodeID, root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
 	// Level 1: Global check. If the root hash matches, the entire database is identical.
 	if root == eng.RootDigest() {
 		return nil, nil, nil
@@ -524,21 +639,25 @@ func (eng *engine) SyncPull(root RootDigest, shards map[ShardID]Digest, buckets 
 	localShardDigests := eng.pools.shardMaps.Get().(map[ShardID]Digest)
 	localBuckets := eng.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
 	defer func() {
-		for k := range localShardDigests { delete(localShardDigests, k) }
-		for k := range localBuckets { delete(localBuckets, k) }
+		for k := range localShardDigests {
+			delete(localShardDigests, k)
+		}
+		for k := range localBuckets {
+			delete(localBuckets, k)
+		}
 		eng.pools.shardMaps.Put(localShardDigests)
 		eng.pools.bucketMaps.Put(localBuckets)
 	}()
 
 	eng.hm.FillShardDigests(localShardDigests)
 	eng.hm.FillDigests(localBuckets)
-	
+
 	var sets []*pb.SetRequest
 	var deletes []*pb.DeleteRequest
 
 	for shardID, localShardHash := range localShardDigests {
 		remoteShardHash, hasShard := shards[shardID]
-		
+
 		// Level 2: Shard check
 		if hasShard && localShardHash == remoteShardHash {
 			continue
@@ -551,7 +670,7 @@ func (eng *engine) SyncPull(root RootDigest, shards map[ShardID]Digest, buckets 
 		// corresponds to a sub-bucket index (0-63). To fit perfectly in a cache line.
 		var mismatchMask uint64
 		if !hasBuckets || len(remoteBuckets) != len(localBucketHashes) {
-			// If the remote node is missing the bucket hashes entirely, 
+			// If the remote node is missing the bucket hashes entirely,
 			// mark all 64 bits for synchronization.
 			mismatchMask = ^uint64(0)
 		} else {
@@ -569,6 +688,17 @@ func (eng *engine) SyncPull(root RootDigest, shards map[ShardID]Digest, buckets 
 			for b := range subBucketCount {
 				if (mismatchMask & (1 << b)) != 0 {
 					for k, v := range shard.buckets[b] {
+						// Filter: Only send keys the requester is responsible for
+						if !eng.clusterConfig.SingleNode {
+							isResponsible := false
+							if slices.Contains(eng.cluster.GetOwners(Key(k), eng.clusterConfig.ReplicationFactor), requesterID) {
+									isResponsible = true
+								}
+							if !isResponsible {
+								continue
+							}
+						}
+
 						if v.Tombstone {
 							req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 							req.Key = k

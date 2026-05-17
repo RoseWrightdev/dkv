@@ -14,9 +14,10 @@ type mockWal struct {
 	clearCalled bool
 }
 
-func (mw *mockWal) publish(key Key, hash hashKey, msg proto.Message) error { return nil }
+func (mw *mockWal) publish(_ Key, _ hashKey, _ proto.Message) error { return nil }
 func (mw *mockWal) replay() (map[Key]Value, error)  { return nil, nil }
-func (mw *mockWal) clear() error                             { mw.clearCalled = true; return nil }
+func (mw *mockWal) clear(_ []int64) error             { mw.clearCalled = true; return nil }
+func (mw *mockWal) prepareSnapshot() ([]int64, error)       { return nil, nil }
 func (mw *mockWal) stop()                                    {}
 func (mw *mockWal) start()                                   {}
 
@@ -24,7 +25,7 @@ func TestNewSnapShotService(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
 	mw := &mockWal{}
-	callBack := func(enc *gob.Encoder) error { return nil }
+	callBack := func(_ *gob.Encoder) error { return nil }
 
 	sss, err := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
 	assert.NoError(t, err)
@@ -55,7 +56,9 @@ func TestCreateNewSnapShot(t *testing.T) {
 
 	file, err := os.Open(mockConfig.sssPath)
 	assert.NoError(t, err)
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	dec := gob.NewDecoder(file)
 	decoded := make(map[Key]Value)
@@ -75,7 +78,7 @@ func TestPeriodicSnapshots(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
 	mw := &mockWal{}
-	callBack := func(enc *gob.Encoder) error { return nil }
+	callBack := func(_ *gob.Encoder) error { return nil }
 
 	interval := 50 * time.Millisecond
 	sss, err := newSnapshotService(mockConfig.sssPath, interval, mw, callBack)

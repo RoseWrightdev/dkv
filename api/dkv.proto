@@ -24,6 +24,7 @@ message PullRequest {
   fixed64 root_digest = 1;
   map<uint32, fixed64> shard_digests = 2;
   map<uint32, ShardDigests> sub_digests = 3;
+  string node_id = 4;
 }
 
 message ShardDigests {
