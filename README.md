@@ -43,7 +43,7 @@ flowchart TD
 
 ## Quick Start
 
-Start a DKV server node:
+Start a dkv server node:
 ```bash
 go run examples/server/main.go
 ```
@@ -55,7 +55,7 @@ go run examples/client/main.go
 
 ## Performance & Benchmarks
 
-The DKV engine is benchmarked locally using Go's built-in testing framework:
+The dkv engine is benchmarked locally using Go's built-in testing framework:
 
 | Benchmark | Throughput | Latency / Allocations |
 | :--- | :--- | :--- |
