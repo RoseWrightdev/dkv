@@ -50,6 +50,11 @@ func (c *HLC) Now() int64 {
 		} else {
 			newPhysical = oldPhysical
 			newLogical = oldLogical + 1
+			if newLogical > logicalMask {
+				// Logical counter overflow! Wait for physical time to catch up.
+				time.Sleep(1 * time.Millisecond)
+				continue
+			}
 		}
 
 		newVal := (newPhysical << logicalBits) | (newLogical & logicalMask)
@@ -103,6 +108,12 @@ func (c *HLC) Update(remote int64) {
 		default:
 			newPhysical = maxPhysical
 			newLogical = 0
+		}
+
+		if newLogical > logicalMask {
+			// Logical counter overflow! Wait for physical time to catch up.
+			time.Sleep(1 * time.Millisecond)
+			continue
 		}
 
 		newVal := (newPhysical << logicalBits) | (newLogical & logicalMask)

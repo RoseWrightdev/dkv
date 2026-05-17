@@ -65,6 +65,25 @@ func (sm *shardedMap) Load(key Key, hash hashKey) (Value, bool) {
 	return val, ok
 }
 
+func getItemHash(hash hashKey, val Value) uint64 {
+	// #nosec G115
+	h := hash ^ uint64(val.Timestamp)
+
+	if val.NodeID != "" {
+		h ^= hashFunc(val.NodeID)
+	}
+
+	if len(val.Data) > 0 {
+		h ^= hashBytes(val.Data)
+	}
+
+	if val.Tombstone {
+		h ^= 0x5555555555555555
+	}
+
+	return h
+}
+
 // Store updates the value in the correct shard and maintains the rolling digest.
 func (sm *shardedMap) Store(key Key, hash hashKey, val Value) {
 	shard := sm.getShardByHash(hash)
@@ -74,14 +93,12 @@ func (sm *shardedMap) Store(key Key, hash hashKey, val Value) {
 	// Update sub-bucket and shard digests incrementally
 	subIndex := (hash >> 16) % subBucketCount
 	if existing, ok := shard.buckets[subIndex][key]; ok {
-		// #nosec G115
-		oldItemHash := hash ^ uint64(existing.Timestamp)
+		oldItemHash := getItemHash(hash, existing)
 		shard.subDigests[subIndex] ^= oldItemHash
 		shard.shardDigest ^= oldItemHash
 	}
 
-	// #nosec G115
-	newItemHash := hash ^ uint64(val.Timestamp)
+	newItemHash := getItemHash(hash, val)
 	shard.subDigests[subIndex] ^= newItemHash
 	shard.shardDigest ^= newItemHash
 	shard.buckets[subIndex][key] = val
@@ -95,8 +112,7 @@ func (sm *shardedMap) Delete(key Key, hash hashKey) {
 
 	subIndex := (hash >> 16) % subBucketCount
 	if existing, ok := shard.buckets[subIndex][key]; ok {
-		// #nosec G115
-		itemHash := uint64(hash) ^ uint64(existing.Timestamp)
+		itemHash := getItemHash(hash, existing)
 		shard.subDigests[subIndex] ^= itemHash
 		shard.shardDigest ^= itemHash
 		delete(shard.buckets[subIndex], key)

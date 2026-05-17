@@ -105,6 +105,11 @@ func (sss *SnapShotService) queueSnapShot() {
 }
 
 func (sss *SnapShotService) create() error {
+	offsets, err := sss.wal.prepareSnapshot()
+	if err != nil {
+		return err
+	}
+
 	tmpPath := sss.path + ".tmp"
 	// #nosec G304
 	file, err := os.Create(tmpPath)
@@ -145,7 +150,7 @@ func (sss *SnapShotService) create() error {
 		sss.file = newFile
 	}
 
-	if err := sss.wal.clear(); err != nil {
+	if err := sss.wal.clear(offsets); err != nil {
 		return err
 	}
 

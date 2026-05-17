@@ -18,7 +18,8 @@ import (
 type Waler interface {
 	publish(key Key, hash hashKey, msg proto.Message) error
 	replay() (map[Key]Value, error)
-	clear() error
+	clear(offsets []int64) error
+	prepareSnapshot() ([]int64, error)
 	start()
 	stop()
 }
@@ -284,18 +285,85 @@ func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *s
 	return err
 }
 
-func (w *Wal) clear() error {
-	for _, seg := range w.segments {
+func (w *Wal) prepareSnapshot() ([]int64, error) {
+	offsets := make([]int64, w.count)
+	for i, seg := range w.segments {
 		seg.mu.Lock()
-		if err := seg.file.Truncate(0); err != nil {
+		if err := seg.wrt.Flush(); err != nil {
+			seg.mu.Unlock()
+			return nil, err
+		}
+		pos, err := seg.file.Seek(0, io.SeekEnd)
+		if err != nil {
+			seg.mu.Unlock()
+			return nil, err
+		}
+		offsets[i] = pos
+		seg.mu.Unlock()
+	}
+	return offsets, nil
+}
+
+func (w *Wal) clear(offsets []int64) error {
+	for i, seg := range w.segments {
+		seg.mu.Lock()
+
+		var offset int64
+		if offsets != nil && i < len(offsets) {
+			offset = offsets[i]
+		}
+
+		if err := seg.wrt.Flush(); err != nil {
 			seg.mu.Unlock()
 			return err
 		}
-		if _, err := seg.file.Seek(0, 0); err != nil {
+
+		currSize, err := seg.file.Seek(0, io.SeekEnd)
+		if err != nil {
 			seg.mu.Unlock()
 			return err
 		}
-		seg.wrt.Reset(seg.file)
+
+		if offset <= 0 || currSize <= offset {
+			if err := seg.file.Truncate(0); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			if _, err := seg.file.Seek(0, 0); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			seg.wrt.Reset(seg.file)
+		} else {
+			if _, err := seg.file.Seek(offset, io.SeekStart); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			data := make([]byte, currSize-offset)
+			if _, err := io.ReadFull(seg.file, data); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+
+			if err := seg.file.Truncate(0); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			if _, err := seg.file.Seek(0, io.SeekStart); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			if _, err := seg.file.Write(data); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			if _, err := seg.file.Seek(0, io.SeekEnd); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			seg.wrt.Reset(seg.file)
+		}
+
 		seg.mu.Unlock()
 	}
 	return nil

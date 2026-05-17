@@ -45,6 +45,9 @@ type engine struct {
 	entropy         *AntiEntropyService
 	startOnce       sync.Once
 	stopOnce        sync.Once
+
+	clientMu sync.RWMutex
+	clients  map[string]*Client
 }
 
 type resourcePools struct {
@@ -96,6 +99,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 		clock:         config.clock,
 		clusterConfig: config.clusterConfig,
 		creds:         config.transportCredentials,
+		clients:       make(map[string]*Client),
 		pools: &resourcePools{
 			setRequests: sync.Pool{
 				New: func() any { return &pb.SetRequest{} },
@@ -201,6 +205,14 @@ func (eng *engine) Stop() {
 		if err := eng.cluster.stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
 		}
+
+		// Close all cached clients
+		eng.clientMu.Lock()
+		for _, client := range eng.clients {
+			_ = client.Close()
+		}
+		eng.clients = nil
+		eng.clientMu.Unlock()
 	})
 }
 
@@ -223,6 +235,36 @@ func (eng *engine) Owner(key Key) NodeID {
 		return eng.clusterConfig.NodeID
 	}
 	return eng.cluster.Owner(key)
+}
+
+func (eng *engine) getCachedClient(addr string) (*Client, error) {
+	eng.clientMu.RLock()
+	if eng.clients == nil {
+		eng.clientMu.RUnlock()
+		return nil, fmt.Errorf("engine is stopped")
+	}
+	client, ok := eng.clients[addr]
+	eng.clientMu.RUnlock()
+	if ok {
+		return client, nil
+	}
+
+	eng.clientMu.Lock()
+	defer eng.clientMu.Unlock()
+	if eng.clients == nil {
+		return nil, fmt.Errorf("engine is stopped")
+	}
+	// Double check
+	if client, ok = eng.clients[addr]; ok {
+		return client, nil
+	}
+
+	client, err := NewClient(addr, 1*time.Second, eng.creds)
+	if err != nil {
+		return nil, err
+	}
+	eng.clients[addr] = client
+	return client, nil
 }
 
 // Get retrieves the value associated with a key from the sharded map.
@@ -253,12 +295,11 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 			}
 
 			// Proxy the read
-			client, err := NewClient(addr, 1*time.Second, eng.creds)
+			client, err := eng.getCachedClient(addr)
 			if err != nil {
 				continue // Try next owner
 			}
 			val, ok, err := client.Get(key)
-			_ = client.Close()
 			if err != nil || !ok {
 				continue
 			}
@@ -354,8 +395,13 @@ func (eng *engine) Delete(key Key) error {
 	return nil
 }
 
-func (eng *engine) Evict(key Key) error {
+func (eng *engine) Evict(key Key, reason EvictReason) error {
 	hash := hashFunc(key)
+
+	if reason == EvictReasonCapacity {
+		eng.hm.Delete(key, hash)
+		return nil
+	}
 
 	ts := eng.clock.Now()
 

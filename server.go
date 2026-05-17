@@ -18,13 +18,8 @@ type server struct {
 }
 
 type serverPools struct {
-	shards          sync.Pool
-	buckets         sync.Pool
-	getResponses    sync.Pool
-	setResponses    sync.Pool
-	deleteResponses sync.Pool
-	pullResponses   sync.Pool
-	pushResponses   sync.Pool
+	shards  sync.Pool
+	buckets sync.Pool
 }
 
 func newServerPools() *serverPools {
@@ -41,44 +36,30 @@ func newServerPools() *serverPools {
 				return m
 			},
 		},
-		getResponses: sync.Pool{
-			New: func() any { return &pb.GetResponse{} },
-		},
-		setResponses: sync.Pool{
-			New: func() any { return &pb.SetResponse{} },
-		},
-		deleteResponses: sync.Pool{
-			New: func() any { return &pb.DeleteResponse{} },
-		},
-		pullResponses: sync.Pool{
-			New: func() any { return &pb.PullResponse{} },
-		},
-		pushResponses: sync.Pool{
-			New: func() any { return &pb.PushResponse{} },
-		},
 	}
 }
 
 func (s *server) Get(_ context.Context, in *pb.GetRequest) (*pb.GetResponse, error) {
 	val, ok := s.eng.Get(Key(in.GetKey()))
-	resp := s.pools.getResponses.Get().(*pb.GetResponse)
-	resp.Value = val
-	resp.Exists = ok
+	resp := &pb.GetResponse{
+		Value:  val,
+		Exists: ok,
+	}
 	return resp, nil
 }
 
 func (s *server) Set(_ context.Context, in *pb.SetRequest) (*pb.SetResponse, error) {
 	if err := s.eng.Set(in.Key, in.Value); err != nil {
-		return s.pools.setResponses.Get().(*pb.SetResponse), err
+		return &pb.SetResponse{}, err
 	}
-	return s.pools.setResponses.Get().(*pb.SetResponse), nil
+	return &pb.SetResponse{}, nil
 }
 
 func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	if err := s.eng.Delete(in.Key); err != nil {
-		return s.pools.deleteResponses.Get().(*pb.DeleteResponse), err
+		return &pb.DeleteResponse{}, err
 	}
-	return s.pools.deleteResponses.Get().(*pb.DeleteResponse), nil
+	return &pb.DeleteResponse{}, nil
 }
 
 func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, error) {
@@ -111,9 +92,10 @@ func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, 
 	if err != nil {
 		return nil, err
 	}
-	resp := s.pools.pullResponses.Get().(*pb.PullResponse)
-	resp.Entries = sets
-	resp.Deletions = deletes
+	resp := &pb.PullResponse{
+		Entries:   sets,
+		Deletions: deletes,
+	}
 	return resp, nil
 }
 
@@ -121,7 +103,7 @@ func (s *server) Push(_ context.Context, in *pb.PushRequest) (*pb.PushResponse, 
 	if err := s.eng.SyncPush(in.Entries, in.Deletions); err != nil {
 		return nil, err
 	}
-	return s.pools.pushResponses.Get().(*pb.PushResponse), nil
+	return &pb.PushResponse{}, nil
 }
 
 // Grpc represents the gRPC server wrapper for the dkv service.
