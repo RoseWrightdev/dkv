@@ -16,6 +16,7 @@ type RootDigest = uint64
 
 // ShardDigest represents the collection of sub-bucket digests for a specific shard.
 type ShardDigest = []Digest
+
 const subBucketCount = 64
 
 const shardCount = 128

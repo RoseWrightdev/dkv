@@ -40,7 +40,7 @@ func TestShardedMap_Digests(t *testing.T) {
 	sm.FillDigests(digests)
 	assert.Len(t, digests, int(shardCount))
 	assert.NotEqual(t, digests[0], digests[1])
-	
+
 	// Check empty shard
 	emptyDigest := make([]Digest, subBucketCount)
 	assert.Equal(t, emptyDigest, digests[2], "Empty shard should have empty sub-hashes")
