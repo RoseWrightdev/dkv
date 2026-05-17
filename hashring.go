@@ -1,6 +1,7 @@
 package dkv
 
 import (
+	"slices"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
@@ -91,11 +92,29 @@ func (r *HashRing) RemoveNode(nodeID NodeID) {
 
 // GetNode returns the ID of the node responsible for the given key.
 func (r *HashRing) GetNode(key Key) NodeID {
-	owners := r.GetOwners(key, 1)
-	if len(owners) == 0 {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if len(r.vnodes) == 0 {
 		return ""
 	}
-	return owners[0]
+
+	bufPtr := r.pool.Get().(*[]byte)
+	buf := (*bufPtr)[:0]
+	buf = append(buf, key...)
+	h := sha256.Sum256(buf)
+	hash := binary.BigEndian.Uint64(h[:8])
+	*bufPtr = buf
+	r.pool.Put(bufPtr)
+
+	idx := sort.Search(len(r.vnodes), func(i int) bool {
+		return r.vnodes[i].hash >= hash
+	})
+
+	if idx == len(r.vnodes) {
+		idx = 0
+	}
+	return r.vnodes[idx].node
 }
 
 // GetOwners returns the N nodes responsible for a key in clockwise order.
@@ -120,13 +139,13 @@ func (r *HashRing) GetOwners(key Key, n int) []NodeID {
 	})
 
 	owners := make([]NodeID, 0, n)
-	seen := make(map[NodeID]bool)
 
 	for i := 0; i < len(r.vnodes) && len(owners) < n; i++ {
 		vnodeIdx := (idx + i) % len(r.vnodes)
 		node := r.vnodes[vnodeIdx].node
-		if !seen[node] {
-			seen[node] = true
+		
+		duplicate := slices.Contains(owners, node)
+		if !duplicate {
 			owners = append(owners, node)
 		}
 	}
