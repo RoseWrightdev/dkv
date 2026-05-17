@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Engine defines the core storage and replication engine interface of the dkv node.
 type Engine interface {
 	Get(key Key) ([]byte, bool)
 	Set(key Key, value []byte) error
@@ -59,6 +60,7 @@ type resourcePools struct {
 	bucketMaps        sync.Pool
 }
 
+// EngineConfig specifies the parameters required to initialize and run a dkv Engine.
 type EngineConfig struct {
 	walPath              string
 	sssPath              string
@@ -256,7 +258,7 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 				continue // Try next owner
 			}
 			val, ok, err := client.Get(key)
-			client.Close()
+			_ = client.Close()
 			if err != nil || !ok {
 				continue
 			}
@@ -427,11 +429,14 @@ func (eng *engine) streamToEncoder(enc *gob.Encoder) error {
 
 func (eng *engine) recover(sssPath string) error {
 	if info, err := os.Stat(sssPath); err == nil && info.Size() > 0 {
+		// #nosec G304
 		file, err := os.Open(sssPath)
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() {
+			_ = file.Close()
+		}()
 
 		dec := gob.NewDecoder(file)
 		count := 0

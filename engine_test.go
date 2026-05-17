@@ -76,8 +76,8 @@ func TestEngine_DeletePersistence(t *testing.T) {
 	eng.Start()
 	
 	key, val := "del-persist", []byte("data")
-	eng.Set(key, val)
-	eng.Delete(key)
+	assert.NoError(t, eng.Set(key, val))
+	assert.NoError(t, eng.Delete(key))
 	eng.Stop()
 
 	// Recover
@@ -135,11 +135,11 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 
 	ts1 := int64(1000)
 	eng.clock.Update(ts1)
-	eng.Set(key, val)
+	assert.NoError(t, eng.Set(key, val))
 
 	ts2 := int64(2000)
 	eng.clock.Update(ts2)
-	eng.Delete(key)
+	assert.NoError(t, eng.Delete(key))
 
 	_, ok := eng.Get(Key(key))
 	assert.False(t, ok, "Key should be deleted")
@@ -170,7 +170,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 	// 1. Setup eng1 with data
 	key1, val1 := "sync-1", []byte("data-1")
-	eng1.Set(key1, val1)
+	assert.NoError(t, eng1.Set(key1, val1))
 
 	// 2. eng2 is empty, it pulls from eng1
 	root2 := eng2.RootDigest()

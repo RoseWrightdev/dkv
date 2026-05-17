@@ -15,7 +15,9 @@ import (
 
 func TestEngineOperations(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-test-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	walPath := filepath.Join(tmpDir, "wal")
 	sssPath := filepath.Join(tmpDir, "snapshot.bin")
@@ -56,7 +58,9 @@ func TestClusterScale(t *testing.T) {
 	}
 
 	tmpDir, _ := os.MkdirTemp("", "dkv-scale-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	count := 3
 	var engines []dkv.Engine
@@ -66,12 +70,12 @@ func TestClusterScale(t *testing.T) {
 	for i := range count {
 		name := fmt.Sprintf("node-%d", i)
 		nodeDir := filepath.Join(tmpDir, name)
-		os.MkdirAll(nodeDir, 0755)
+		require.NoError(t, os.MkdirAll(nodeDir, 0750))
 
 		mlLis, err := net.Listen("tcp", "127.0.0.1:0")
 		require.NoError(t, err)
 		mlPort := mlLis.Addr().(*net.TCPAddr).Port
-		mlLis.Close()
+		_ = mlLis.Close()
 
 		eb := dkv.NewEngineBuilder().
 			Default().
@@ -146,13 +150,15 @@ func TestClusterScale(t *testing.T) {
 
 func TestAntiEntropyRecovery(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-recovery-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	// Setup Node 1
 	mlLis1, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	mlPort1 := mlLis1.Addr().(*net.TCPAddr).Port
-	mlLis1.Close()
+	_ = mlLis1.Close()
 
 	eng1, err := dkv.NewEngineBuilder().
 		Default().

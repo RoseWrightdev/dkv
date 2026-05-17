@@ -2,10 +2,19 @@ package dkv
 
 import "sync"
 
+// Key represents a unique identifier for a value in the dkv store.
 type Key = string
+
+// ShardID represents the identifier of a shard within the shardedMap.
 type ShardID = int32
+
+// Digest represents a hash value used for detecting data divergence.
 type Digest = uint64
+
+// RootDigest represents the combined hash of the entire database state.
 type RootDigest = uint64
+
+// ShardDigest represents the collection of sub-bucket digests for a specific shard.
 type ShardDigest = []Digest
 const subBucketCount = 64
 
@@ -65,11 +74,13 @@ func (sm *shardedMap) Store(key Key, hash hashKey, val Value) {
 	// Update sub-bucket and shard digests incrementally
 	subIndex := (hash >> 16) % subBucketCount
 	if existing, ok := shard.buckets[subIndex][key]; ok {
+		// #nosec G115
 		oldItemHash := hash ^ uint64(existing.Timestamp)
 		shard.subDigests[subIndex] ^= oldItemHash
 		shard.shardDigest ^= oldItemHash
 	}
 
+	// #nosec G115
 	newItemHash := hash ^ uint64(val.Timestamp)
 	shard.subDigests[subIndex] ^= newItemHash
 	shard.shardDigest ^= newItemHash
@@ -84,6 +95,7 @@ func (sm *shardedMap) Delete(key Key, hash hashKey) {
 
 	subIndex := (hash >> 16) % subBucketCount
 	if existing, ok := shard.buckets[subIndex][key]; ok {
+		// #nosec G115
 		itemHash := uint64(hash) ^ uint64(existing.Timestamp)
 		shard.subDigests[subIndex] ^= itemHash
 		shard.shardDigest ^= itemHash

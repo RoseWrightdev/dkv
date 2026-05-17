@@ -11,12 +11,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+// Client represents a gRPC client to interact with the dkv service.
 type Client struct {
 	conn    *grpc.ClientConn
 	api     pb.DkvServiceClient
 	timeout time.Duration
 }
 
+// NewClient initializes a new Client using transport credentials.
 func NewClient(addr string, timeout time.Duration, creds credentials.TransportCredentials) (*Client, error) {
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
 	if err != nil {
@@ -30,6 +32,7 @@ func NewClient(addr string, timeout time.Duration, creds credentials.TransportCr
 	}, nil
 }
 
+// NewInsecureClient initializes a new Client using insecure credentials.
 func NewInsecureClient(addr string, timeout time.Duration) (*Client, error) {
 	slog.Warn("Using `insecure.NewCredentials()`. See google.golang.org/grpc/credentials/insecure")
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))

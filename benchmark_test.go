@@ -1,3 +1,4 @@
+// Package dkv provides benchmarks for testing engine and server performance.
 package dkv
 
 import (
@@ -38,7 +39,7 @@ func setupBenchmarkEngine(b *testing.B, distributed bool) (Engine, func()) {
 	eng.Start()
 	cleanup := func() {
 		eng.Stop()
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	}
 	return eng, cleanup
 }
@@ -138,7 +139,9 @@ func BenchmarkEngine_Snapshot(b *testing.B) {
 
 func BenchmarkEngine_Recover(b *testing.B) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-rec-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 	eng, _ := NewEngineBuilder().Default().SingleNode().SetWalPath(tmpDir).SetSssPath(tmpDir + "/s.bin").SetInsecure().GetEngine()
 	eng.Start()
 	count := 5000
@@ -164,11 +167,15 @@ func BenchmarkServer_Get_gRPC(b *testing.B) {
 	defer cleanup()
 	s := NewServer(eng)
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
-	go s.Run(lis)
+	go func() {
+		_ = s.Run(lis)
+	}()
 	defer s.Stop()
 
 	client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 	_ = eng.Set("key", []byte("val"))
 
 	b.ResetTimer()
@@ -185,11 +192,15 @@ func BenchmarkServer_Delete_gRPC(b *testing.B) {
 	defer cleanup()
 	s := NewServer(eng)
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
-	go s.Run(lis)
+	go func() {
+		_ = s.Run(lis)
+	}()
 	defer s.Stop()
 
 	client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 	_ = eng.Set("key", []byte("val"))
 
 	b.ResetTimer()
@@ -206,14 +217,18 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 	defer cleanup()
 	s := NewServer(eng)
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
-	go s.Run(lis)
+	go func() {
+		_ = s.Run(lis)
+	}()
 	defer s.Stop()
 
 	val := []byte("val")
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
-		defer client.Close()
+		defer func() {
+			_ = client.Close()
+		}()
 		for pb.Next() {
 			_ = client.Set("key", val)
 		}
@@ -236,7 +251,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 
 	// Fill with some data
 	for i := range 10000 {
-		eng.Set(fmt.Sprintf("key-%d", i), []byte("value"))
+		_ = eng.Set(fmt.Sprintf("key-%d", i), []byte("value"))
 	}
 
 	root := eng.RootDigest()
@@ -277,7 +292,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	})
 
 	// Create a mismatch in one bucket
-	eng.Set("mismatch-key", []byte("mismatch-value"))
+	_ = eng.Set("mismatch-key", []byte("mismatch-value"))
 
 	b.Run("SyncPull_SingleMismatch", func(b *testing.B) {
 		b.ReportAllocs()
@@ -288,7 +303,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 
 	// Create mismatch in ALL shards
 	for i := range shardCount {
-		eng.Set(fmt.Sprintf("mismatch-%d", i), []byte("val"))
+		_ = eng.Set(fmt.Sprintf("mismatch-%d", i), []byte("val"))
 	}
 
 	b.Run("SyncPull_FullDivergence", func(b *testing.B) {

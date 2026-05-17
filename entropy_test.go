@@ -13,11 +13,13 @@ import (
 
 func TestAntiEntropySync(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-entropy-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	// Setup Node 1
 	n1Dir := filepath.Join(tmpDir, "node1")
-	os.MkdirAll(n1Dir, 0755)
+	require.NoError(t, os.MkdirAll(n1Dir, 0750))
 
 	e1, err := NewEngineBuilder().
 		Default().
@@ -35,12 +37,14 @@ func TestAntiEntropySync(t *testing.T) {
 	s1 := NewServer(e1)
 	l1, err := net.Listen("tcp", "127.0.0.1:9002")
 	require.NoError(t, err)
-	go s1.Run(l1)
+	go func() {
+		_ = s1.Run(l1)
+	}()
 	defer s1.Stop()
 
 	// Setup Node 2 and join Node 1
 	n2Dir := filepath.Join(tmpDir, "node2")
-	os.MkdirAll(n2Dir, 0755)
+	require.NoError(t, os.MkdirAll(n2Dir, 0750))
 	e2, err := NewEngineBuilder().
 		Default().
 		SetWalPath(filepath.Join(n2Dir, "wal")).
@@ -58,7 +62,9 @@ func TestAntiEntropySync(t *testing.T) {
 	s2 := NewServer(e2)
 	l2, err := net.Listen("tcp", "127.0.0.1:9004")
 	require.NoError(t, err)
-	go s2.Run(l2)
+	go func() {
+		_ = s2.Run(l2)
+	}()
 	defer s2.Stop()
 
 	e1.Start()

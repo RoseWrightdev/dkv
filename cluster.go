@@ -160,6 +160,7 @@ func (cs *ClusterService) Owner(key Key) NodeID {
 	return cs.ring.GetNode(key)
 }
 
+// GetOwners returns the N closest NodeIDs on the hash ring responsible for replicating the given key.
 func (cs *ClusterService) GetOwners(key Key, n int) []NodeID {
 	return cs.ring.GetOwners(key, n)
 }
@@ -177,7 +178,7 @@ func (cs *ClusterService) NotifyLeave(node *memberlist.Node) {
 }
 
 // NotifyUpdate is called by memberlist when a node's metadata changes.
-func (cs *ClusterService) NotifyUpdate(node *memberlist.Node) {
+func (cs *ClusterService) NotifyUpdate(_ *memberlist.Node) {
 	// Ring distribution depends only on node name, so update is a no-op.
 }
 
@@ -209,36 +210,49 @@ func (cs *ClusterService) stop() error {
 
 // memberlist.Delegate implementation
 
-func (cs *ClusterService) NodeMeta(limit int) []byte {
+// NodeMeta returns the metadata of the node, which includes the gRPC port.
+func (cs *ClusterService) NodeMeta(_ int) []byte {
 	return fmt.Appendf(nil, "%d", cs.config.GrpcPort)
 }
 
+// NotifyMsg is called when a user-space message is received.
 func (cs *ClusterService) NotifyMsg(b []byte) {
 	cs.onMessage(b)
 }
 
+// GetBroadcasts is called when memberlist needs messages to broadcast.
 func (cs *ClusterService) GetBroadcasts(overhead, limit int) [][]byte {
 	return cs.broadcasts.GetBroadcasts(overhead, limit)
 }
 
-func (cs *ClusterService) LocalState(join bool) []byte {
+// LocalState returns the local node state for anti-entropy.
+func (cs *ClusterService) LocalState(_ bool) []byte {
 	if cs.getLocalState != nil {
 		return cs.getLocalState()
 	}
 	return nil
 }
 
-func (cs *ClusterService) MergeRemoteState(buf []byte, join bool) {
+// MergeRemoteState merges incoming state from a peer.
+func (cs *ClusterService) MergeRemoteState(buf []byte, _ bool) {
 	cs.mergeRemoteState(buf)
 }
 
 // NopCluster is a non-functional implementation of the Cluster interface used when distribution is disabled.
 type NopCluster struct{}
 
+// Broadcast does nothing in a NopCluster.
 func (n *NopCluster) Broadcast([]byte)             {}
+// Members returns nil as there are no members in a NopCluster.
 func (n *NopCluster) Members() []PeerAddress       { return nil }
+
+// Owner returns an empty NodeID as there are no owners in a NopCluster.
 func (n *NopCluster) Owner(Key) NodeID             { return "" }
+
+// GetOwners returns nil as there are no owners in a NopCluster.
 func (n *NopCluster) GetOwners(Key, int) []NodeID  { return nil }
+
+// AddressForNode returns an empty string as there are no nodes in a NopCluster.
 func (n *NopCluster) AddressForNode(NodeID) string { return "" }
 func (n *NopCluster) start() error                 { return nil }
 func (n *NopCluster) stop() error                  { return nil }
@@ -247,6 +261,6 @@ type broadcast struct {
 	msg []byte
 }
 
-func (b *broadcast) Invalidates(other memberlist.Broadcast) bool { return false }
+func (b *broadcast) Invalidates(_ memberlist.Broadcast) bool { return false }
 func (b *broadcast) Message() []byte                             { return b.msg }
 func (b *broadcast) Finished()                                   {}

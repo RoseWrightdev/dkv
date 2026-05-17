@@ -90,13 +90,16 @@ func (s *AntiEntropyService) performSync() {
 		return
 	}
 
+	// #nosec G404
 	target := members[rand.Intn(len(members))]
 	client, err := NewClient(string(target), 2*time.Second, s.creds)
 	if err != nil {
 		slog.Debug("Failed to connect to peer for anti-entropy sync", "peer", target, "error", err)
 		return
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	req := s.pools.pullRequests.Get().(*pb.PullRequest)
 	s.preparePullRequest(req)
@@ -147,7 +150,9 @@ func (s *AntiEntropyService) preparePullRequest(req *pb.PullRequest) {
 		delete(req.ShardDigests, k)
 	}
 	for id, h := range localShards {
-		req.ShardDigests[uint32(id)] = uint64(h)
+		// #nosec G115
+		idU := uint32(id)
+		req.ShardDigests[idU] = uint64(h)
 	}
 
 	// Prepare Sub-Bucket Digests
@@ -157,7 +162,9 @@ func (s *AntiEntropyService) preparePullRequest(req *pb.PullRequest) {
 	for id, hashes := range localBuckets {
 		sd := s.pools.shardDigests.Get().(*pb.ShardDigests)
 		sd.SubHashes = hashes
-		req.SubDigests[uint32(id)] = sd
+		// #nosec G115
+		idU := uint32(id)
+		req.SubDigests[idU] = sd
 	}
 }
 

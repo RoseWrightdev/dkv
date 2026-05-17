@@ -1,3 +1,4 @@
+// Package main provides a simple example of starting a dkv server instance.
 package main
 
 import (
@@ -27,12 +28,12 @@ func main() {
 	defer eng.Stop()
 
 	// Run the gRPC Server
-	listener, err := net.Listen("tcp", ":50051")
+	listener, err := net.Listen("tcp", "127.0.0.1:50051")
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("dkv server listening on :50051...")
+	fmt.Println("dkv server listening on 127.0.0.1:50051...")
 	s := dkv.NewServer(eng)
 	if err := s.Run(listener); err != nil {
 		panic(err)

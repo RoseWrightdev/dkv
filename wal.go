@@ -42,8 +42,8 @@ func (s *walSegment) backgroundSync() {
 		case <-ticker.C:
 			s.mu.Lock()
 			if s.wrt.Buffered() > 0 {
-				s.wrt.Flush()
-				s.file.Sync()
+				_ = s.wrt.Flush()
+				_ = s.file.Sync()
 			}
 			s.mu.Unlock()
 		case <-s.ctx.Done():
@@ -52,6 +52,7 @@ func (s *walSegment) backgroundSync() {
 	}
 }
 
+// Wal implements the durable Write-Ahead Log (WAL) partitioned into segment files.
 type Wal struct {
 	segments   []*walSegment
 	count      int
@@ -61,7 +62,7 @@ type Wal struct {
 }
 
 func newWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segmentCount int) (*Wal, error) {
-	if err := os.MkdirAll(dirPath, 0755); err != nil {
+	if err := os.MkdirAll(dirPath, 0750); err != nil {
 		return nil, err
 	}
 
@@ -89,13 +90,14 @@ func newWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segme
 
 	for i := range segmentCount {
 		path := fmt.Sprintf("%s/seg_%02d.log", dirPath, i)
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+		// #nosec G304
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
 		if err != nil {
 			return nil, err
 		}
 
 		if _, err := file.Seek(0, io.SeekEnd); err != nil {
-			file.Close()
+			_ = file.Close()
 			return nil, err
 		}
 
@@ -125,18 +127,22 @@ func (w *Wal) stop() {
 	for _, seg := range w.segments {
 		seg.mu.Lock()
 		seg.cancel()
-		seg.wrt.Flush()
-		seg.file.Sync()
-		seg.file.Close()
+		_ = seg.wrt.Flush()
+		_ = seg.file.Sync()
+		_ = seg.file.Close()
 		seg.mu.Unlock()
 	}
 }
 
 func (w *Wal) getSegment(hash hashKey) *walSegment {
-	return w.segments[hash%hashKey(w.count)]
+	// #nosec G115
+	countU := uint64(w.count)
+	idx := hash % countU
+	// #nosec G115
+	return w.segments[int(idx)]
 }
 
-func (w *Wal) publish(key Key, hash hashKey, msg proto.Message) error {
+func (w *Wal) publish(_ Key, hash hashKey, msg proto.Message) error {
 	entry := w.entryPool.Get().(*pb.WalEntry)
 	defer w.entryPool.Put(entry)
 
@@ -172,7 +178,10 @@ func (w *Wal) publish(key Key, hash hashKey, msg proto.Message) error {
 	headerPtr := w.headerPool.Get().(*[]byte)
 	header := *headerPtr
 	defer w.headerPool.Put(headerPtr)
-	binary.BigEndian.PutUint32(header, uint32(len(data)))
+	dataLen := len(data)
+	// #nosec G115
+	dataLenU := uint32(dataLen)
+	binary.BigEndian.PutUint32(header, dataLenU)
 
 	seg := w.getSegment(hash)
 	seg.mu.Lock()

@@ -98,10 +98,12 @@ func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, 
 	}()
 
 	for id, h := range in.ShardDigests {
+		// #nosec G115
 		shards[ShardID(id)] = h
 	}
 
 	for id, sd := range in.SubDigests {
+		// #nosec G115
 		buckets[ShardID(id)] = sd.SubHashes
 	}
 
@@ -122,12 +124,14 @@ func (s *server) Push(_ context.Context, in *pb.PushRequest) (*pb.PushResponse, 
 	return s.pools.pushResponses.Get().(*pb.PushResponse), nil
 }
 
+// Grpc represents the gRPC server wrapper for the dkv service.
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
 	eng      Engine
 }
 
+// NewServer creates a new Grpc server instance around a dkv Engine.
 func NewServer(eng Engine) *Grpc {
 	s := grpc.NewServer()
 	h := &server{
@@ -138,6 +142,7 @@ func NewServer(eng Engine) *Grpc {
 	return &Grpc{inner: s, handlers: h, eng: eng}
 }
 
+// Run starts the gRPC server and serves requests on the provided net.Listener.
 func (s *Grpc) Run(listener net.Listener) error {
 	if listener == nil {
 		return fmt.Errorf("dkv: cannot run server with nil listener")
@@ -147,6 +152,7 @@ func (s *Grpc) Run(listener net.Listener) error {
 	return err
 }
 
+// Stop gracefully shuts down the gRPC server and stops the underlying engine.
 func (s *Grpc) Stop() {
 	s.handlers.eng.Stop()
 	s.inner.GracefulStop()

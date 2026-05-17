@@ -18,27 +18,28 @@ func TestReadProxying(t *testing.T) {
 	}
 
 	tmpDir, _ := os.MkdirTemp("", "dkv-proxy-*")
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 
 	// Setup 3 nodes with RF=1
 	count := 3
 	var engines []dkv.Engine
 	var servers []*dkv.Grpc
 	var seedAddr string
-	var ports []int
+
 
 	for i := range count {
 		name := fmt.Sprintf("node-%d", i)
 		nodeDir := filepath.Join(tmpDir, name)
-		os.MkdirAll(nodeDir, 0755)
+		require.NoError(t, os.MkdirAll(nodeDir, 0750))
 
 		mlLis, _ := net.Listen("tcp", "127.0.0.1:0")
 		mlPort := mlLis.Addr().(*net.TCPAddr).Port
-		mlLis.Close()
+		_ = mlLis.Close()
 
 		lis, _ := net.Listen("tcp", "127.0.0.1:0")
 		grpcPort := lis.Addr().(*net.TCPAddr).Port
-		ports = append(ports, grpcPort)
 
 		eb := dkv.NewEngineBuilder().
 			Default().
@@ -63,7 +64,9 @@ func TestReadProxying(t *testing.T) {
 
 		srv := dkv.NewServer(eng)
 		servers = append(servers, srv)
-		go srv.Run(lis)
+		go func() {
+			_ = srv.Run(lis)
+		}()
 
 		eng.Start()
 	}

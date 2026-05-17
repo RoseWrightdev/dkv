@@ -48,17 +48,20 @@ type lruShard struct {
 	pool     *sync.Pool
 }
 
+// LeastRecentlyUsed implements a thread-safe, sharded Least Recently Used (LRU) eviction service.
 type LeastRecentlyUsed struct {
 	shards []*lruShard
 	count  int
 }
 
+// LRUConfig defines the configuration parameters for the LeastRecentlyUsed eviction service.
 type LRUConfig struct {
 	Capacity   uint32
 	TTL        time.Duration
 	ShardCount int
 }
 
+// NewLRU creates and initializes a new LeastRecentlyUsed eviction service.
 func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 	shardCount := config.ShardCount
 	if shardCount <= 0 {
@@ -66,8 +69,11 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 	}
 	shards := make([]*lruShard, shardCount)
 
+	// #nosec G115
+	shardCountU := uint32(shardCount)
+
 	// Distribute capacity across shards
-	shardCap := config.Capacity / uint32(shardCount)
+	shardCap := config.Capacity / shardCountU
 	if shardCap == 0 {
 		panic("dkv: LRU Capacity must be at least equal to ShardCount")
 	}
@@ -135,7 +141,7 @@ func (lru *LeastRecentlyUsed) seen(key Key, hash hashKey) {
 	lru.getShardByHash(hash).seen(key, hash)
 }
 
-func (lru *LeastRecentlyUsed) publishDelete(key Key, hash hashKey) {
+func (lru *LeastRecentlyUsed) publishDelete(_ Key, hash hashKey) {
 	shard := lru.getShardByHash(hash)
 	select {
 	case shard.delCh <- hash:
@@ -144,7 +150,11 @@ func (lru *LeastRecentlyUsed) publishDelete(key Key, hash hashKey) {
 }
 
 func (lru *LeastRecentlyUsed) getShardByHash(hash hashKey) *lruShard {
-	return lru.shards[hash%hashKey(lru.count)]
+	// #nosec G115
+	countU := uint64(lru.count)
+	idx := hash % countU
+	// #nosec G115
+	return lru.shards[int(idx)]
 }
 
 func (s *lruShard) subscriber() {
@@ -195,6 +205,7 @@ func (s *lruShard) seen(key string, hkey hashKey) {
 	defer s.mu.Unlock()
 
 	now := time.Now()
+	// #nosec G404
 	jitter := time.Duration(rand.Int64N(int64(s.ttl / 10)))
 	expiry := now.Add(s.ttl + jitter)
 
@@ -205,7 +216,10 @@ func (s *lruShard) seen(key string, hkey hashKey) {
 		return
 	}
 
-	if uint32(len(s.cache)) >= s.capacity {
+	cacheLen := len(s.cache)
+	// #nosec G115
+	cacheLenU := uint32(cacheLen)
+	if cacheLenU >= s.capacity {
 		s.evictOldest()
 	}
 
@@ -294,6 +308,7 @@ func (s *lruShard) pushFront(e *entry) {
 	}
 }
 
+// SetEvictCallback sets the function to be called when an entry is evicted.
 func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(Key) error) {
 	for _, s := range lru.shards {
 		s.onEvict = fn

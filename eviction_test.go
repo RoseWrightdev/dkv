@@ -12,7 +12,7 @@ func TestTTLExpiration(t *testing.T) {
 	lru := NewLRU(LRUConfig{Capacity: 100, TTL: 100 * time.Millisecond, ShardCount: 16})
 
 	var evictCount int32
-	lru.SetEvictCallback(func(key Key) error {
+	lru.SetEvictCallback(func(_ Key) error {
 		atomic.AddInt32(&evictCount, 1)
 		return nil
 	})
@@ -41,7 +41,7 @@ func TestSlidingExpiration(t *testing.T) {
 	lru := NewLRU(LRUConfig{Capacity: 100, TTL: ttl, ShardCount: 16})
 
 	var evictCount int32
-	lru.SetEvictCallback(func(key Key) error {
+	lru.SetEvictCallback(func(_ Key) error {
 		atomic.AddInt32(&evictCount, 1)
 		return nil
 	})

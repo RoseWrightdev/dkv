@@ -1,6 +1,7 @@
 package dkv
 
 import (
+	"math"
 	"sync/atomic"
 	"time"
 )
@@ -36,11 +37,12 @@ func NewHLC() *HLC {
 func (c *HLC) Now() int64 {
 	for {
 		old := c.state.Load()
-		oldPhysical := int64(old >> logicalBits)
-		oldLogical := int64(old & logicalMask)
+		oldPhysical := old >> logicalBits
+		oldLogical := old & logicalMask
 
-		now := time.Now().UnixMilli()
-		var newPhysical, newLogical int64
+		nowVal := max(time.Now().UnixMilli(), 0)
+		now := uint64(nowVal)
+		var newPhysical, newLogical uint64
 
 		if now > oldPhysical {
 			newPhysical = now
@@ -50,9 +52,12 @@ func (c *HLC) Now() int64 {
 			newLogical = oldLogical + 1
 		}
 
-		newVal := uint64((newPhysical << logicalBits) | (newLogical & logicalMask))
+		newVal := (newPhysical << logicalBits) | (newLogical & logicalMask)
 		if c.state.CompareAndSwap(old, newVal) {
-			return int64(newVal)
+			if newVal <= math.MaxInt64 {
+				return int64(newVal)
+			}
+			return math.MaxInt64
 		}
 	}
 }
@@ -60,16 +65,19 @@ func (c *HLC) Now() int64 {
 // Update incorporates a remote timestamp to maintain causality.
 // Should be called on every incoming message containing a timestamp.
 func (c *HLC) Update(remote int64) {
+	// #nosec G115
 	remoteU := uint64(remote)
-	remotePhysical := int64(remoteU >> logicalBits)
-	remoteLogical := int64(remoteU & logicalMask)
+	
+	remotePhysical := remoteU >> logicalBits
+	remoteLogical := remoteU & logicalMask
 
 	for {
 		old := c.state.Load()
-		oldPhysical := int64(old >> logicalBits)
-		oldLogical := int64(old & logicalMask)
+		oldPhysical := old >> logicalBits
+		oldLogical := old & logicalMask
 
-		now := time.Now().UnixMilli()
+		nowVal := max(time.Now().UnixMilli(), 0)
+		now := uint64(nowVal)
 		
 		maxPhysical := now
 		if remotePhysical > maxPhysical {
@@ -79,22 +87,25 @@ func (c *HLC) Update(remote int64) {
 			maxPhysical = oldPhysical
 		}
 
-		var newPhysical, newLogical int64
-		if maxPhysical == oldPhysical && maxPhysical == remotePhysical {
-			newPhysical = oldPhysical
-			newLogical = max(oldLogical, remoteLogical) + 1
-		} else if maxPhysical == oldPhysical {
-			newPhysical = oldPhysical
-			newLogical = oldLogical + 1
-		} else if maxPhysical == remotePhysical {
+		var newPhysical, newLogical uint64
+		switch maxPhysical {
+		case oldPhysical:
+			if maxPhysical == remotePhysical {
+				newPhysical = oldPhysical
+				newLogical = max(oldLogical, remoteLogical) + 1
+			} else {
+				newPhysical = oldPhysical
+				newLogical = oldLogical + 1
+			}
+		case remotePhysical:
 			newPhysical = remotePhysical
 			newLogical = remoteLogical + 1
-		} else {
+		default:
 			newPhysical = maxPhysical
 			newLogical = 0
 		}
 
-		newVal := uint64((newPhysical << logicalBits) | (newLogical & logicalMask))
+		newVal := (newPhysical << logicalBits) | (newLogical & logicalMask)
 		if c.state.CompareAndSwap(old, newVal) {
 			return
 		}
