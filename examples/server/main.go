@@ -17,6 +17,7 @@ func main() {
 		SetGrpcPort(50051).
 		SetWalPath("data/wal").
 		SetSssPath("data/snapshot.bin").
+		SetInsecure().
 		GetEngine()
 
 	if err != nil {
