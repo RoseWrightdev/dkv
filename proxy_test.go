@@ -94,27 +94,23 @@ func TestReadProxying(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, "Nodes should discover each other and agree on ownership")
 	val := []byte("proxy-value")
 
-	// 2. Write it directly to Node 2
+	// Write directly to Node 2
 	err := engines[2].Set(key, val)
 	require.NoError(t, err)
 
-	// 3. Verify Node 0 (non-owner) dose not have it locally (because RF=1 and it ignored gossip)
-	// We wait a bit to ensure gossip arrived and was ignored
+	// Wait for gossip propagation to finish
 	time.Sleep(500 * time.Millisecond)
 
-	// We check internal storage if possible? No, but Get will return it via proxy.
-	// How to verify it was proxied?
-	// If we stop Node 2, Node 0 should NO LONGER be able to return it.
-
+	// Get key from Node 0, which triggers gateway read proxying to Node 2
 	v, ok := engines[0].Get(dkv.Key(key))
 	require.True(t, ok)
 	require.Equal(t, val, v)
 
-	// 4. Stop Node 2 and verify Node 0 now returns 404 (proving it wasn't local)
+	// Stop Node 2 to verify Node 0 was proxying and does not hold the key locally
 	engines[2].Stop()
 	servers[2].Stop()
-	time.Sleep(200 * time.Millisecond) // Wait for socket to close
+	time.Sleep(200 * time.Millisecond)
 
 	_, ok = engines[0].Get(dkv.Key(key))
-	require.False(t, ok, "Node 0 should not have the data locally after owner is gone")
+	require.False(t, ok, "Node 0 should not have the data locally after owner is stopped")
 }
