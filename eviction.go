@@ -231,10 +231,7 @@ func (s *lruShard) seen(key string, hkey hashKey) {
 		return
 	}
 
-	cacheLen := len(s.cache)
-	// #nosec G115
-	cacheLenU := uint32(cacheLen)
-	if cacheLenU >= s.capacity {
+	if uint32(len(s.cache)) >= s.capacity {
 		s.evictOldest()
 	}
 
