@@ -37,7 +37,7 @@ type engine struct {
 	cluster         Cluster
 	clusterConfig   ClusterConfig
 	creds           credentials.TransportCredentials
-	entropy         *AntiEntropyService
+	entropy         *EntropyService
 	startOnce       sync.Once
 	stopOnce        sync.Once
 
@@ -167,7 +167,14 @@ func newEngine(config EngineConfig) (Engine, error) {
 	}
 
 	if !config.clusterConfig.SingleNode {
-		eng.entropy = newAntiEntropyService(config.clusterConfig.NodeID, eng.cluster, eng, eng.pools, config.gossipInterval, config.transportCredentials)
+		eng.entropy = newEntropyService(&EntropyServiceConfig{
+			nodeID:   config.clusterConfig.NodeID,
+			cluster:  eng.cluster,
+			storage:  eng,
+			pools:    eng.pools,
+			interval: config.gossipInterval,
+			creds:    config.transportCredentials,
+		})
 	}
 
 	return eng, nil

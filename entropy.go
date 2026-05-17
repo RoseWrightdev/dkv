@@ -19,9 +19,9 @@ type Reconciler interface {
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 }
 
-// AntiEntropyService performs periodic state reconciliation between nodes.
+// EntropyService performs periodic state reconciliation between nodes.
 // It detects divergence in storage shards and pulls missing data from peers.
-type AntiEntropyService struct {
+type EntropyService struct {
 	cluster  Cluster
 	storage  Reconciler
 	nodeID   NodeID
@@ -31,28 +31,37 @@ type AntiEntropyService struct {
 	stopChan chan struct{}
 }
 
-// newAntiEntropyService initializes a new AntiEntropyService instance.
-func newAntiEntropyService(nodeID NodeID, cluster Cluster, storage Reconciler, pools *resourcePools, interval time.Duration, creds credentials.TransportCredentials) *AntiEntropyService {
-	if cluster == nil {
+type EntropyServiceConfig struct {
+	nodeID   NodeID
+	cluster  Cluster
+	storage  Reconciler
+	pools    *resourcePools
+	interval time.Duration
+	creds    credentials.TransportCredentials
+}
+
+// newEntropyService initializes a new EntropyService instance.
+func newEntropyService(config *EntropyServiceConfig) *EntropyService {
+	if config.cluster == nil {
 		panic("anti-entropy requires a cluster implementation")
 	}
-	if storage == nil {
+	if config.storage == nil {
 		panic("anti-entropy requires a reconciler implementation")
 	}
 
-	return &AntiEntropyService{
-		cluster:  cluster,
-		storage:  storage,
-		nodeID:   nodeID,
-		pools:    pools,
-		interval: interval,
-		creds:    creds,
+	return &EntropyService{
+		cluster:  config.cluster,
+		storage:  config.storage,
+		nodeID:   config.nodeID,
+		pools:    config.pools,
+		interval: config.interval,
+		creds:    config.creds,
 		stopChan: make(chan struct{}),
 	}
 }
 
 // start begins the background reconciliation loop until stopChan is closed.
-func (s *AntiEntropyService) start() {
+func (s *EntropyService) start() {
 	if s.interval <= 0 {
 		panic(fmt.Sprintf("invalid anti-entropy interval: %v", s.interval))
 	}
@@ -60,7 +69,7 @@ func (s *AntiEntropyService) start() {
 }
 
 // stop gracefully terminates the background reconciliation loop.
-func (s *AntiEntropyService) stop() {
+func (s *EntropyService) stop() {
 	select {
 	case <-s.stopChan:
 		return // Already stopped
@@ -69,7 +78,7 @@ func (s *AntiEntropyService) stop() {
 	}
 }
 
-func (s *AntiEntropyService) run() {
+func (s *EntropyService) run() {
 	slog.Info("Anti-entropy service started", "interval", s.interval)
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
@@ -84,7 +93,7 @@ func (s *AntiEntropyService) run() {
 	}
 }
 
-func (s *AntiEntropyService) performSync() {
+func (s *EntropyService) performSync() {
 	members := s.cluster.Members()
 	if len(members) == 0 {
 		return
@@ -125,7 +134,7 @@ func (s *AntiEntropyService) performSync() {
 	}
 }
 
-func (s *AntiEntropyService) preparePullRequest(req *pb.PullRequest) {
+func (s *EntropyService) preparePullRequest(req *pb.PullRequest) {
 	localShards := s.pools.shardMaps.Get().(map[ShardID]Digest)
 	localBuckets := s.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
 	defer func() {
@@ -168,7 +177,7 @@ func (s *AntiEntropyService) preparePullRequest(req *pb.PullRequest) {
 	}
 }
 
-func (s *AntiEntropyService) cleanupPullRequest(req *pb.PullRequest) {
+func (s *EntropyService) cleanupPullRequest(req *pb.PullRequest) {
 	for _, sd := range req.SubDigests {
 		sd.SubHashes = nil
 		s.pools.shardDigests.Put(sd)
