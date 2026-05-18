@@ -18,7 +18,7 @@ type Cluster interface {
 	Members() []PeerAddress
 	Owner(key Key) NodeID
 	GetOwners(key Key, n int) []NodeID
-	AddressForNode(nodeID NodeID) string
+	AddressForNode(nodeID NodeID) PeerAddress
 	start() error
 	stop() error
 }
@@ -143,11 +143,11 @@ func (cs *ClusterService) Members() []PeerAddress {
 }
 
 // AddressForNode returns the gRPC address for a given node ID.
-func (cs *ClusterService) AddressForNode(nodeID NodeID) string {
+func (cs *ClusterService) AddressForNode(nodeID NodeID) PeerAddress {
 	for _, m := range cs.memberList.Members() {
 		if m.Name == string(nodeID) {
 			if len(m.Meta) > 0 {
-				return fmt.Sprintf("%s:%s", m.Addr.String(), string(m.Meta))
+				return PeerAddress(fmt.Sprintf("%s:%s", m.Addr.String(), string(m.Meta)))
 			}
 			break
 		}
@@ -242,25 +242,26 @@ func (cs *ClusterService) MergeRemoteState(buf []byte, _ bool) {
 type NopCluster struct{}
 
 // Broadcast does nothing in a NopCluster.
-func (n *NopCluster) Broadcast([]byte)             {}
+func (n *NopCluster) Broadcast([]byte) {}
+
 // Members returns nil as there are no members in a NopCluster.
-func (n *NopCluster) Members() []PeerAddress       { return nil }
+func (n *NopCluster) Members() []PeerAddress { return nil }
 
 // Owner returns an empty NodeID as there are no owners in a NopCluster.
-func (n *NopCluster) Owner(Key) NodeID             { return "" }
+func (n *NopCluster) Owner(Key) NodeID { return "" }
 
 // GetOwners returns nil as there are no owners in a NopCluster.
-func (n *NopCluster) GetOwners(Key, int) []NodeID  { return nil }
+func (n *NopCluster) GetOwners(Key, int) []NodeID { return nil }
 
 // AddressForNode returns an empty string as there are no nodes in a NopCluster.
-func (n *NopCluster) AddressForNode(NodeID) string { return "" }
-func (n *NopCluster) start() error                 { return nil }
-func (n *NopCluster) stop() error                  { return nil }
+func (n *NopCluster) AddressForNode(NodeID) PeerAddress { return "" }
+func (n *NopCluster) start() error                      { return nil }
+func (n *NopCluster) stop() error                       { return nil }
 
 type broadcast struct {
 	msg []byte
 }
 
 func (b *broadcast) Invalidates(_ memberlist.Broadcast) bool { return false }
-func (b *broadcast) Message() []byte                             { return b.msg }
-func (b *broadcast) Finished()                                   {}
+func (b *broadcast) Message() []byte                         { return b.msg }
+func (b *broadcast) Finished()                               {}

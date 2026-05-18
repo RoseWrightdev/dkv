@@ -14,27 +14,27 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SetWalPath(mockConfig.walPath)
 	assert.Equal(t, mockConfig.walPath, eb.walPath)
 
-	eb.SetSssPath(mockConfig.sssPath)
-	assert.Equal(t, mockConfig.sssPath, eb.sssPath)
+	eb.SetSnpPath(mockConfig.snpPath)
+	assert.Equal(t, mockConfig.snpPath, eb.snpPath)
 
-	eb.SetWalSyncInterval(mockConfig.walSyncInterval)
-	assert.Equal(t, mockConfig.walSyncInterval, eb.walSyncInterval)
+	eb.SetWalInterval(mockConfig.walInterval)
+	assert.Equal(t, mockConfig.walInterval, eb.walInterval)
 
-	eb.SetSssInterval(mockConfig.sssInterval)
-	assert.Equal(t, mockConfig.sssInterval, eb.sssInterval)
+	eb.SetSnpInterval(mockConfig.snpInterval)
+	assert.Equal(t, mockConfig.snpInterval, eb.snpInterval)
 
 	eb.SetWalBufferSize(mockConfig.walBufferSize)
 	assert.Equal(t, mockConfig.walBufferSize, eb.walBufferSize)
 
 	eb.SetWalSegments(mockConfig.walSegments)
 	assert.Equal(t, mockConfig.walSegments, eb.walSegments)
-	
+
 	lru := NewLRU(LRUConfig{
 		Capacity:   500,
 		TTL:        time.Minute,
 		ShardCount: 16,
 	})
-	eb.SetEvictionService(lru)
+	eb.SetEvictor(lru)
 	eb.SetClock(NewHLC()).SetInsecure()
 	eb.SingleNode()
 	eb.SetInsecure()
@@ -44,9 +44,9 @@ func TestEngineBuilder(t *testing.T) {
 	defer eng.Stop()
 
 	e := eng.(*engine)
-	assert.Equal(t, e.sss.interval, mockConfig.sssInterval)
+	assert.Equal(t, e.snp.interval, mockConfig.snpInterval)
 
-	actualLRU, ok := e.evictionService.(*LeastRecentlyUsed)
+	actualLRU, ok := e.evt.(*LeastRecentlyUsed)
 	assert.True(t, ok)
 	assert.Equal(t, time.Minute, actualLRU.shards[0].ttl)
 	assert.Equal(t, uint32(500/16), actualLRU.shards[0].capacity)
@@ -56,42 +56,42 @@ func TestEngineBuilder(t *testing.T) {
 
 func TestEngineBuilder_Validation(t *testing.T) {
 	t.Run("MissingWalPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetSssPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.walPath = ""
 		_, err := eb.GetEngine()
 		assert.ErrorContains(t, err, "required eb.walPath is unset")
 	})
 
-	t.Run("MissingSssPath", func(t *testing.T) {
+	t.Run("MissingSnpPath", func(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(NewHLC()).SetInsecure()
-		eb.sssPath = ""
+		eb.snpPath = ""
 		_, err := eb.GetEngine()
-		assert.ErrorContains(t, err, "required eb.sssPath is unset")
+		assert.ErrorContains(t, err, "required eb.snpPath is unset")
 	})
 
-	t.Run("MissingWalSyncInterval", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetClock(NewHLC()).SetInsecure()
-		eb.walSyncInterval = 0
+	t.Run("MissingWalInterval", func(t *testing.T) {
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb.walInterval = 0
 		_, err := eb.GetEngine()
-		assert.ErrorContains(t, err, "required eb.walSyncInterval is unset")
+		assert.ErrorContains(t, err, "required eb.walInterval is unset")
 	})
 
 	t.Run("MissingCredentials", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.creds = nil
 		_, err := eb.GetEngine()
 		assert.ErrorContains(t, err, "transport credentials are required")
 	})
 
 	t.Run("MissingClock", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetInsecure()
 		eb.clock = nil
 		_, err := eb.GetEngine()
 		assert.ErrorContains(t, err, "required eb.clock is unset")
 	})
 
 	t.Run("MissingGossipInterval_InDistributedMode", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSssPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.clusterBuilder.config.SingleNode = false
 		eb.gossipInterval = 0
 		_, err := eb.GetEngine()

@@ -24,7 +24,7 @@ func TestGossipReplication(t *testing.T) {
 	e1, err := dkv.NewEngineBuilder().
 		Default().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
-		SetSssPath(filepath.Join(n1Dir, "sss.gob")).
+		SetSnpPath(filepath.Join(n1Dir, "snp.gob")).
 		SetNodeID(dkv.NodeID("node1")).
 		SetBindPort(8001).
 		SetGrpcPort(9001).
@@ -42,7 +42,7 @@ func TestGossipReplication(t *testing.T) {
 	e2, err := dkv.NewEngineBuilder().
 		Default().
 		SetWalPath(filepath.Join(n2Dir, "wal")).
-		SetSssPath(filepath.Join(n2Dir, "sss.gob")).
+		SetSnpPath(filepath.Join(n2Dir, "snp.gob")).
 		SetNodeID(dkv.NodeID("node2")).
 		SetBindPort(8002).
 		SetSeedNodes([]string{"127.0.0.1:8001"}).

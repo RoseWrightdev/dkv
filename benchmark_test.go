@@ -18,9 +18,9 @@ func setupBenchmarkEngine(b *testing.B, distributed bool) (Engine, func()) {
 	builder := NewEngineBuilder().
 		Default().
 		SetWalPath(tmpDir).
-		SetSssPath(tmpDir + "/sss.gob").
-		SetWalSyncInterval(time.Hour).
-		SetSssInterval(time.Hour).
+		SetSnpPath(tmpDir + "/snp.bin").
+		SetWalInterval(time.Hour).
+		SetSnpInterval(time.Hour).
 		SetWalBufferSize(1024 * 1024).
 		SetWalSegments(4).
 		SetInsecure()
@@ -74,10 +74,20 @@ func BenchmarkEngine_Delete(b *testing.B) {
 func BenchmarkEngine_Set_Parallel(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b, false)
 	defer cleanup()
+
+	const numKeys = 10000
+	keys := make([]string, numKeys)
+	for i := range numKeys {
+		keys[i] = fmt.Sprintf("key-%d", i)
+	}
+
 	val := make([]byte, 512)
+	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		i := 0
 		for pb.Next() {
-			_ = eng.Set("key", val)
+			_ = eng.Set(keys[i%numKeys], val)
+			i++
 		}
 	})
 }
@@ -85,10 +95,21 @@ func BenchmarkEngine_Set_Parallel(b *testing.B) {
 func BenchmarkEngine_Get_Parallel(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b, false)
 	defer cleanup()
-	_ = eng.Set("key", []byte("val"))
+
+	const numKeys = 10000
+	keys := make([]string, numKeys)
+	val := []byte("val")
+	for i := range numKeys {
+		keys[i] = fmt.Sprintf("key-%d", i)
+		_ = eng.Set(keys[i], val)
+	}
+
+	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		i := 0
 		for pb.Next() {
-			_, _ = eng.Get("key")
+			_, _ = eng.Get(keys[i%numKeys])
+			i++
 		}
 	})
 }
@@ -96,9 +117,19 @@ func BenchmarkEngine_Get_Parallel(b *testing.B) {
 func BenchmarkEngine_Delete_Parallel(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b, false)
 	defer cleanup()
+
+	const numKeys = 10000
+	keys := make([]string, numKeys)
+	for i := range numKeys {
+		keys[i] = fmt.Sprintf("key-%d", i)
+	}
+
+	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
+		i := 0
 		for pb.Next() {
-			_ = eng.Delete("key")
+			_ = eng.Delete(keys[i%numKeys])
+			i++
 		}
 	})
 }
@@ -133,7 +164,7 @@ func BenchmarkEngine_Snapshot(b *testing.B) {
 	}
 	b.ResetTimer()
 	for b.Loop() {
-		_ = eng.Snapshot()
+		_ = eng.(*engine).snp.create()
 	}
 }
 
@@ -142,7 +173,13 @@ func BenchmarkEngine_Recover(b *testing.B) {
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
-	eng, _ := NewEngineBuilder().Default().SingleNode().SetWalPath(tmpDir).SetSssPath(tmpDir + "/s.bin").SetInsecure().GetEngine()
+	eng, _ := NewEngineBuilder().
+		Default().
+		SingleNode().
+		SetWalPath(tmpDir).
+		SetSnpPath(tmpDir + "/s.bin").
+		SetInsecure().
+		GetEngine()
 	eng.Start()
 	count := 5000
 	if !testing.Short() {
@@ -151,12 +188,18 @@ func BenchmarkEngine_Recover(b *testing.B) {
 	for i := range count {
 		_ = eng.Set(fmt.Sprintf("k-%d", i), []byte("v"))
 	}
-	_ = eng.Snapshot()
+	_ = eng.(*engine).snp.create()
 	eng.Stop()
 
 	b.ResetTimer()
 	for b.Loop() {
-		e, _ := NewEngineBuilder().Default().SingleNode().SetWalPath(tmpDir).SetSssPath(tmpDir + "/s.bin").SetInsecure().GetEngine()
+		e, _ := NewEngineBuilder().
+			Default().
+			SingleNode().
+			SetWalPath(tmpDir).
+			SetSnpPath(tmpDir + "/s.bin").
+			SetInsecure().
+			GetEngine()
 		e.Start()
 		e.Stop()
 	}
@@ -222,6 +265,12 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 	}()
 	defer s.Stop()
 
+	const numKeys = 10000
+	keys := make([]string, numKeys)
+	for i := range numKeys {
+		keys[i] = fmt.Sprintf("key-%d", i)
+	}
+
 	val := []byte("val")
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -229,8 +278,10 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 		defer func() {
 			_ = client.Close()
 		}()
+		i := 0
 		for pb.Next() {
-			_ = client.Set("key", val)
+			_ = client.Set(keys[i%numKeys], val)
+			i++
 		}
 	})
 }
@@ -238,7 +289,7 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	e, err := NewEngineBuilder().Default().
 		SetWalPath(b.TempDir()).
-		SetSssPath(b.TempDir() + "/snapshot.db").
+		SetSnpPath(b.TempDir() + "/snapshot.db").
 		SingleNode().
 		SetInsecure().
 		GetEngine()
@@ -254,40 +305,51 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 		_ = eng.Set(fmt.Sprintf("key-%d", i), []byte("value"))
 	}
 
-	root := eng.RootDigest()
+	root := eng.hm.RootDigest()
 	shards := make(map[ShardID]Digest)
 	buckets := make(map[ShardID]ShardDigest)
 	for i := range shardCount {
 		buckets[ShardID(i)] = make([]Digest, subBucketCount)
 	}
-	eng.FillShardDigests(shards)
-	eng.FillDigests(buckets)
+	eng.hm.FillShardDigests(shards)
+	eng.hm.FillDigests(buckets)
 
 	b.Run("RootDigest", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			_ = eng.RootDigest()
+			_ = eng.hm.RootDigest()
 		}
 	})
 
 	b.Run("FillShardDigests", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			eng.FillShardDigests(shards)
+			eng.hm.FillShardDigests(shards)
 		}
 	})
 
 	b.Run("FillDigests", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			eng.FillDigests(buckets)
+			eng.hm.FillDigests(buckets)
 		}
 	})
+	syncer := newSyncer(&SyncerConfig{
+		nodeID:        eng.clusterConfig.NodeID,
+		gossip:        eng.gossip,
+		cluster:       eng.cluster,
+		clusterConfig: &eng.clusterConfig,
+		hm:            eng.hm,
+		pools:         eng.pools,
+		interval:      10 * time.Second,
+		creds:         eng.creds,
+	})
 
+	mockPullConfig := &PullConfig{"node-1", root, shards, buckets}
 	b.Run("SyncPull_Identical", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			_, _, _ = eng.SyncPull("node-1", root, shards, buckets)
+			_, _, _ = eng.pullWithSyncer(mockPullConfig, *syncer)
 		}
 	})
 
@@ -297,7 +359,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	b.Run("SyncPull_SingleMismatch", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			_, _, _ = eng.SyncPull("node-1", root, shards, buckets)
+			_, _, _ = eng.pullWithSyncer(mockPullConfig, *syncer)
 		}
 	})
 
@@ -309,7 +371,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	b.Run("SyncPull_FullDivergence", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			_, _, _ = eng.SyncPull("node-1", root, shards, buckets)
+			_, _, _ = eng.pullWithSyncer(mockPullConfig, *syncer)
 		}
 	})
 }
@@ -320,7 +382,7 @@ func BenchmarkHashRing_GetNode(b *testing.B) {
 	}
 
 	key := "some-very-long-key-to-hash"
-	
+
 	for b.Loop() {
 		_ = ring.GetNode(key)
 	}

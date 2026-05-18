@@ -9,10 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
-
 func TestNewWal(t *testing.T) {
-	_, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
+	_, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
 	cleanupEngineMocks(t)
@@ -22,7 +20,7 @@ func TestPublish(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
 	req := pb.SetRequest{Key: "key", Value: []byte{byte(32)}, Timestamp: 100}
-	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
+	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
 	err = wal.publish(req.Key, hashFunc(req.Key), &req)
@@ -37,7 +35,7 @@ func TestPublish(t *testing.T) {
 func TestReplay(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 4)
+	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 4)
 	exceptedValues := make([][]byte, 1000)
 	exceptedKeys := make([]string, 1000)
 	assert.Nil(t, err)
@@ -67,7 +65,7 @@ func TestReplay(t *testing.T) {
 func TestClear(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walSyncInterval, mockConfig.walBufferSize, 1)
+	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
 	assert.Nil(t, wal.clear(nil))

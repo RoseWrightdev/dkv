@@ -28,7 +28,6 @@ func TestReadProxying(t *testing.T) {
 	var servers []*dkv.Grpc
 	var seedAddr string
 
-
 	for i := range count {
 		name := fmt.Sprintf("node-%d", i)
 		nodeDir := filepath.Join(tmpDir, name)
@@ -45,7 +44,7 @@ func TestReadProxying(t *testing.T) {
 			Default().
 			FastTest().
 			SetWalPath(filepath.Join(nodeDir, "wal")).
-			SetSssPath(filepath.Join(nodeDir, "sss.gob")).
+			SetSnpPath(filepath.Join(nodeDir, "snp.bin")).
 			SetNodeID(dkv.NodeID(name)).
 			SetBindPort(mlPort).
 			SetGrpcPort(grpcPort).

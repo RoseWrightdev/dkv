@@ -20,12 +20,12 @@ func TestEngineOperations(t *testing.T) {
 	}()
 
 	walPath := filepath.Join(tmpDir, "wal")
-	sssPath := filepath.Join(tmpDir, "snapshot.bin")
+	snpPath := filepath.Join(tmpDir, "snapshot.bin")
 
 	eng, err := dkv.NewEngineBuilder().
 		Default().
 		SetWalPath(walPath).
-		SetSssPath(sssPath).
+		SetSnpPath(snpPath).
 		SingleNode().
 		SetInsecure().
 		GetEngine()
@@ -81,7 +81,7 @@ func TestClusterScale(t *testing.T) {
 			Default().
 			FastTest().
 			SetWalPath(filepath.Join(nodeDir, "wal")).
-			SetSssPath(filepath.Join(nodeDir, "sss.gob")).
+			SetSnpPath(filepath.Join(nodeDir, "snp.gob")).
 			SetNodeID(dkv.NodeID(name)).
 			SetBindPort(mlPort).
 			SetGrpcPort(0).
@@ -164,7 +164,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
-		SetSssPath(filepath.Join(tmpDir, "n1-sss.gob")).
+		SetSnpPath(filepath.Join(tmpDir, "n1-snp.gob")).
 		SetNodeID(dkv.NodeID("node1")).
 		SetBindPort(mlPort1).
 		SetGrpcPort(0).
@@ -187,7 +187,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n2-wal")).
-		SetSssPath(filepath.Join(tmpDir, "n2-sss.gob")).
+		SetSnpPath(filepath.Join(tmpDir, "n2-snp.gob")).
 		SetNodeID(dkv.NodeID("node2")).
 		SetBindPort(0).
 		SetGrpcPort(0).

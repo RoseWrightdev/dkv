@@ -44,8 +44,8 @@ func (m *mockEngine) Snapshot() error {
 	return args.Error(0)
 }
 
-func (m *mockEngine) SyncPull(requesterID NodeID, root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	args := m.Called(requesterID, root, shards, buckets)
+func (m *mockEngine) SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	args := m.Called(pullConfig.requesterID, pullConfig.root, pullConfig.shards, pullConfig.buckets)
 	return args.Get(0).([]*pb.SetRequest), args.Get(1).([]*pb.DeleteRequest), args.Error(2)
 }
 
