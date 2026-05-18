@@ -42,19 +42,22 @@ func (c *HLC) Now() int64 {
 
 		nowVal := max(time.Now().UnixMilli(), 0)
 		now := uint64(nowVal)
-		var newPhysical, newLogical uint64
 
+		// Coordinated Backoff on Overflow:
+		// If physical time hasn't progressed and the logical counter is exhausted,
+		// sleep immediately to bypass atomic spinning contention entirely.
+		if now <= oldPhysical && oldLogical >= logicalMask {
+			time.Sleep(1 * time.Millisecond)
+			continue
+		}
+
+		var newPhysical, newLogical uint64
 		if now > oldPhysical {
 			newPhysical = now
 			newLogical = 0
 		} else {
 			newPhysical = oldPhysical
 			newLogical = oldLogical + 1
-			if newLogical > logicalMask {
-				// Logical counter overflow! Wait for physical time to catch up.
-				time.Sleep(1 * time.Millisecond)
-				continue
-			}
 		}
 
 		newVal := (newPhysical << logicalBits) | (newLogical & logicalMask)
@@ -92,6 +95,26 @@ func (c *HLC) Update(remote int64) {
 			maxPhysical = oldPhysical
 		}
 
+		// If the advanced logical counter under LWW rules exceeds the counter mask,
+		// sleep immediately before attempting any CAS operation to bypass atomic spinning contention.
+		if maxPhysical == oldPhysical {
+			var expectedLogical uint64
+			if maxPhysical == remotePhysical {
+				expectedLogical = max(oldLogical, remoteLogical) + 1
+			} else {
+				expectedLogical = oldLogical + 1
+			}
+			if expectedLogical > logicalMask {
+				time.Sleep(1 * time.Millisecond)
+				continue
+			}
+		} else if maxPhysical == remotePhysical {
+			if remoteLogical+1 > logicalMask {
+				time.Sleep(1 * time.Millisecond)
+				continue
+			}
+		}
+
 		var newPhysical, newLogical uint64
 		switch maxPhysical {
 		case oldPhysical:
@@ -108,12 +131,6 @@ func (c *HLC) Update(remote int64) {
 		default:
 			newPhysical = maxPhysical
 			newLogical = 0
-		}
-
-		if newLogical > logicalMask {
-			// Logical counter overflow! Wait for physical time to catch up.
-			time.Sleep(1 * time.Millisecond)
-			continue
 		}
 
 		newVal := (newPhysical << logicalBits) | (newLogical & logicalMask)

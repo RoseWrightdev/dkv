@@ -143,9 +143,10 @@ func (s *lruShard) stop() {
 }
 
 func (lru *LeastRecentlyUsed) publish(key Key, hash hashKey) {
-	// Only publish 1 out of every 16 read-touch events to the LRU queue.
-	// This reduces channel lock contention by 93.75%.
-	if rand.Uint32()&15 != 0 {
+	// Only publish 1 out of every 4 read events to the LRU queue.
+	// This balances high access telemetry accuracy (captures 25% of hits)
+	// while still dropping 75% of channel lock contention overhead.
+	if rand.Uint32()&3 != 0 {
 		return
 	}
 
