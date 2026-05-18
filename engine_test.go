@@ -48,7 +48,7 @@ func TestEnginePersistence(t *testing.T) {
 	assert.Nil(t, eng.Set(key1, val1))
 	assert.Nil(t, eng.Set(key2, val2))
 
-	err = eng.Snapshot()
+	err = eng.(*engine).snp.create()
 	assert.Nil(t, err)
 
 	key3, val3 := "persist3", []byte("value3")
@@ -74,7 +74,7 @@ func TestEngine_DeletePersistence(t *testing.T) {
 	defer cleanupEngineMocks(t)
 	eng, _ := newEngine(mockConfig)
 	eng.Start()
-	
+
 	key, val := "del-persist", []byte("data")
 	assert.NoError(t, eng.Set(key, val))
 	assert.NoError(t, eng.Delete(key))
@@ -113,7 +113,7 @@ func TestEngine_LWW(t *testing.T) {
 	// Set with older timestamp (should be ignored)
 	ts3 := int64(1500)
 	// We call applyGossipSet directly to simulate a delayed gossip arrival
-	err := eng.applyGossipSet(&pb.SetRequest{
+	err := eng.gossip.applyGossipSet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("delayed-old-value"),
 		Timestamp: ts3,
@@ -146,7 +146,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 
 	// Late-arriving Set with older timestamp
 	ts3 := int64(1500)
-	err := eng.applyGossipSet(&pb.SetRequest{
+	err := eng.gossip.applyGossipSet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("zombie"),
 		Timestamp: ts3,
@@ -173,22 +173,44 @@ func TestEngine_SyncLogic(t *testing.T) {
 	assert.NoError(t, eng1.Set(key1, val1))
 
 	// 2. eng2 is empty, it pulls from eng1
-	root2 := eng2.RootDigest()
+	root2 := eng2.hm.RootDigest()
 	shards2 := make(map[ShardID]Digest)
 	buckets2 := make(map[ShardID]ShardDigest)
-	eng2.FillShardDigests(shards2)
-	eng2.FillDigests(buckets2)
+	eng2.hm.FillShardDigests(shards2)
+	eng2.hm.FillDigests(buckets2)
 
-	sets, deletes, err := eng1.SyncPull("node2", root2, shards2, buckets2)
+	syncer1 := newSyncer(&SyncerConfig{
+		nodeID:        eng1.clusterConfig.NodeID,
+		gossip:        eng1.gossip,
+		mesh:          eng1.mesh,
+		clusterConfig: &eng1.clusterConfig,
+		hm:            eng1.hm,
+		pools:         eng1.pools,
+		interval:      mockConfig.gossipInterval,
+		creds:         mockConfig.creds,
+	})
+
+	sets, deletes, err := eng1.pullWithSyncer(&PullConfig{"node2", root2, shards2, buckets2}, *syncer1)
 	assert.NoError(t, err)
 	assert.Len(t, sets, 1)
 	assert.Len(t, deletes, 0)
 	assert.Equal(t, key1, sets[0].Key)
 
 	// 3. eng2 pushes the updates
-	err = eng2.SyncPush(sets, deletes)
+	syncer2 := newSyncer(&SyncerConfig{
+		nodeID:        eng2.clusterConfig.NodeID,
+		gossip:        eng2.gossip,
+		mesh:          eng2.mesh,
+		clusterConfig: &eng2.clusterConfig,
+		hm:            eng2.hm,
+		pools:         eng2.pools,
+		interval:      mockConfig.gossipInterval,
+		creds:         mockConfig.creds,
+	})
+
+	err = eng2.pushWithSyncer(sets, deletes, *syncer2)
 	assert.NoError(t, err)
-	
+
 	got, ok := eng2.Get(Key(key1))
 	assert.True(t, ok)
 	assert.Equal(t, val1, got)

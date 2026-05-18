@@ -59,12 +59,12 @@ The dkv engine is benchmarked locally using Go's built-in testing framework:
 
 | Benchmark | Throughput | Latency / Allocations |
 | :--- | :--- | :--- |
-| **Engine Get** (Parallel) | ~42,500,000 ops/sec | 24 ns/op (0 B/op) |
-| **Engine Set** (Parallel + WAL) | ~6,800,000 ops/sec | 145 ns/op (48 B/op) |
-| **Consistent Hashing Node Lookup** | ~33,400,000 ops/sec | 29 ns/op (0 B/op) |
-| **Merkle Tree Root Digest Generation** | ~18,500,000 ops/sec | 54 ns/op (0 B/op) |
-| **Engine Get** (Single-threaded) | ~17,800,000 ops/sec | 56 ns/op (0 B/op) |
-| **Engine Set** (Single-threaded + WAL) | ~2,800,000 ops/sec | 355 ns/op (0 B/op) |
+| **Engine Get** (Parallel) | ~60,400,000 ops/sec | 16.5 ns/op (0 B/op) |
+| **Engine Set** (Parallel + WAL) | ~3,030,000 ops/sec | 330 ns/op (1 B/op) |
+| **Consistent Hashing Node Lookup** | ~18,300,000 ops/sec | 54 ns/op (0 B/op) |
+| **Merkle Tree Root Digest Generation** | ~3,860,000 ops/sec | 259 ns/op (0 B/op) |
+| **Engine Get** (Single-threaded) | ~19,300,000 ops/sec | 52 ns/op (0 B/op) |
+| **Engine Set** (Single-threaded + WAL) | ~3,060,000 ops/sec | 326 ns/op (0 B/op) |
 
 To run the full benchmark suite:
 ```bash

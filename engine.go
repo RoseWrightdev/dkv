@@ -19,70 +19,44 @@ type Engine interface {
 	Owner(key Key) NodeID
 	Start()
 	Stop()
-	Snapshot() error
-	RootDigest() RootDigest
-	FillShardDigests(dst map[ShardID]Digest)
-	FillDigests(dst map[ShardID]ShardDigest)
-	SyncPull(requesterID NodeID, root RootDigest, shards map[ShardID]Digest, buckets map[ShardID]ShardDigest) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
+	SyncPull(pullConfog *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 }
 
 type engine struct {
-	hm              *shardedMap
-	wal             Waler
-	sss             *SnapShotService
-	evictionService Evictor
-	pools           *resourcePools
-	clock           Clock
-	cluster         Cluster
-	clusterConfig   ClusterConfig
-	creds           credentials.TransportCredentials
-	entropy         *EntropyService
-	startOnce       sync.Once
-	stopOnce        sync.Once
-
-	clientMu sync.RWMutex
-	clients  map[string]*Client
-}
-
-type resourcePools struct {
-	setRequests       sync.Pool
-	deleteRequests    sync.Pool
-	snapshotEntries   sync.Pool
-	walEntries        sync.Pool
-	walSetWrappers    sync.Pool
-	walDeleteWrappers sync.Pool
-	pullRequests      sync.Pool
-	shardDigests      sync.Pool
-	shardMaps         sync.Pool
-	bucketMaps        sync.Pool
+	hm            *shardedMap
+	pools         *pools
+	wal           Waler
+	snp           *Snapshoter
+	evt           Evictor
+	clock         Clock
+	mesh          Mesh
+	clusterConfig ClusterConfig
+	syncer        *Syncer
+	creds         credentials.TransportCredentials
+	cc            *ClientCache
+	gossip        *Gossip
+	startOnce     sync.Once
+	stopOnce      sync.Once
 }
 
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
-type EngineConfig struct {
-	walPath              string
-	sssPath              string
-	walSyncInterval      time.Duration
-	sssInterval          time.Duration
-	walBufferSize        uint32
-	walSegments          int
-	evictionService      Evictor
-	clock                Clock
-	clusterConfig        ClusterConfig
-	gossipInterval       time.Duration
-	transportCredentials credentials.TransportCredentials
-}
-
-// snapshotEntry is used for streaming serialization
-type snapshotEntry struct {
-	Key       Key
-	Data      []byte
-	Timestamp int64
-	Tombstone bool
+type EngineConfig struct { // todo: refactor to use WalConfig
+	walPath        string
+	snpPath        string
+	walInterval    time.Duration
+	snpInterval    time.Duration
+	walBufferSize  uint32
+	walSegments    int
+	evt            Evictor
+	clock          Clock
+	clusterConfig  ClusterConfig
+	gossipInterval time.Duration
+	creds          credentials.TransportCredentials
 }
 
 func newEngine(config EngineConfig) (Engine, error) {
-	wal, err := newWal(config.walPath, config.walSyncInterval, config.walBufferSize, config.walSegments)
+	wal, err := newWal(config.walPath, config.walInterval, config.walBufferSize, config.walSegments)
 	if err != nil {
 		return nil, err
 	}
@@ -93,87 +67,51 @@ func newEngine(config EngineConfig) (Engine, error) {
 		wal:           wal,
 		clock:         config.clock,
 		clusterConfig: config.clusterConfig,
-		creds:         config.transportCredentials,
-		clients:       make(map[string]*Client),
-		pools: &resourcePools{
-			setRequests: sync.Pool{
-				New: func() any { return &pb.SetRequest{} },
-			},
-			deleteRequests: sync.Pool{
-				New: func() any { return &pb.DeleteRequest{} },
-			},
-			snapshotEntries: sync.Pool{
-				New: func() any { return &snapshotEntry{} },
-			},
-			walEntries: sync.Pool{
-				New: func() any { return &pb.WalEntry{} },
-			},
-			walSetWrappers: sync.Pool{
-				New: func() any { return &pb.WalEntry_Set{} },
-			},
-			walDeleteWrappers: sync.Pool{
-				New: func() any { return &pb.WalEntry_Delete{} },
-			},
-			pullRequests: sync.Pool{
-				New: func() any {
-					return &pb.PullRequest{
-						ShardDigests: make(map[uint32]uint64, shardCount),
-						SubDigests:   make(map[uint32]*pb.ShardDigests, shardCount),
-					}
-				},
-			},
-			shardDigests: sync.Pool{
-				New: func() any { return &pb.ShardDigests{} },
-			},
-			shardMaps: sync.Pool{
-				New: func() any { return make(map[ShardID]Digest) },
-			},
-			bucketMaps: sync.Pool{
-				New: func() any {
-					m := make(map[ShardID]ShardDigest, shardCount)
-					for i := range shardCount {
-						m[ShardID(i)] = make([]Digest, subBucketCount)
-					}
-					return m
-				},
-			},
-		},
+		creds:         config.creds,
+		cc:            newClientCache(config.creds),
+		pools:         newPools(),
 	}
 
-	if err := eng.recover(config.sssPath); err != nil {
+	if err := eng.recover(config.snpPath); err != nil {
 		slog.Error("Failed to recover database state", "error", err)
 	}
 
-	sss, err := newSnapshotService(config.sssPath, config.sssInterval, wal, eng.streamToEncoder)
+	gossip := newGossip(eng.pools, eng.hm, eng.wal, eng.clock, eng.mesh, &eng.clusterConfig)
+	eng.gossip = gossip
+
+	snp, err := newSnapshoter(config.snpPath, config.snpInterval, wal, gossip.streamToEncoder)
 	if err != nil {
 		return nil, err
 	}
-	eng.sss = sss
-	eng.evictionService = config.evictionService
-	eng.evictionService.SetEvictCallback(eng.Evict)
+	eng.snp = snp
+	eng.evt = config.evt
+	eng.evt.SetEvictCallback(eng.Evict)
 
-	eng.cluster = &NopCluster{}
+	eng.mesh = &NopMesh{}
 	if !config.clusterConfig.SingleNode {
-		cs, err := newClusterService(
+		mesh, err := newMesher(
 			config.clusterConfig,
-			eng.onGossipMessage,
-			eng.getLocalState,
-			eng.mergeRemoteState,
+			gossip.onGossipMessage,
+			gossip.getLocalState,
+			gossip.mergeRemoteState,
 		)
 		if err != nil {
 			return nil, err
 		}
-		eng.cluster = cs
+		eng.mesh = mesh
+		gossip.mesh = mesh
 	}
 
 	if !config.clusterConfig.SingleNode {
-		eng.entropy = newEntropyService(&EntropyServiceConfig{
-			nodeID:   config.clusterConfig.NodeID,
-			cluster:  eng.cluster,
-			storage:  eng,
-			pools:    eng.pools,
-			interval: config.gossipInterval,
-			creds:    config.transportCredentials,
+		eng.syncer = newSyncer(&SyncerConfig{
+			nodeID:        config.clusterConfig.NodeID,
+			gossip:        eng.gossip,
+			mesh:          eng.mesh,
+			clusterConfig: &config.clusterConfig,
+			hm:            eng.hm,
+			pools:         eng.pools,
+			interval:      config.gossipInterval,
+			creds:         config.creds,
 		})
 	}
 
@@ -183,14 +121,14 @@ func newEngine(config EngineConfig) (Engine, error) {
 // Start initializes background services.
 func (eng *engine) Start() {
 	eng.startOnce.Do(func() {
-		eng.sss.start()
+		eng.snp.start()
 		eng.wal.start()
-		eng.evictionService.start()
-		if err := eng.cluster.start(); err != nil {
+		eng.evt.start()
+		if err := eng.mesh.start(); err != nil {
 			panic(fmt.Sprintf("failed to start cluster service: %v", err))
 		}
-		if eng.entropy != nil {
-			eng.entropy.start()
+		if eng.syncer != nil {
+			eng.syncer.start()
 		}
 	})
 }
@@ -198,30 +136,69 @@ func (eng *engine) Start() {
 // Stop gracefully shuts down the engine and its background services.
 func (eng *engine) Stop() {
 	eng.stopOnce.Do(func() {
-		if eng.entropy != nil {
-			eng.entropy.stop()
+		if eng.syncer != nil {
+			eng.syncer.stop()
 		}
-		eng.sss.stop()
+		eng.snp.stop()
 		eng.wal.stop()
-		eng.evictionService.stop()
-		if err := eng.cluster.stop(); err != nil {
+		eng.evt.stop()
+		if err := eng.mesh.stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
 		}
-
-		// Close all cached clients
-		eng.clientMu.Lock()
-		for _, client := range eng.clients {
-			_ = client.Close()
-		}
-		eng.clients = nil
-		eng.clientMu.Unlock()
+		eng.cc.close()
 	})
+}
+
+// Get retrieves the value associated with a key from the sharded map.
+func (eng *engine) Get(key Key) ([]byte, bool) {
+	hash := hashKey(hashFunc(key))
+	iv, ok := eng.hm.Load(key, hash)
+	if ok && !iv.Tombstone {
+		eng.evt.publish(key, hash)
+		return iv.Data, true
+	} else if ok && iv.Tombstone {
+		// We have a local tombstone. Do not proxy the read as the key is known to be deleted.
+		return nil, false
+	}
+
+	// Gateway Proxy: If we don't have it locally, fetch it from an owner
+	if !eng.clusterConfig.SingleNode {
+		rf := eng.clusterConfig.ReplicationFactor
+		if rf <= 0 {
+			rf = 1
+		}
+		owners := eng.mesh.GetOwners(key, rf)
+
+		for _, owner := range owners {
+			if owner == eng.clusterConfig.NodeID {
+				continue // We already checked local storage
+			}
+
+			addr := eng.mesh.AddressForNode(owner)
+			if addr == "" {
+				continue // Try next owner
+			}
+
+			// Proxy the read
+			client, err := eng.cc.get(addr)
+			if err != nil {
+				continue // Try next owner
+			}
+			val, ok, err := client.Get(key)
+			if err != nil || !ok {
+				continue
+			}
+			return val, true
+		}
+	}
+
+	return nil, false
 }
 
 // Set persists a key-value pair to the WAL and updates the sharded map.
 func (eng *engine) Set(key Key, value []byte) error {
 	hash := hashFunc(key)
-	eng.evictionService.publish(key, hash)
+	eng.evt.publish(key, hash)
 
 	ts := eng.clock.Now()
 
@@ -250,7 +227,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 		wrapper.Set = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
-			eng.cluster.Broadcast(data)
+			eng.mesh.Broadcast(data)
 		}
 		entry.Entry = nil
 		wrapper.Set = nil
@@ -265,7 +242,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 // Delete marks a key as deleted by publishing a tombstone to the WAL.
 func (eng *engine) Delete(key Key) error {
 	hash := hashFunc(key)
-	eng.evictionService.publishDelete(key, hash)
+	eng.evt.publishDelete(key, hash)
 
 	ts := eng.clock.Now()
 
@@ -291,7 +268,7 @@ func (eng *engine) Delete(key Key) error {
 		wrapper.Delete = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
-			eng.cluster.Broadcast(data)
+			eng.mesh.Broadcast(data)
 		}
 		entry.Entry = nil
 		wrapper.Delete = nil
@@ -336,7 +313,7 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 		wrapper.Delete = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
-			eng.cluster.Broadcast(data)
+			eng.mesh.Broadcast(data)
 		}
 		entry.Entry = nil
 		wrapper.Delete = nil
@@ -350,7 +327,27 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 	return nil
 }
 
-// Snapshot triggers an immediate persistence of the current state to disk.
-func (eng *engine) Snapshot() error {
-	return eng.sss.create()
+func (eng *engine) SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	return eng.syncer.pull(pullConfig)
+}
+
+// used for testing
+func (eng *engine) pullWithSyncer(pullConfig *PullConfig, syncer Syncer) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	return syncer.pull(pullConfig)
+}
+
+func (eng *engine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
+	return eng.syncer.push(sets, deletes)
+}
+
+// used for testing
+func (eng *engine) pushWithSyncer(sets []*pb.SetRequest, deletes []*pb.DeleteRequest, syncer Syncer) error {
+	return syncer.push(sets, deletes)
+}
+
+func (eng *engine) Owner(key Key) NodeID {
+	if eng.clusterConfig.SingleNode {
+		return eng.clusterConfig.NodeID
+	}
+	return eng.mesh.Owner(key)
 }

@@ -10,17 +10,17 @@ import (
 
 // EngineBuilder provides a fluent API for constructing and configuring a dkv engine.
 type EngineBuilder struct {
-	walPath         string
-	sssPath         string
-	walSyncInterval time.Duration
-	sssInterval     time.Duration
-	walBufferSize   uint32
-	walSegments     int
-	evictionService Evictor
-	clock           Clock
-	clusterBuilder  *ClusterConfigBuilder
-	gossipInterval  time.Duration
-	creds           credentials.TransportCredentials
+	walPath        string
+	snpPath        string
+	walInterval    time.Duration
+	snpInterval    time.Duration
+	walBufferSize  uint32
+	walSegments    int
+	evt            Evictor
+	clock          Clock
+	clusterBuilder *ClusterConfigBuilder
+	gossipInterval time.Duration
+	creds          credentials.TransportCredentials
 }
 
 // NewEngineBuilder initializes a new EngineBuilder instance with default sub-builders.
@@ -31,17 +31,17 @@ func NewEngineBuilder() *EngineBuilder {
 }
 
 // NewDefaultEngine constructs a default dkv engine configuration.
-func NewDefaultEngine(walPath, sssPath string) (Engine, error) {
-	return NewEngineBuilder().Default().SetWalPath(walPath).SetSssPath(sssPath).GetEngine()
+func NewDefaultEngine(walPath, snpPath string) (Engine, error) {
+	return NewEngineBuilder().Default().SetWalPath(walPath).SetSnpPath(snpPath).GetEngine()
 }
 
 // Default populates the EngineBuilder with sensible default values.
 func (eb *EngineBuilder) Default() *EngineBuilder {
-	eb.walSyncInterval = 500 * time.Millisecond
-	eb.sssInterval = 5 * time.Minute
+	eb.walInterval = 500 * time.Millisecond
+	eb.snpInterval = 5 * time.Minute
 	eb.walBufferSize = 64 * 1024
 	eb.walSegments = 16
-	eb.evictionService = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
+	eb.evt = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
 	eb.clock = NewHLC()
 	eb.gossipInterval = 10 * time.Second
 	eb.clusterBuilder = NewClusterConfigBuilder()
@@ -54,21 +54,21 @@ func (eb *EngineBuilder) SetWalPath(path string) *EngineBuilder {
 	return eb
 }
 
-// SetSssPath sets the path to the snapshot file.
-func (eb *EngineBuilder) SetSssPath(path string) *EngineBuilder {
-	eb.sssPath = path
+// SetSnpPath sets the path to the snapshot file.
+func (eb *EngineBuilder) SetSnpPath(path string) *EngineBuilder {
+	eb.snpPath = path
 	return eb
 }
 
-// SetSssInterval sets the snapshot interval.
-func (eb *EngineBuilder) SetSssInterval(interval time.Duration) *EngineBuilder {
-	eb.sssInterval = interval
+// SetSnpInterval sets the snapshot interval.
+func (eb *EngineBuilder) SetSnpInterval(interval time.Duration) *EngineBuilder {
+	eb.snpInterval = interval
 	return eb
 }
 
-// SetWalSyncInterval sets the sync interval for the write-ahead log.
-func (eb *EngineBuilder) SetWalSyncInterval(interval time.Duration) *EngineBuilder {
-	eb.walSyncInterval = interval
+// SetWalInterval sets the sync interval for the write-ahead log.
+func (eb *EngineBuilder) SetWalInterval(interval time.Duration) *EngineBuilder {
+	eb.walInterval = interval
 	return eb
 }
 
@@ -84,9 +84,9 @@ func (eb *EngineBuilder) SetWalSegments(count int) *EngineBuilder {
 	return eb
 }
 
-// SetEvictionService sets the eviction service instance.
-func (eb *EngineBuilder) SetEvictionService(evictor Evictor) *EngineBuilder {
-	eb.evictionService = evictor
+// SetEvictor sets the eviction service instance.
+func (eb *EngineBuilder) SetEvictor(evt Evictor) *EngineBuilder {
+	eb.evt = evt
 	return eb
 }
 
@@ -159,8 +159,8 @@ func (eb *EngineBuilder) SetGossipInterval(interval time.Duration) *EngineBuilde
 	return eb
 }
 
-// SetTransportCredentials sets the transport credentials for secure node-to-node connections.
-func (eb *EngineBuilder) SetTransportCredentials(creds credentials.TransportCredentials) *EngineBuilder {
+// Setcreds sets the transport credentials for secure node-to-node connections.
+func (eb *EngineBuilder) SetCreds(creds credentials.TransportCredentials) *EngineBuilder {
 	eb.creds = creds
 	return eb
 }
@@ -183,20 +183,20 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 		return nil, fmt.Errorf("required eb.walPath is unset; configure eb.walPath with SetWalPath(path string)")
 	}
 
-	if isUnit(eb.sssPath) {
-		return nil, fmt.Errorf("required eb.sssPath is unset; configure eb.sssPath with SetSssPath(path string)")
+	if isUnit(eb.snpPath) {
+		return nil, fmt.Errorf("required eb.snpPath is unset; configure eb.snpPath with SetSnpPath(path string)")
 	}
 
-	if isUnit(eb.walSyncInterval) {
-		return nil, fmt.Errorf("required eb.walSyncInterval is unset; configure eb.walSyncInterval with SetWalSyncInterval(interval time.Duration)")
+	if isUnit(eb.walInterval) {
+		return nil, fmt.Errorf("required eb.walInterval is unset; configure eb.walInterval with SetWalInterval(interval time.Duration)")
 	}
 
-	if isUnit(eb.sssInterval) {
-		return nil, fmt.Errorf("required eb.sssInterval is unset; configure eb.sssInterval with SetSssInterval(interval time.Duration)")
+	if isUnit(eb.snpInterval) {
+		return nil, fmt.Errorf("required eb.snpInterval is unset; configure eb.snpInterval with SetSnpInterval(interval time.Duration)")
 	}
 
 	if eb.creds == nil {
-		return nil, fmt.Errorf("transport credentials are required; use SetTransportCredentials(creds) or SetInsecure() for development")
+		return nil, fmt.Errorf("transport credentials are required; use Setcreds(creds) or SetInsecure() for development")
 	}
 
 	if isUnit(eb.walBufferSize) {
@@ -221,17 +221,17 @@ func (eb *EngineBuilder) GetEngine() (Engine, error) {
 	}
 
 	config := EngineConfig{
-		walPath:              eb.walPath,
-		sssPath:              eb.sssPath,
-		walSyncInterval:      eb.walSyncInterval,
-		sssInterval:          eb.sssInterval,
-		walBufferSize:        eb.walBufferSize,
-		walSegments:          eb.walSegments,
-		evictionService:      eb.evictionService,
-		clock:                eb.clock,
-		clusterConfig:        clusterConfig,
-		gossipInterval:       eb.gossipInterval,
-		transportCredentials: eb.creds,
+		walPath:        eb.walPath,
+		snpPath:        eb.snpPath,
+		walInterval:    eb.walInterval,
+		snpInterval:    eb.snpInterval,
+		walBufferSize:  eb.walBufferSize,
+		walSegments:    eb.walSegments,
+		evt:            eb.evt,
+		clock:          eb.clock,
+		clusterConfig:  clusterConfig,
+		gossipInterval: eb.gossipInterval,
+		creds:          eb.creds,
 	}
 
 	return newEngine(config)

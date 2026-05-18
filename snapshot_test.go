@@ -15,22 +15,22 @@ type mockWal struct {
 }
 
 func (mw *mockWal) publish(_ Key, _ hashKey, _ proto.Message) error { return nil }
-func (mw *mockWal) replay() (map[Key]Value, error)  { return nil, nil }
-func (mw *mockWal) clear(_ []int64) error             { mw.clearCalled = true; return nil }
-func (mw *mockWal) prepareSnapshot() ([]int64, error)       { return nil, nil }
-func (mw *mockWal) stop()                                    {}
-func (mw *mockWal) start()                                   {}
+func (mw *mockWal) replay() (map[Key]Value, error)                  { return nil, nil }
+func (mw *mockWal) clear(_ []int64) error                           { mw.clearCalled = true; return nil }
+func (mw *mockWal) prepareSnapshot() ([]int64, error)               { return nil, nil }
+func (mw *mockWal) stop()                                           {}
+func (mw *mockWal) start()                                          {}
 
-func TestNewSnapShotService(t *testing.T) {
+func TestNewSnapshoter(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
 	mw := &mockWal{}
 	callBack := func(_ *gob.Encoder) error { return nil }
 
-	sss, err := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
+	snp, err := newSnapshoter(mockConfig.snpPath, mockConfig.snpInterval, mw, callBack)
 	assert.NoError(t, err)
-	assert.NotNil(t, sss)
-	assert.Equal(t, mockConfig.sssPath, sss.path)
+	assert.NotNil(t, snp)
+	assert.Equal(t, mockConfig.snpPath, snp.path)
 }
 
 func TestCreateNewSnapShot(t *testing.T) {
@@ -49,12 +49,12 @@ func TestCreateNewSnapShot(t *testing.T) {
 		}
 		return nil
 	}
-	sss, _ := newSnapshotService(mockConfig.sssPath, mockConfig.sssInterval, mw, callBack)
+	snp, _ := newSnapshoter(mockConfig.snpPath, mockConfig.snpInterval, mw, callBack)
 
-	err := sss.create()
+	err := snp.create()
 	assert.NoError(t, err)
 
-	file, err := os.Open(mockConfig.sssPath)
+	file, err := os.Open(mockConfig.snpPath)
 	assert.NoError(t, err)
 	defer func() {
 		_ = file.Close()
@@ -81,14 +81,14 @@ func TestPeriodicSnapshots(t *testing.T) {
 	callBack := func(_ *gob.Encoder) error { return nil }
 
 	interval := 50 * time.Millisecond
-	sss, err := newSnapshotService(mockConfig.sssPath, interval, mw, callBack)
+	snp, err := newSnapshoter(mockConfig.snpPath, interval, mw, callBack)
 	assert.NoError(t, err)
 
-	sss.start()
-	defer sss.stop()
+	snp.start()
+	defer snp.stop()
 
 	time.Sleep(150 * time.Millisecond)
 
-	_, err = os.Stat(mockConfig.sssPath)
+	_, err = os.Stat(mockConfig.snpPath)
 	assert.NoError(t, err, "Snapshot file should have been created by background task")
 }

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAntiEntropySync(t *testing.T) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-entropy-*")
+func TestSync(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "dkv-syncer-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
@@ -24,7 +24,7 @@ func TestAntiEntropySync(t *testing.T) {
 	e1, err := NewEngineBuilder().
 		Default().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
-		SetSssPath(filepath.Join(n1Dir, "sss.gob")).
+		SetSnpPath(filepath.Join(n1Dir, "snp.gob")).
 		SetGossipInterval(100 * time.Millisecond).
 		SetNodeID(NodeID("node1")).
 		SetBindPort(9001).
@@ -48,7 +48,7 @@ func TestAntiEntropySync(t *testing.T) {
 	e2, err := NewEngineBuilder().
 		Default().
 		SetWalPath(filepath.Join(n2Dir, "wal")).
-		SetSssPath(filepath.Join(n2Dir, "sss.gob")).
+		SetSnpPath(filepath.Join(n2Dir, "snp.gob")).
 		SetGossipInterval(100 * time.Millisecond).
 		SetNodeID(NodeID("node2")).
 		SetBindPort(9003).
@@ -72,7 +72,6 @@ func TestAntiEntropySync(t *testing.T) {
 	defer e1.Stop()
 	defer e2.Stop()
 
-	// Wait for cluster to stabilize
 	time.Sleep(500 * time.Millisecond)
 
 	// Write data to Node 1 (using a key it owns in the final topology)
@@ -81,7 +80,7 @@ func TestAntiEntropySync(t *testing.T) {
 	err = e1.Set(key, val)
 	require.NoError(t, err)
 
-	// Wait for Anti-Entropy to perform sync (if it hasn't already via memberlist join)
+	// Wait for Syncer to perform sync (if it hasn't already via memberlist join)
 	time.Sleep(1500 * time.Millisecond)
 
 	// Verify sync
@@ -93,9 +92,8 @@ func TestAntiEntropySync(t *testing.T) {
 	err = e1.Delete(key)
 	require.NoError(t, err)
 
-	// Wait for Anti-Entropy again.
 	time.Sleep(1500 * time.Millisecond)
 
 	_, ok = e2.Get(Key(key))
-	assert.False(t, ok, "Node 2 should have reconciled the deletion via Anti-Entropy")
+	assert.False(t, ok, "Node 2 should have reconciled the deletion via Syncer")
 }

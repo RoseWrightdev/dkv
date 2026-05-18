@@ -12,17 +12,17 @@ import (
 )
 
 var mockConfig = EngineConfig{
-	walPath:         "test_wal_dir",
-	sssPath:         "test_snapshot.bin",
-	walSyncInterval: 100 * time.Millisecond,
-	sssInterval:     500 * time.Millisecond,
-	walBufferSize:   uint32(64 * 1024),
-	walSegments:     4,
-	evictionService: NewLRU(LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
-	gossipInterval:  10 * time.Second,
-	clock:           NewHLC(),
-	clusterConfig:        ClusterConfig{SingleNode: true},
-	transportCredentials: insecure.NewCredentials(),
+	walPath:        "test_wal_dir",
+	snpPath:        "test_snapshot.gob",
+	walInterval:    100 * time.Millisecond,
+	snpInterval:    500 * time.Millisecond,
+	walBufferSize:  uint32(64 * 1024),
+	walSegments:    4,
+	evt:            NewLRU(LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
+	gossipInterval: 10 * time.Second,
+	clock:          NewHLC(),
+	clusterConfig:  ClusterConfig{SingleNode: true},
+	creds:          insecure.NewCredentials(),
 }
 
 func init() {
@@ -32,10 +32,10 @@ func init() {
 }
 
 func cleanupEngineMocks(t *testing.T) {
-	if err := os.Remove(mockConfig.sssPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(mockConfig.snpPath); err != nil && !os.IsNotExist(err) {
 		assert.Nil(t, err)
 	}
-	if err := os.Remove(mockConfig.sssPath + ".tmp"); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(mockConfig.snpPath + ".tmp"); err != nil && !os.IsNotExist(err) {
 		assert.Nil(t, err)
 	}
 	if err := os.RemoveAll(mockConfig.walPath); err != nil && !os.IsNotExist(err) {
