@@ -16,7 +16,7 @@ import (
 // It detects divergence in storage shards and pulls missing data from peers.
 type Syncer struct {
 	gossip        Gossiper
-	cluster       Cluster
+	mesh          Mesh
 	clusterConfig *ClusterConfig
 	hm            *shardedMap
 	nodeID        NodeID
@@ -29,7 +29,7 @@ type Syncer struct {
 type SyncerConfig struct {
 	nodeID        NodeID
 	gossip        Gossiper
-	cluster       Cluster
+	mesh          Mesh
 	clusterConfig *ClusterConfig
 	hm            *shardedMap
 	pools         *pools
@@ -39,13 +39,13 @@ type SyncerConfig struct {
 
 // newSyncer initializes a new Syncer instance.
 func newSyncer(config *SyncerConfig) *Syncer {
-	if config.cluster == nil {
-		panic("Syncer requires a cluster implementation")
+	if config.mesh == nil {
+		panic("Syncer requires a mesh implementation")
 	}
 
 	return &Syncer{
 		gossip:        config.gossip,
-		cluster:       config.cluster,
+		mesh:          config.mesh,
 		clusterConfig: config.clusterConfig,
 		hm:            config.hm,
 		nodeID:        config.nodeID,
@@ -165,7 +165,7 @@ func (s *Syncer) pull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteReq
 						// Filter: Only send keys the requester is responsible for
 						if !s.clusterConfig.SingleNode {
 							isResponsible := false
-							if slices.Contains(s.cluster.GetOwners(Key(k), s.clusterConfig.ReplicationFactor), pullConfig.requesterID) {
+							if slices.Contains(s.mesh.GetOwners(Key(k), s.clusterConfig.ReplicationFactor), pullConfig.requesterID) {
 								isResponsible = true
 							}
 							if !isResponsible {
@@ -197,7 +197,7 @@ func (s *Syncer) pull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteReq
 }
 
 func (s *Syncer) performSync() {
-	members := s.cluster.Members()
+	members := s.mesh.Members()
 	if len(members) == 0 {
 		return
 	}

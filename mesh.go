@@ -12,8 +12,8 @@ import (
 // PeerAddress represents the network address (IP:Port) of a dkv node.
 type PeerAddress string
 
-// Cluster defines the interface for distributed node discovery and replication.
-type Cluster interface {
+// Mesh defines the interface for distributed node discovery and replication.
+type Mesh interface {
 	Broadcast(msg []byte)
 	Members() []PeerAddress
 	Owner(key Key) NodeID
@@ -46,8 +46,8 @@ type ClusterConfig struct {
 	FastTest bool
 }
 
-// ClusterService manages the lifecycle of the node within a gossip-based cluster.
-type ClusterService struct {
+// Mesher manages the lifecycle of the node within a gossip-based cluster.
+type Mesher struct {
 	config           ClusterConfig
 	memberList       *memberlist.Memberlist
 	broadcasts       *memberlist.TransmitLimitedQueue
@@ -57,15 +57,15 @@ type ClusterService struct {
 	ring             *HashRing
 }
 
-// newClusterService initializes a new ClusterService instance.
-func newClusterService(
+// newMesher initializes a new Mesher instance.
+func newMesher(
 	config ClusterConfig,
 	onMessage func([]byte),
 	getLocalState func() []byte,
 	mergeRemoteState func([]byte),
-) (*ClusterService, error) {
+) (*Mesher, error) {
 	ring := NewHashRing()
-	cs := &ClusterService{
+	m := &Mesher{
 		config:           config,
 		onMessage:        onMessage,
 		getLocalState:    getLocalState,
@@ -92,8 +92,8 @@ func newClusterService(
 		mlConfig.SuspicionMult = 2
 	}
 	mlConfig.LogOutput = io.Discard
-	mlConfig.Delegate = cs
-	mlConfig.Events = cs
+	mlConfig.Delegate = m
+	mlConfig.Events = m
 
 	if config.NodeID != "" {
 		mlConfig.Name = string(config.NodeID)
@@ -108,46 +108,46 @@ func newClusterService(
 		mlConfig.AdvertiseAddr = config.AdvertiseAddr
 	}
 
-	mlConfig.Events = cs
+	mlConfig.Events = m
 	ml, err := memberlist.Create(mlConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create memberlist: %w", err)
 	}
 
-	cs.memberList = ml
-	cs.broadcasts = &memberlist.TransmitLimitedQueue{
+	m.memberList = ml
+	m.broadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       func() int { return ml.NumMembers() },
 		RetransmitMult: 3,
 	}
 
-	return cs, nil
+	return m, nil
 }
 
 // Broadcast serializes and spreads a message across the cluster using epidemic gossip.
-func (cs *ClusterService) Broadcast(msg []byte) {
-	cs.broadcasts.QueueBroadcast(&broadcast{
+func (m *Mesher) Broadcast(msg []byte) {
+	m.broadcasts.QueueBroadcast(&broadcast{
 		msg: msg,
 	})
 }
 
 // Members returns the gRPC API addresses of all active peers discovered via gossip.
-func (cs *ClusterService) Members() []PeerAddress {
-	members := cs.memberList.Members()
+func (m *Mesher) Members() []PeerAddress {
+	members := m.memberList.Members()
 	addrs := make([]PeerAddress, 0, len(members))
-	for _, m := range members {
-		if len(m.Meta) > 0 {
-			addrs = append(addrs, PeerAddress(fmt.Sprintf("%s:%s", m.Addr.String(), string(m.Meta))))
+	for _, member := range members {
+		if len(member.Meta) > 0 {
+			addrs = append(addrs, PeerAddress(fmt.Sprintf("%s:%s", member.Addr.String(), string(member.Meta))))
 		}
 	}
 	return addrs
 }
 
 // AddressForNode returns the gRPC address for a given node ID.
-func (cs *ClusterService) AddressForNode(nodeID NodeID) PeerAddress {
-	for _, m := range cs.memberList.Members() {
-		if m.Name == string(nodeID) {
-			if len(m.Meta) > 0 {
-				return PeerAddress(fmt.Sprintf("%s:%s", m.Addr.String(), string(m.Meta)))
+func (m *Mesher) AddressForNode(nodeID NodeID) PeerAddress {
+	for _, member := range m.memberList.Members() {
+		if member.Name == string(nodeID) {
+			if len(member.Meta) > 0 {
+				return PeerAddress(fmt.Sprintf("%s:%s", member.Addr.String(), string(member.Meta)))
 			}
 			break
 		}
@@ -156,107 +156,107 @@ func (cs *ClusterService) AddressForNode(nodeID NodeID) PeerAddress {
 }
 
 // Owner returns the NodeID of the peer responsible for the given key.
-func (cs *ClusterService) Owner(key Key) NodeID {
-	return cs.ring.GetNode(key)
+func (m *Mesher) Owner(key Key) NodeID {
+	return m.ring.GetNode(key)
 }
 
 // GetOwners returns the N closest NodeIDs on the hash ring responsible for replicating the given key.
-func (cs *ClusterService) GetOwners(key Key, n int) []NodeID {
-	return cs.ring.GetOwners(key, n)
+func (m *Mesher) GetOwners(key Key, n int) []NodeID {
+	return m.ring.GetOwners(key, n)
 }
 
 // NotifyJoin is called by memberlist when a new node joins.
-func (cs *ClusterService) NotifyJoin(node *memberlist.Node) {
+func (m *Mesher) NotifyJoin(node *memberlist.Node) {
 	slog.Info("Node joined cluster", "node", node.Name, "addr", node.Addr.String())
-	cs.ring.AddNode(NodeID(node.Name))
+	m.ring.AddNode(NodeID(node.Name))
 }
 
 // NotifyLeave is called by memberlist when a node leaves.
-func (cs *ClusterService) NotifyLeave(node *memberlist.Node) {
+func (m *Mesher) NotifyLeave(node *memberlist.Node) {
 	slog.Info("Node left cluster", "node", node.Name)
-	cs.ring.RemoveNode(NodeID(node.Name))
+	m.ring.RemoveNode(NodeID(node.Name))
 }
 
 // NotifyUpdate is called by memberlist when a node's metadata changes.
-func (cs *ClusterService) NotifyUpdate(_ *memberlist.Node) {
+func (m *Mesher) NotifyUpdate(_ *memberlist.Node) {
 	// Ring distribution depends only on node name, so update is a no-op.
 }
 
-func (cs *ClusterService) start() error {
-	if len(cs.config.SeedNodes) > 0 {
-		count, err := cs.memberList.Join(cs.config.SeedNodes)
+func (m *Mesher) start() error {
+	if len(m.config.SeedNodes) > 0 {
+		count, err := m.memberList.Join(m.config.SeedNodes)
 		if err != nil {
 			return fmt.Errorf("failed to join cluster: %w", err)
 		}
-		slog.Info("Joined cluster successfully", "seeds", len(cs.config.SeedNodes), "joined", count)
+		slog.Info("Joined cluster successfully", "seeds", len(m.config.SeedNodes), "joined", count)
 	}
 	return nil
 }
 
-func (cs *ClusterService) stop() error {
-	if cs.memberList == nil {
+func (m *Mesher) stop() error {
+	if m.memberList == nil {
 		return nil
 	}
 
 	slog.Info("Leaving cluster...")
-	if err := cs.memberList.Leave(time.Second); err != nil {
+	if err := m.memberList.Leave(time.Second); err != nil {
 		slog.Warn("Error during cluster leave", "error", err)
 	}
 
-	err := cs.memberList.Shutdown()
-	cs.memberList = nil
+	err := m.memberList.Shutdown()
+	m.memberList = nil
 	return err
 }
 
 // memberlist.Delegate implementation
 
 // NodeMeta returns the metadata of the node, which includes the gRPC port.
-func (cs *ClusterService) NodeMeta(_ int) []byte {
-	return fmt.Appendf(nil, "%d", cs.config.GrpcPort)
+func (m *Mesher) NodeMeta(_ int) []byte {
+	return fmt.Appendf(nil, "%d", m.config.GrpcPort)
 }
 
 // NotifyMsg is called when a user-space message is received.
-func (cs *ClusterService) NotifyMsg(b []byte) {
-	cs.onMessage(b)
+func (m *Mesher) NotifyMsg(b []byte) {
+	m.onMessage(b)
 }
 
 // GetBroadcasts is called when memberlist needs messages to broadcast.
-func (cs *ClusterService) GetBroadcasts(overhead, limit int) [][]byte {
-	return cs.broadcasts.GetBroadcasts(overhead, limit)
+func (m *Mesher) GetBroadcasts(overhead, limit int) [][]byte {
+	return m.broadcasts.GetBroadcasts(overhead, limit)
 }
 
 // LocalState returns the local node state for anti-entropy.
-func (cs *ClusterService) LocalState(_ bool) []byte {
-	if cs.getLocalState != nil {
-		return cs.getLocalState()
+func (m *Mesher) LocalState(_ bool) []byte {
+	if m.getLocalState != nil {
+		return m.getLocalState()
 	}
 	return nil
 }
 
 // MergeRemoteState merges incoming state from a peer.
-func (cs *ClusterService) MergeRemoteState(buf []byte, _ bool) {
-	cs.mergeRemoteState(buf)
+func (m *Mesher) MergeRemoteState(buf []byte, _ bool) {
+	m.mergeRemoteState(buf)
 }
 
-// NopCluster is a non-functional implementation of the Cluster interface used when distribution is disabled.
-type NopCluster struct{}
+// NopMesh is a non-functional implementation of the Mesh interface used when distribution is disabled.
+type NopMesh struct{}
 
-// Broadcast does nothing in a NopCluster.
-func (n *NopCluster) Broadcast([]byte) {}
+// Broadcast does nothing in a NopMesh.
+func (n *NopMesh) Broadcast([]byte) {}
 
-// Members returns nil as there are no members in a NopCluster.
-func (n *NopCluster) Members() []PeerAddress { return nil }
+// Members returns nil as there are no members in a NopMesh.
+func (n *NopMesh) Members() []PeerAddress { return nil }
 
-// Owner returns an empty NodeID as there are no owners in a NopCluster.
-func (n *NopCluster) Owner(Key) NodeID { return "" }
+// Owner returns an empty NodeID as there are no owners in a NopMesh.
+func (n *NopMesh) Owner(Key) NodeID { return "" }
 
-// GetOwners returns nil as there are no owners in a NopCluster.
-func (n *NopCluster) GetOwners(Key, int) []NodeID { return nil }
+// GetOwners returns nil as there are no owners in a NopMesh.
+func (n *NopMesh) GetOwners(Key, int) []NodeID { return nil }
 
-// AddressForNode returns an empty string as there are no nodes in a NopCluster.
-func (n *NopCluster) AddressForNode(NodeID) PeerAddress { return "" }
-func (n *NopCluster) start() error                      { return nil }
-func (n *NopCluster) stop() error                       { return nil }
+// AddressForNode returns an empty string as there are no nodes in a NopMesh.
+func (n *NopMesh) AddressForNode(NodeID) PeerAddress { return "" }
+func (n *NopMesh) start() error                      { return nil }
+func (n *NopMesh) stop() error                       { return nil }
 
 type broadcast struct {
 	msg []byte

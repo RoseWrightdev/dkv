@@ -182,7 +182,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 	syncer1 := newSyncer(&SyncerConfig{
 		nodeID:        eng1.clusterConfig.NodeID,
 		gossip:        eng1.gossip,
-		cluster:       eng1.cluster,
+		mesh:          eng1.mesh,
 		clusterConfig: &eng1.clusterConfig,
 		hm:            eng1.hm,
 		pools:         eng1.pools,
@@ -200,7 +200,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 	syncer2 := newSyncer(&SyncerConfig{
 		nodeID:        eng2.clusterConfig.NodeID,
 		gossip:        eng2.gossip,
-		cluster:       eng2.cluster,
+		mesh:          eng2.mesh,
 		clusterConfig: &eng2.clusterConfig,
 		hm:            eng2.hm,
 		pools:         eng2.pools,

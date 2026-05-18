@@ -337,7 +337,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	syncer := newSyncer(&SyncerConfig{
 		nodeID:        eng.clusterConfig.NodeID,
 		gossip:        eng.gossip,
-		cluster:       eng.cluster,
+		mesh:          eng.mesh,
 		clusterConfig: &eng.clusterConfig,
 		hm:            eng.hm,
 		pools:         eng.pools,

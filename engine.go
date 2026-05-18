@@ -30,7 +30,7 @@ type engine struct {
 	snp           *Snapshoter
 	evt           Evictor
 	clock         Clock
-	cluster       Cluster
+	mesh          Mesh
 	clusterConfig ClusterConfig
 	syncer        *Syncer
 	creds         credentials.TransportCredentials
@@ -76,7 +76,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 		slog.Error("Failed to recover database state", "error", err)
 	}
 
-	gossip := newGossip(eng.pools, eng.hm, eng.wal, eng.clock, eng.cluster, &eng.clusterConfig)
+	gossip := newGossip(eng.pools, eng.hm, eng.wal, eng.clock, eng.mesh, &eng.clusterConfig)
 	eng.gossip = gossip
 
 	snp, err := newSnapshoter(config.snpPath, config.snpInterval, wal, gossip.streamToEncoder)
@@ -87,9 +87,9 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.evt = config.evt
 	eng.evt.SetEvictCallback(eng.Evict)
 
-	eng.cluster = &NopCluster{}
+	eng.mesh = &NopMesh{}
 	if !config.clusterConfig.SingleNode {
-		cs, err := newClusterService(
+		mesh, err := newMesher(
 			config.clusterConfig,
 			gossip.onGossipMessage,
 			gossip.getLocalState,
@@ -98,15 +98,15 @@ func newEngine(config EngineConfig) (Engine, error) {
 		if err != nil {
 			return nil, err
 		}
-		eng.cluster = cs
-		gossip.cluster = cs
+		eng.mesh = mesh
+		gossip.mesh = mesh
 	}
 
 	if !config.clusterConfig.SingleNode {
 		eng.syncer = newSyncer(&SyncerConfig{
 			nodeID:        config.clusterConfig.NodeID,
 			gossip:        eng.gossip,
-			cluster:       eng.cluster,
+			mesh:          eng.mesh,
 			clusterConfig: &config.clusterConfig,
 			hm:            eng.hm,
 			pools:         eng.pools,
@@ -124,7 +124,7 @@ func (eng *engine) Start() {
 		eng.snp.start()
 		eng.wal.start()
 		eng.evt.start()
-		if err := eng.cluster.start(); err != nil {
+		if err := eng.mesh.start(); err != nil {
 			panic(fmt.Sprintf("failed to start cluster service: %v", err))
 		}
 		if eng.syncer != nil {
@@ -142,7 +142,7 @@ func (eng *engine) Stop() {
 		eng.snp.stop()
 		eng.wal.stop()
 		eng.evt.stop()
-		if err := eng.cluster.stop(); err != nil {
+		if err := eng.mesh.stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
 		}
 		eng.cc.close()
@@ -167,14 +167,14 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 		if rf <= 0 {
 			rf = 1
 		}
-		owners := eng.cluster.GetOwners(key, rf)
+		owners := eng.mesh.GetOwners(key, rf)
 
 		for _, owner := range owners {
 			if owner == eng.clusterConfig.NodeID {
 				continue // We already checked local storage
 			}
 
-			addr := eng.cluster.AddressForNode(owner)
+			addr := eng.mesh.AddressForNode(owner)
 			if addr == "" {
 				continue // Try next owner
 			}
@@ -227,7 +227,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 		wrapper.Set = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
-			eng.cluster.Broadcast(data)
+			eng.mesh.Broadcast(data)
 		}
 		entry.Entry = nil
 		wrapper.Set = nil
@@ -268,7 +268,7 @@ func (eng *engine) Delete(key Key) error {
 		wrapper.Delete = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
-			eng.cluster.Broadcast(data)
+			eng.mesh.Broadcast(data)
 		}
 		entry.Entry = nil
 		wrapper.Delete = nil
@@ -313,7 +313,7 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 		wrapper.Delete = req
 		entry.Entry = wrapper
 		if data, err := proto.Marshal(entry); err == nil {
-			eng.cluster.Broadcast(data)
+			eng.mesh.Broadcast(data)
 		}
 		entry.Entry = nil
 		wrapper.Delete = nil
@@ -349,5 +349,5 @@ func (eng *engine) Owner(key Key) NodeID {
 	if eng.clusterConfig.SingleNode {
 		return eng.clusterConfig.NodeID
 	}
-	return eng.cluster.Owner(key)
+	return eng.mesh.Owner(key)
 }

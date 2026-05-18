@@ -23,12 +23,12 @@ type Gossip struct {
 	hm            *shardedMap
 	wal           Waler
 	clock         Clock
-	cluster       Cluster
+	mesh          Mesh
 	clusterConfig *ClusterConfig
 }
 
-func newGossip(pools *pools, hm *shardedMap, wal Waler, clock Clock, cluster Cluster, clusterConfig *ClusterConfig) *Gossip {
-	return &Gossip{pools, hm, wal, clock, cluster, clusterConfig}
+func newGossip(pools *pools, hm *shardedMap, wal Waler, clock Clock, mesh Mesh, clusterConfig *ClusterConfig) *Gossip {
+	return &Gossip{pools, hm, wal, clock, mesh, clusterConfig}
 }
 
 func (sip *Gossip) onGossipMessage(data []byte) {
@@ -134,7 +134,7 @@ func (sip *Gossip) isLocal(key string) bool {
 	}
 
 	// In a distributed cluster, we are responsible if we are one of the N owners
-	owners := sip.cluster.GetOwners(key, rf)
+	owners := sip.mesh.GetOwners(key, rf)
 	return slices.Contains(owners, sip.clusterConfig.NodeID)
 }
 
