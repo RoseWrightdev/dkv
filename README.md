@@ -18,27 +18,36 @@ dkv is a partitioned, state-replicated key-value database implemented in Go. In 
 
 ```mermaid
 flowchart TD
-    Client([gRPC Client]) -->|gRPC Requests| Server[gRPC Server Node]
+    Client([gRPC Client]) -->|gRPC Requests| Server[gRPC Server]
+    Server -->|Engine Interface| Engine[engine Facade]
     
-    Server -->|Consistent Hash Ring| Ring{Is Key Local?}
+    %% Routing Decisions
+    Engine -->|Consistent Hashing| Ring[HashRing]
+    Ring -->|GetOwners / Node Lookup| OwnerCheck{Is Key Local?}
     
-    Ring -->|No: Proxy Path| Proxy[gRPC Proxy Reader]
-    Proxy -->|Double-Checked Pool| ConnCache[(Client Connection Pool)]
-    ConnCache -->|gRPC Read| PeerNode[Remote Peer Node]
+    %% Proxy path
+    OwnerCheck -->|No| ClientCache[ClientCache Pool]
+    ClientCache -->|gRPC Proxy Call| PeerNode[Remote Peer Node]
     
-    Ring -->|Yes: Local Path| Storage[Storage Engine Coordinator]
+    %% Local Path
+    OwnerCheck -->|Yes| LocalStore[Local State Operations]
+    Engine -->|Coordinates| LocalStore
     
-    Storage -->|Write Append| WAL[(Write-Ahead Log Segments)]
-    Storage -->|Memory Map Store| MemMap[(128 Sharded Memory Map)]
-    Storage -->|Eviction Callback| LRU[LRU Cache Service]
+    %% Storage Core Stack (Vertically Aligned)
+    LocalStore -->|Durability| WAL[(Write-Ahead Log)]
+    LocalStore -->|In-Memory Storage| MemMap[(128-Sharded Map)]
+    LocalStore -->|Eviction Callback| LRU[LRU Cache Service]
     
-    HLC[Hybrid Logical Clock] -.->|Generate Vector Timestamp| Storage
+    WAL -->|Publish / Replay| MemMap
+    Snapshot[Snapshoter Service] -->|Periodic State Flush| MemMap
+    HLC[Hybrid Logical Clock] -.->|Vector Timestamp| MemMap
     
-    MemMap -.->|State Replication| Gossip[HashiCorp memberlist]
-    MemMap -.->|Periodic State Sync| AE[Anti-Entropy Service]
+    %% Replication & AE
+    MemMap -.->|Mesh Interface| Gossip[Gossip Service]
+    MemMap -.->|Syncer| AE[Anti-Entropy Service]
     
-    Gossip <-->|Real-Time Broadcast| PeerNode
-    AE <-->|3-Level Merkle Tree Sync| PeerNode
+    Gossip <-->|memberlist Broadcast| PeerNode
+    AE <-->|Merkle Tree Sync| PeerNode
 ```
 
 ## Quick Start
