@@ -143,18 +143,64 @@ func (s *lruShard) stop() {
 }
 
 func (lru *LeastRecentlyUsed) publish(key Key, hash hashKey) {
-	// Only publish 1 out of every 4 read events to the LRU queue.
-	// This balances high access telemetry accuracy (captures 25% of hits)
-	// while still dropping 75% of channel lock contention overhead.
-	if rand.Uint32()&3 != 0 {
+	// Fast-path filter: immediately discard 50% of telemetry events
+	// before executing any memory accesses, sharding, or queue checks.
+	if rand.Uint32()&1 != 0 {
 		return
 	}
 
 	shard := lru.getShardByHash(hash)
+	if !shouldSample(len(shard.ch), cap(shard.ch)) {
+		return
+	}
+
 	select {
 	case shard.ch <- lruMsg{key: key, hash: hash}:
 	default:
 	}
+}
+
+func shouldSample(qLen, qCap int) bool {
+	// Bypass completely if the channel is >= 80% full to eliminate lock contention.
+	if qLen*5 >= qCap*4 {
+		return false
+	}
+
+	// 10-Tier Dynamic Exponential-Decay Sampling Tiers:
+	// - < 1% full   : Sample 1-in-2    (mask 0, always publish remaining 50%)
+	// - 1% - 5%     : Sample 1-in-4    (mask 1, discard 50% of remaining)
+	// - 5% - 10%    : Sample 1-in-8    (mask 3, discard 75% of remaining)
+	// - 10% - 20%   : Sample 1-in-16   (mask 7, discard 87.5% of remaining)
+	// - 20% - 30%   : Sample 1-in-32   (mask 15)
+	// - 30% - 40%   : Sample 1-in-64   (mask 31)
+	// - 40% - 50%   : Sample 1-in-128  (mask 63)
+	// - 50% - 60%   : Sample 1-in-256  (mask 127)
+	// - 60% - 70%   : Sample 1-in-512  (mask 255)
+	// - 70% - 80%   : Sample 1-in-1024 (mask 511)
+	var mask uint32
+	if qLen*100 < qCap {
+		mask = 0
+	} else if qLen*20 < qCap {
+		mask = 1
+	} else if qLen*10 < qCap {
+		mask = 3
+	} else if qLen*5 < qCap {
+		mask = 7
+	} else if qLen*10 < qCap*3 {
+		mask = 15
+	} else if qLen*5 < qCap*2 {
+		mask = 31
+	} else if qLen*2 < qCap {
+		mask = 63
+	} else if qLen*5 < qCap*3 {
+		mask = 127
+	} else if qLen*10 < qCap*7 {
+		mask = 255
+	} else {
+		mask = 511
+	}
+
+	return mask == 0 || rand.Uint32()&mask == 0
 }
 
 func (lru *LeastRecentlyUsed) seen(key Key, hash hashKey) {
