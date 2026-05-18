@@ -31,7 +31,7 @@ func TestSync(t *testing.T) {
 		SetGrpcPort(9002).
 		SetInsecure().
 		SetReplicationFactor(2).
-		GetEngine()
+		Build()
 	require.NoError(t, err)
 
 	s1 := NewServer(e1)
@@ -56,7 +56,7 @@ func TestSync(t *testing.T) {
 		SetGrpcPort(9004).
 		SetInsecure().
 		SetReplicationFactor(2).
-		GetEngine()
+		Build()
 	require.NoError(t, err)
 
 	s2 := NewServer(e2)

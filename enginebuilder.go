@@ -32,7 +32,7 @@ func NewEngineBuilder() *EngineBuilder {
 
 // NewDefaultEngine constructs a default dkv engine configuration.
 func NewDefaultEngine(walPath, snpPath string) (Engine, error) {
-	return NewEngineBuilder().Default().SetWalPath(walPath).SetSnpPath(snpPath).GetEngine()
+	return NewEngineBuilder().Default().SetWalPath(walPath).SetSnpPath(snpPath).Build()
 }
 
 // Default populates the EngineBuilder with sensible default values.
@@ -177,8 +177,8 @@ func (eb *EngineBuilder) FastTest() *EngineBuilder {
 	return eb
 }
 
-// GetEngine validates the configuration and returns a new Engine instance.
-func (eb *EngineBuilder) GetEngine() (Engine, error) {
+// Build validates the configuration and returns a new Engine instance.
+func (eb *EngineBuilder) Build() (Engine, error) {
 	if isUnit(eb.walPath) {
 		return nil, fmt.Errorf("required eb.walPath is unset; configure eb.walPath with SetWalPath(path string)")
 	}

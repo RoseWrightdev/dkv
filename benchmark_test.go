@@ -31,7 +31,7 @@ func setupBenchmarkEngine(b *testing.B, distributed bool) (Engine, func()) {
 		builder.SetGossipInterval(10 * time.Second)
 	}
 
-	eng, err := builder.GetEngine()
+	eng, err := builder.Build()
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func BenchmarkEngine_Recover(b *testing.B) {
 		SetWalPath(tmpDir).
 		SetSnpPath(tmpDir + "/s.bin").
 		SetInsecure().
-		GetEngine()
+		Build()
 	eng.Start()
 	count := 5000
 	if !testing.Short() {
@@ -199,7 +199,7 @@ func BenchmarkEngine_Recover(b *testing.B) {
 			SetWalPath(tmpDir).
 			SetSnpPath(tmpDir + "/s.bin").
 			SetInsecure().
-			GetEngine()
+			Build()
 		e.Start()
 		e.Stop()
 	}
@@ -292,7 +292,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 		SetSnpPath(b.TempDir() + "/snapshot.db").
 		SingleNode().
 		SetInsecure().
-		GetEngine()
+		Build()
 	if err != nil {
 		b.Fatalf("Failed to create engine: %v", err)
 	}

@@ -28,7 +28,7 @@ func TestEngineOperations(t *testing.T) {
 		SetSnpPath(snpPath).
 		SingleNode().
 		SetInsecure().
-		GetEngine()
+		Build()
 
 	require.NoError(t, err)
 	eng.Start()
@@ -94,7 +94,7 @@ func TestClusterScale(t *testing.T) {
 			eb.SetSeedNodes([]string{seedAddr})
 		}
 
-		eng, err := eb.GetEngine()
+		eng, err := eb.Build()
 		require.NoError(t, err, "Failed to create engine for %s", name)
 		engines = append(engines, eng)
 
@@ -170,7 +170,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		SetGrpcPort(0).
 		SetInsecure().
 		SetReplicationFactor(2).
-		GetEngine()
+		Build()
 	require.NoError(t, err)
 	eng1.Start()
 	defer eng1.Stop()
@@ -194,7 +194,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		SetSeedNodes([]string{fmt.Sprintf("127.0.0.1:%d", mlPort1)}).
 		SetInsecure().
 		SetReplicationFactor(2).
-		GetEngine()
+		Build()
 	require.NoError(t, err)
 	eng2.Start()
 	defer eng2.Stop()

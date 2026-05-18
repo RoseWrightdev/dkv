@@ -30,7 +30,7 @@ func TestGossipReplication(t *testing.T) {
 		SetGrpcPort(9001).
 		SetInsecure().
 		SetReplicationFactor(2).
-		GetEngine()
+		Build()
 	require.NoError(t, err)
 	e1.Start()
 	defer e1.Stop()
@@ -49,7 +49,7 @@ func TestGossipReplication(t *testing.T) {
 		SetGrpcPort(9002).
 		SetInsecure().
 		SetReplicationFactor(2).
-		GetEngine()
+		Build()
 	require.NoError(t, err)
 	e2.Start()
 	defer e2.Stop()

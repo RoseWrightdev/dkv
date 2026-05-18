@@ -57,7 +57,7 @@ func TestReadProxying(t *testing.T) {
 			eb.SetSeedNodes([]string{seedAddr})
 		}
 
-		eng, err := eb.GetEngine()
+		eng, err := eb.Build()
 		require.NoError(t, err)
 		engines = append(engines, eng)
 

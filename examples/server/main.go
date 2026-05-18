@@ -18,7 +18,7 @@ func main() {
 		SetWalPath("data/wal").
 		SetSnpPath("data/snapshot.bin").
 		SetInsecure().
-		GetEngine()
+		Build()
 
 	if err != nil {
 		panic(err)

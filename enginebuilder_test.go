@@ -39,7 +39,7 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SingleNode()
 	eb.SetInsecure()
 
-	eng, err := eb.GetEngine()
+	eng, err := eb.Build()
 	assert.Nil(t, err)
 	defer eng.Stop()
 
@@ -58,35 +58,35 @@ func TestEngineBuilder_Validation(t *testing.T) {
 	t.Run("MissingWalPath", func(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.walPath = ""
-		_, err := eb.GetEngine()
+		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.walPath is unset")
 	})
 
 	t.Run("MissingSnpPath", func(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.snpPath = ""
-		_, err := eb.GetEngine()
+		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.snpPath is unset")
 	})
 
 	t.Run("MissingWalInterval", func(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.walInterval = 0
-		_, err := eb.GetEngine()
+		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.walInterval is unset")
 	})
 
 	t.Run("MissingCredentials", func(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.creds = nil
-		_, err := eb.GetEngine()
+		_, err := eb.Build()
 		assert.ErrorContains(t, err, "transport credentials are required")
 	})
 
 	t.Run("MissingClock", func(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetInsecure()
 		eb.clock = nil
-		_, err := eb.GetEngine()
+		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.clock is unset")
 	})
 
@@ -94,7 +94,7 @@ func TestEngineBuilder_Validation(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
 		eb.clusterBuilder.config.SingleNode = false
 		eb.gossipInterval = 0
-		_, err := eb.GetEngine()
+		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.gossipInterval is unset")
 	})
 }
