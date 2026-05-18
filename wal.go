@@ -236,7 +236,13 @@ func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *s
 	headerPtr := w.headerPool.Get().(*[]byte)
 	header := *headerPtr
 	defer w.headerPool.Put(headerPtr)
-	var payload []byte
+
+	payloadPtr := w.bufferPool.Get().(*[]byte)
+	payload := *payloadPtr
+	defer func() {
+		*payloadPtr = payload
+		w.bufferPool.Put(payloadPtr)
+	}()
 
 	for {
 		if _, err := io.ReadFull(reader, header); err != nil {
@@ -266,15 +272,23 @@ func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *s
 		resultsMu.Lock()
 		switch kv := entry.Entry.(type) {
 		case *pb.WalEntry_Set:
-			results[kv.Set.Key] = Value{
-				Data:      kv.Set.Value,
-				Timestamp: kv.Set.Timestamp,
-				Tombstone: false,
+			k := Key(kv.Set.Key)
+			existing, exists := results[k]
+			if !exists || kv.Set.Timestamp > existing.Timestamp {
+				results[k] = Value{
+					Data:      kv.Set.Value,
+					Timestamp: kv.Set.Timestamp,
+					Tombstone: false,
+				}
 			}
 		case *pb.WalEntry_Delete:
-			results[kv.Delete.Key] = Value{
-				Timestamp: kv.Delete.Timestamp,
-				Tombstone: true,
+			k := Key(kv.Delete.Key)
+			existing, exists := results[k]
+			if !exists || kv.Delete.Timestamp > existing.Timestamp {
+				results[k] = Value{
+					Timestamp: kv.Delete.Timestamp,
+					Tombstone: true,
+				}
 			}
 		}
 		resultsMu.Unlock()

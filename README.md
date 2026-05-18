@@ -100,7 +100,7 @@ Measures direct `Set` latency scaling under varying key-value payload sizes:
 Measures background disk serialization and startup WAL replay times:
 
 * State Snapshotting: ~129.00 ms to serialize full memory database (2,326 B/op, 26 allocations)
-* Full Crash Recovery: ~5.71 ms to load Gob snapshots and fully replay segment logs from disk (reconstitutes 116,636 memory allocations safely)
+* Full Crash Recovery: ~5.16 ms to load Gob snapshots and fully replay segment logs from disk (reconstitutes 116,609 memory allocations safely)
 
 ---
 
