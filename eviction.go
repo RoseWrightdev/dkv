@@ -127,10 +127,8 @@ func (lru *LeastRecentlyUsed) start() {
 }
 
 func (s *lruShard) start() {
-	s.wg.Add(3)
-	go s.subscriber()
-	go s.deleter()
-	go s.evictor()
+	s.wg.Add(1)
+	go s.run()
 }
 
 func (lru *LeastRecentlyUsed) stop() {
@@ -178,31 +176,7 @@ func (lru *LeastRecentlyUsed) getShardByHash(hash hashKey) *lruShard {
 	return lru.shards[int(idx)]
 }
 
-func (s *lruShard) subscriber() {
-	defer s.wg.Done()
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case msg := <-s.ch:
-			s.seen(msg.key, msg.hash)
-		}
-	}
-}
-
-func (s *lruShard) deleter() {
-	defer s.wg.Done()
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case hKey := <-s.delCh:
-			s.delete(hKey)
-		}
-	}
-}
-
-func (s *lruShard) evictor() {
+func (s *lruShard) run() {
 	defer s.wg.Done()
 	ticker := time.NewTicker(s.ttl / 10)
 	defer ticker.Stop()
@@ -211,12 +185,16 @@ func (s *lruShard) evictor() {
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-ticker.C:
-			s.evictExpired()
+		case msg := <-s.ch:
+			s.seen(msg.key, msg.hash)
+		case hKey := <-s.delCh:
+			s.delete(hKey)
 		case msg := <-s.evictCh:
 			if s.onEvict != nil {
 				_ = s.onEvict(msg.key, msg.reason)
 			}
+		case <-ticker.C:
+			s.evictExpired()
 		}
 	}
 }
