@@ -167,9 +167,11 @@ func (s *Syncer) pull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteReq
 						// Filter: Only send keys the requester is responsible for
 						if !s.clusterConfig.SingleNode {
 							isResponsible := false
-							if slices.Contains(s.mesh.GetOwners(Key(k), s.clusterConfig.ReplicationFactor), pullConfig.requesterID) {
+							owners := s.mesh.GetOwners(Key(k), s.clusterConfig.ReplicationFactor)
+							if slices.Contains(owners, pullConfig.requesterID) {
 								isResponsible = true
 							}
+							s.mesh.PutOwners(owners)
 							if !isResponsible {
 								continue
 							}

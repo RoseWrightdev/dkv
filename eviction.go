@@ -104,9 +104,9 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 		shards[i] = &lruShard{
 			ctx:      ctx,
 			cancel:   cancel,
-			ch:       make(chan lruMsg, max(shardCap/2, 1024)),
-			delCh:    make(chan uint64, max(shardCap/2, 1024)),
-			evictCh:  make(chan evictMsg, max(shardCap/4, 1024)),
+			ch:       make(chan lruMsg, max(shardCap/2, 8192)),
+			delCh:    make(chan uint64, max(shardCap/2, 8192)),
+			evictCh:  make(chan evictMsg, max(shardCap/4, 4096)),
 			capacity: shardCap,
 			cache:    make(map[hashKey]*entry),
 			ttl:      config.TTL,
@@ -145,6 +145,12 @@ func (s *lruShard) stop() {
 }
 
 func (lru *LeastRecentlyUsed) publish(key Key, hash hashKey) {
+	// Only publish 1 out of every 16 read-touch events to the LRU queue.
+	// This reduces channel lock contention by 93.75%.
+	if rand.Uint32()&15 != 0 {
+		return
+	}
+
 	shard := lru.getShardByHash(hash)
 	select {
 	case shard.ch <- lruMsg{key: key, hash: hash}:

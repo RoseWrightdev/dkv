@@ -18,6 +18,7 @@ type Mesh interface {
 	Members() []PeerAddress
 	Owner(key Key) NodeID
 	GetOwners(key Key, n int) []NodeID
+	PutOwners(owners []NodeID)
 	AddressForNode(nodeID NodeID) PeerAddress
 	start() error
 	stop() error
@@ -165,6 +166,12 @@ func (m *Mesher) GetOwners(key Key, n int) []NodeID {
 	return m.ring.GetOwners(key, n)
 }
 
+// PutOwners returns a slice of NodeIDs back to the ring's slice pool for recycling.
+func (m *Mesher) PutOwners(owners []NodeID) {
+	m.ring.PutOwners(owners)
+}
+
+
 // NotifyJoin is called by memberlist when a new node joins.
 func (m *Mesher) NotifyJoin(node *memberlist.Node) {
 	slog.Info("Node joined cluster", "node", node.Name, "addr", node.Addr.String())
@@ -252,6 +259,10 @@ func (n *NopMesh) Owner(Key) NodeID { return "" }
 
 // GetOwners returns nil as there are no owners in a NopMesh.
 func (n *NopMesh) GetOwners(Key, int) []NodeID { return nil }
+
+// PutOwners does nothing in a NopMesh.
+func (n *NopMesh) PutOwners([]NodeID) {}
+
 
 // AddressForNode returns an empty string as there are no nodes in a NopMesh.
 func (n *NopMesh) AddressForNode(NodeID) PeerAddress { return "" }

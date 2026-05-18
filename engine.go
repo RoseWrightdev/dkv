@@ -171,6 +171,7 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 			rf = 1
 		}
 		owners := eng.mesh.GetOwners(key, rf)
+		defer eng.mesh.PutOwners(owners)
 
 		for _, owner := range owners {
 			if owner == eng.clusterConfig.NodeID {

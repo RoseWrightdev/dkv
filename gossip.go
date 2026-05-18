@@ -135,6 +135,7 @@ func (sip *Gossip) isLocal(key string) bool {
 
 	// In a distributed cluster, we are responsible if we are one of the N owners
 	owners := sip.mesh.GetOwners(key, rf)
+	defer sip.mesh.PutOwners(owners)
 	return slices.Contains(owners, sip.clusterConfig.NodeID)
 }
 

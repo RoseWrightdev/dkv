@@ -71,36 +71,36 @@ Micro-benchmarks measuring direct storage interaction with the 128-sharded memor
 
 | Benchmark | Throughput (ops/sec) | Latency | Allocations |
 | :--- | :--- | :--- | :--- |
-| Get (Parallel) | ~46,253,000 | 21.62 ns/op | 0 B/op (0 allocs) |
-| Get (Single-thread) | ~22,321,000 | 44.80 ns/op | 0 B/op (0 allocs) |
-| Set (Parallel + WAL) | ~2,647,000 | 377.70 ns/op | 1 B/op (0 allocs) |
-| Set (Single-thread + WAL) | ~2,765,000 | 361.60 ns/op | 0 B/op (0 allocs) |
-| Delete (Parallel + WAL) | ~2,182,000 | 458.20 ns/op | 1 B/op (0 allocs) |
-| Delete (Single-thread + WAL) | ~2,657,000 | 376.20 ns/op | 0 B/op (0 allocs) |
+| Get (Parallel) | ~88,574,000 | 11.29 ns/op | 0 B/op (0 allocs) |
+| Get (Single-thread) | ~35,285,000 | 28.34 ns/op | 0 B/op (0 allocs) |
+| Set (Parallel + WAL) | ~3,004,000 | 332.80 ns/op | 0 B/op (0 allocs) |
+| Set (Single-thread + WAL) | ~3,327,000 | 300.50 ns/op | 0 B/op (0 allocs) |
+| Delete (Parallel + WAL) | ~2,541,000 | 393.40 ns/op | 0 B/op (0 allocs) |
+| Delete (Single-thread + WAL) | ~2,707,000 | 369.30 ns/op | 0 B/op (0 allocs) |
 
 ### 2. Multi-tier Merkle Tree & Anti-Entropy Sync
 Reconciliation and anti-entropy sync performance across node boundaries:
 
 | Operation | Latency | Allocations | Key Insight |
 | :--- | :--- | :--- | :--- |
-| Root Digest Generation | 249.30 ns | 0 B/op (0 allocs) | Global state integrity checked in fraction of a microsecond |
-| Fill Shard Digests | 720.80 ns | 0 B/op (0 allocs) | Builds intermediate 128-sharding bounds with zero allocations |
-| Sync Pull (Identical States) | 4.35 μs | 0 B/op (0 allocs) | Zero-copy validation when nodes are fully synchronized |
-| Sync Pull (Single Mismatch) | 4.85 μs | 480 B/op (5 allocs) | Rapid single-shard branch pruning for minor state drift |
-| Sync Pull (Full Divergence) | 42.04 μs | 48,971 B/op (361 allocs) | High-concurrency heavy synchronization of heavily drifted states |
+| Root Digest Generation | 259.40 ns | 0 B/op (0 allocs) | Global state integrity checked in fraction of a microsecond |
+| Fill Shard Digests | 753.40 ns | 0 B/op (0 allocs) | Builds intermediate 128-sharding bounds with zero allocations |
+| Sync Pull (Identical States) | 271.40 ns | 0 B/op (0 allocs) | Zero-copy validation when nodes are fully synchronized |
+| Sync Pull (Single Mismatch) | 4.99 μs | 480 B/op (5 allocs) | Rapid single-shard branch pruning for minor state drift |
+| Sync Pull (Full Divergence) | 35.52 μs | 35,682 B/op (285 allocs) | High-concurrency heavy synchronization of heavily drifted states |
 
 ### 3. Payload Size Scalability
 Measures direct `Set` latency scaling under varying key-value payload sizes:
 
-* Small Payload (128 Bytes): 378.10 ns/op (Zero allocations)
-* Medium Payload (4 KB): 1.52 μs/op (Zero allocations)
-* Large Payload (1 MB): 203.41 μs/op (198 B/op, 0 allocs) — *Maintains zero heap allocation escaping!*
+* Small Payload (128 Bytes): 321.90 ns/op (Zero allocations)
+* Medium Payload (4 KB): 1.04 μs/op (Zero allocations)
+* Large Payload (1 MB): 190.47 μs/op (338 B/op, 0 allocs) — *Maintains zero heap allocation escaping!*
 
 ### 4. Snapshotting & Recovery Durability
 Measures background disk serialization and startup WAL replay times:
 
-* State Snapshotting: ~16.35 ms to serialize full memory database (2,088 B/op, 26 allocations)
-* Full Crash Recovery: ~2.90 ms to load Gob snapshots and fully replay segment logs from disk (reconstitutes 65,507 memory allocations safely)
+* State Snapshotting: ~129.00 ms to serialize full memory database (2,326 B/op, 26 allocations)
+* Full Crash Recovery: ~5.71 ms to load Gob snapshots and fully replay segment logs from disk (reconstitutes 116,636 memory allocations safely)
 
 ---
 
