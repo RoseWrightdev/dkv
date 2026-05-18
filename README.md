@@ -64,18 +64,49 @@ go run examples/client/main.go
 
 ## Performance & Benchmarks
 
-The dkv engine is benchmarked locally using Go's built-in testing framework:
+The dkv engine is benchmarked locally using Go's built-in testing framework on an Apple M4 Max (darwin/arm64, 14 cores, Go 1.26.3):
 
-| Benchmark | Throughput | Latency / Allocations |
-| :--- | :--- | :--- |
-| **Engine Get** (Parallel) | ~60,400,000 ops/sec | 16.5 ns/op (0 B/op) |
-| **Engine Set** (Parallel + WAL) | ~3,030,000 ops/sec | 330 ns/op (1 B/op) |
-| **Consistent Hashing Node Lookup** | ~18,300,000 ops/sec | 54 ns/op (0 B/op) |
-| **Merkle Tree Root Digest Generation** | ~3,860,000 ops/sec | 259 ns/op (0 B/op) |
-| **Engine Get** (Single-threaded) | ~19,300,000 ops/sec | 52 ns/op (0 B/op) |
-| **Engine Set** (Single-threaded + WAL) | ~3,060,000 ops/sec | 326 ns/op (0 B/op) |
+### 1. Core Storage Engine (Direct CRUD)
+Micro-benchmarks measuring direct storage interaction with the 128-sharded memory store and active Write-Ahead Logging (WAL):
 
-To run the full benchmark suite:
+| Benchmark | Throughput (ops/sec) | Latency | Allocations |
+| :--- | :--- | :--- | :--- |
+| Get (Parallel) | ~46,253,000 | 21.62 ns/op | 0 B/op (0 allocs) |
+| Get (Single-thread) | ~22,321,000 | 44.80 ns/op | 0 B/op (0 allocs) |
+| Set (Parallel + WAL) | ~2,647,000 | 377.70 ns/op | 1 B/op (0 allocs) |
+| Set (Single-thread + WAL) | ~2,765,000 | 361.60 ns/op | 0 B/op (0 allocs) |
+| Delete (Parallel + WAL) | ~2,182,000 | 458.20 ns/op | 1 B/op (0 allocs) |
+| Delete (Single-thread + WAL) | ~2,657,000 | 376.20 ns/op | 0 B/op (0 allocs) |
+
+### 2. Multi-tier Merkle Tree & Anti-Entropy Sync
+Reconciliation and anti-entropy sync performance across node boundaries:
+
+| Operation | Latency | Allocations | Key Insight |
+| :--- | :--- | :--- | :--- |
+| Root Digest Generation | 249.30 ns | 0 B/op (0 allocs) | Global state integrity checked in fraction of a microsecond |
+| Fill Shard Digests | 720.80 ns | 0 B/op (0 allocs) | Builds intermediate 128-sharding bounds with zero allocations |
+| Sync Pull (Identical States) | 4.35 μs | 0 B/op (0 allocs) | Zero-copy validation when nodes are fully synchronized |
+| Sync Pull (Single Mismatch) | 4.85 μs | 480 B/op (5 allocs) | Rapid single-shard branch pruning for minor state drift |
+| Sync Pull (Full Divergence) | 42.04 μs | 48,971 B/op (361 allocs) | High-concurrency heavy synchronization of heavily drifted states |
+
+### 3. Payload Size Scalability
+Measures direct `Set` latency scaling under varying key-value payload sizes:
+
+* Small Payload (128 Bytes): 378.10 ns/op (Zero allocations)
+* Medium Payload (4 KB): 1.52 μs/op (Zero allocations)
+* Large Payload (1 MB): 203.41 μs/op (198 B/op, 0 allocs) — *Maintains zero heap allocation escaping!*
+
+### 4. Snapshotting & Recovery Durability
+Measures background disk serialization and startup WAL replay times:
+
+* State Snapshotting: ~16.35 ms to serialize full memory database (2,088 B/op, 26 allocations)
+* Full Crash Recovery: ~2.90 ms to load Gob snapshots and fully replay segment logs from disk (reconstitutes 65,507 memory allocations safely)
+
+---
+
+To run the full benchmark suite locally:
 ```bash
-go test -bench=. -benchmem
+go test -bench=. -benchmem ./...
 ```
+
+
