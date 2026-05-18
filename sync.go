@@ -137,67 +137,90 @@ func (s *Syncer) pull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteReq
 			continue
 		}
 
-		remoteBuckets, hasBuckets := pullConfig.buckets[shardID]
+		remoteBucketHashes, hasBuckets := pullConfig.buckets[shardID]
 		localBucketHashes := localBuckets[shardID]
 
-		// Level 3: Determine which sub-buckets need syncing using a bitmask. Each bit
-		// corresponds to a sub-bucket index (0-63). To fit perfectly in a cache line.
-		var mismatchMask uint64
-		if !hasBuckets || len(remoteBuckets) != len(localBucketHashes) {
-			// If the remote node is missing the bucket hashes entirely,
-			// mark all 64 bits for synchronization.
-			mismatchMask = ^uint64(0)
-		} else {
-			// Compare each sub-bucket hash and set the corresponding bit if they differ.
-			for i := range subBucketCount {
-				if localBucketHashes[i] != remoteBuckets[i] {
-					mismatchMask |= (1 << i)
-				}
-			}
-		}
+		// Level 3: Determine which sub-buckets need syncing using a bitmask.
+		mismatchMask := calculateMismatchMask(hasBuckets, remoteBucketHashes, localBucketHashes)
 
-		// I tried to refactor this out into another function, but saw small performance regresssions
-		// this code is excepted from the usual codestyle requirements.
 		if mismatchMask > 0 {
-			shard := s.hm[int(shardID)]
-			shard.mu.RLock()
-			for b := range subBucketCount {
-				if (mismatchMask & (1 << b)) != 0 {
-					for k, v := range shard.buckets[b] {
-						// Filter: Only send keys the requester is responsible for
-						if !s.clusterConfig.SingleNode {
-							isResponsible := false
-							owners := s.mesh.GetOwners(Key(k), s.clusterConfig.ReplicationFactor)
-							if slices.Contains(owners, pullConfig.requesterID) {
-								isResponsible = true
-							}
-							s.mesh.PutOwners(owners)
-							if !isResponsible {
-								continue
-							}
-						}
-
-						if v.Tombstone {
-							req := s.pools.deleteRequests.Get().(*pb.DeleteRequest)
-							req.Key = k
-							req.Timestamp = v.Timestamp
-							req.NodeId = v.NodeID
-							deletes = append(deletes, req)
-						} else {
-							req := s.pools.setRequests.Get().(*pb.SetRequest)
-							req.Key = k
-							req.Value = v.Data
-							req.Timestamp = v.Timestamp
-							req.NodeId = v.NodeID
-							sets = append(sets, req)
-						}
-					}
-				}
-			}
-			shard.mu.RUnlock()
+			sets, deletes = s.collectShardMismatches(shardID, mismatchMask, pullConfig.requesterID, sets, deletes)
 		}
 	}
 	return sets, deletes, nil
+}
+
+// collectShardMismatches iterates over mismatched sub-buckets in a shard and collects changed keys.
+func (s *Syncer) collectShardMismatches(
+	shardID ShardID,
+	mismatchMask uint64,
+	requesterID NodeID,
+	sets []*pb.SetRequest,
+	deletes []*pb.DeleteRequest,
+) ([]*pb.SetRequest, []*pb.DeleteRequest) {
+	shard := s.hm[int(shardID)]
+	shard.mu.RLock()
+	for b := range subBucketCount {
+		if (mismatchMask & (1 << b)) != 0 {
+			for k, v := range shard.buckets[b] {
+				if !s.isRequesterResponsible(k, requesterID) {
+					continue
+				}
+
+				if v.Tombstone {
+					deletes = append(deletes, s.buildDeleteRequest(k, v))
+				} else {
+					sets = append(sets, s.buildSetRequest(k, v))
+				}
+			}
+		}
+	}
+	shard.mu.RUnlock()
+	return sets, deletes
+}
+
+// calculateMismatchMask returns a bitmask representing mismatched sub-buckets (0-63).
+func calculateMismatchMask(hasBuckets bool, remoteBucketHashes, localBucketHashes ShardDigest) uint64 {
+	if !hasBuckets || len(remoteBucketHashes) != len(localBucketHashes) {
+		return ^uint64(0)
+	}
+	var mismatchMask uint64
+	for i := range subBucketCount {
+		if localBucketHashes[i] != remoteBucketHashes[i] {
+			mismatchMask |= (1 << i)
+		}
+	}
+	return mismatchMask
+}
+
+// isRequesterResponsible returns true if the remote node is responsible for replicating the key.
+func (s *Syncer) isRequesterResponsible(key string, requesterID NodeID) bool {
+	if s.clusterConfig.SingleNode {
+		return true
+	}
+	owners := s.mesh.GetOwners(Key(key), s.clusterConfig.ReplicationFactor)
+	isResponsible := slices.Contains(owners, requesterID)
+	s.mesh.PutOwners(owners)
+	return isResponsible
+}
+
+// buildSetRequest leases a protobuf SetRequest from the sync pools and populates it.
+func (s *Syncer) buildSetRequest(key string, val Value) *pb.SetRequest {
+	req := s.pools.setRequests.Get().(*pb.SetRequest)
+	req.Key = key
+	req.Value = val.Data
+	req.Timestamp = val.Timestamp
+	req.NodeId = val.NodeID
+	return req
+}
+
+// buildDeleteRequest leases a protobuf DeleteRequest from the sync pools and populates it.
+func (s *Syncer) buildDeleteRequest(key string, val Value) *pb.DeleteRequest {
+	req := s.pools.deleteRequests.Get().(*pb.DeleteRequest)
+	req.Key = key
+	req.Timestamp = val.Timestamp
+	req.NodeId = val.NodeID
+	return req
 }
 
 func (s *Syncer) performSync() {
