@@ -23,18 +23,18 @@ const shardCount = 128
 
 // Value represents a single record in the database, including metadata for LWW.
 type Value struct {
+	NodeID    string
 	Data      []byte
 	Timestamp int64
-	NodeID    string
 	Tombstone bool
 }
 
 // shard is a single thread-safe bucket within the shardedMap.
 type shard struct {
-	mu          sync.RWMutex
 	buckets     [subBucketCount]map[Key]Value
 	subDigests  [subBucketCount]Digest
-	shardDigest Digest // XOR of all subDigests
+	shardDigest Digest
+	mu          sync.RWMutex
 }
 
 // shardedMap is a high-concurrency map implementation that uses multiple locks.

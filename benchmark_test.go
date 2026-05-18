@@ -345,7 +345,12 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 		creds:         eng.creds,
 	})
 
-	mockPullConfig := &PullConfig{"node-1", root, shards, buckets}
+	mockPullConfig := &PullConfig{
+		requesterID: "node-1",
+		root:        root,
+		shards:      shards,
+		buckets:     buckets,
+	}
 	b.Run("SyncPull_Identical", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {

@@ -27,35 +27,35 @@ type Engine interface {
 }
 
 type engine struct {
-	hm            *shardedMap
-	pools         *pools
-	wal           Waler
-	snp           *Snapshoter
-	evt           Evictor
-	clock         Clock
-	mesh          Mesh
-	clusterConfig ClusterConfig
-	syncer        *Syncer
 	creds         credentials.TransportCredentials
+	clock         Clock
+	wal           Waler
+	mesh          Mesh
+	evt           Evictor
 	cc            *ClientCache
+	syncer        *Syncer
+	pools         *pools
+	hm            *shardedMap
+	snp           *Snapshoter
 	gossip        *Gossip
+	clusterConfig ClusterConfig
 	startOnce     sync.Once
 	stopOnce      sync.Once
 }
 
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
-type EngineConfig struct { // todo: refactor to use WalConfig
-	walPath        string
-	snpPath        string
-	walInterval    time.Duration
-	snpInterval    time.Duration
-	walBufferSize  uint32
-	walSegments    int
+type EngineConfig struct {
 	evt            Evictor
 	clock          Clock
-	clusterConfig  ClusterConfig
-	gossipInterval time.Duration
 	creds          credentials.TransportCredentials
+	walPath        string
+	snpPath        string
+	clusterConfig  ClusterConfig
+	walInterval    time.Duration
+	snpInterval    time.Duration
+	walSegments    int
+	gossipInterval time.Duration
+	walBufferSize  uint32
 }
 
 func newEngine(config EngineConfig) (Engine, error) {

@@ -17,24 +17,24 @@ import (
 type Syncer struct {
 	gossip        Gossiper
 	mesh          Mesh
+	creds         credentials.TransportCredentials
 	clusterConfig *ClusterConfig
 	hm            *shardedMap
-	nodeID        NodeID
 	pools         *pools
-	interval      time.Duration
-	creds         credentials.TransportCredentials
 	stopChan      chan struct{}
+	nodeID        NodeID
+	interval      time.Duration
 }
 
 type SyncerConfig struct {
-	nodeID        NodeID
 	gossip        Gossiper
 	mesh          Mesh
+	creds         credentials.TransportCredentials
 	clusterConfig *ClusterConfig
 	hm            *shardedMap
 	pools         *pools
+	nodeID        NodeID
 	interval      time.Duration
-	creds         credentials.TransportCredentials
 }
 
 // newSyncer initializes a new Syncer instance.
@@ -104,10 +104,10 @@ func (syn *Syncer) push(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) erro
 }
 
 type PullConfig struct {
-	requesterID NodeID
-	root        RootDigest
 	shards      map[ShardID]Digest
 	buckets     map[ShardID]ShardDigest
+	requesterID NodeID
+	root        RootDigest
 }
 
 func (s *Syncer) pull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {

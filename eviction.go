@@ -29,11 +29,11 @@ type Evictor interface {
 }
 
 type entry struct {
-	key    string
-	hash   hashKey
 	expiry time.Time
 	prev   *entry
 	next   *entry
+	key    string
+	hash   hashKey
 }
 
 type lruMsg struct {
@@ -48,19 +48,19 @@ type evictMsg struct {
 
 type lruShard struct {
 	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
-	mu       sync.Mutex
+	tail     *entry
 	ch       chan lruMsg
 	delCh    chan hashKey
 	evictCh  chan evictMsg
-	capacity uint32
 	head     *entry
-	tail     *entry
+	cancel   context.CancelFunc
 	cache    map[hashKey]*entry
-	ttl      time.Duration
 	onEvict  func(Key, EvictReason) error
 	pool     *sync.Pool
+	wg       sync.WaitGroup
+	ttl      time.Duration
+	mu       sync.Mutex
+	capacity uint32
 }
 
 // LeastRecentlyUsed implements a thread-safe, sharded Least Recently Used (LRU) eviction service.

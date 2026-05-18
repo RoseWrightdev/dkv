@@ -26,36 +26,26 @@ type Mesh interface {
 
 // ClusterConfig holds configuration for decentralized node discovery and membership.
 type ClusterConfig struct {
-	// SingleNode explicitly disables the distribution layer when set to true.
-	// dkv is distributed by default.
-	SingleNode bool
-	// ReplicationFactor determines how many copies of each key are stored in the cluster.
+	NodeID            NodeID
+	BindAddr          string
+	AdvertiseAddr     string
+	SeedNodes         []string
 	ReplicationFactor int
-	// NodeID is a unique identifier for this node in the cluster.
-	NodeID NodeID
-	// BindAddr is the address memberlist will bind to for gossip (UDP/TCP).
-	BindAddr string
-	// BindPort is the port memberlist will use.
-	BindPort int
-	// AdvertiseAddr is the address other nodes should use to reach this node.
-	AdvertiseAddr string
-	// SeedNodes is a list of existing nodes to join upon startup.
-	SeedNodes []string
-	// GrpcPort is the port of the dkv gRPC API, shared with peers via metadata.
-	GrpcPort int
-	// FastTest optimizes internal intervals for rapid test execution.
-	FastTest bool
+	BindPort          int
+	GrpcPort          int
+	SingleNode        bool
+	FastTest          bool
 }
 
 // Mesher manages the lifecycle of the node within a gossip-based cluster.
 type Mesher struct {
-	config           ClusterConfig
 	memberList       *memberlist.Memberlist
 	broadcasts       *memberlist.TransmitLimitedQueue
 	onMessage        func([]byte)
 	getLocalState    func() []byte
 	mergeRemoteState func([]byte)
 	ring             *HashRing
+	config           ClusterConfig
 }
 
 // newMesher initializes a new Mesher instance.
@@ -171,7 +161,6 @@ func (m *Mesher) PutOwners(owners []NodeID) {
 	m.ring.PutOwners(owners)
 }
 
-
 // NotifyJoin is called by memberlist when a new node joins.
 func (m *Mesher) NotifyJoin(node *memberlist.Node) {
 	slog.Info("Node joined cluster", "node", node.Name, "addr", node.Addr.String())
@@ -262,7 +251,6 @@ func (n *NopMesh) GetOwners(Key, int) []NodeID { return nil }
 
 // PutOwners does nothing in a NopMesh.
 func (n *NopMesh) PutOwners([]NodeID) {}
-
 
 // AddressForNode returns an empty string as there are no nodes in a NopMesh.
 func (n *NopMesh) AddressForNode(NodeID) PeerAddress { return "" }

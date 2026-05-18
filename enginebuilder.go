@@ -10,17 +10,17 @@ import (
 
 // EngineBuilder provides a fluent API for constructing and configuring a dkv engine.
 type EngineBuilder struct {
+	evt            Evictor
+	clock          Clock
+	creds          credentials.TransportCredentials
+	clusterBuilder *ClusterConfigBuilder
 	walPath        string
 	snpPath        string
 	walInterval    time.Duration
 	snpInterval    time.Duration
-	walBufferSize  uint32
 	walSegments    int
-	evt            Evictor
-	clock          Clock
-	clusterBuilder *ClusterConfigBuilder
 	gossipInterval time.Duration
-	creds          credentials.TransportCredentials
+	walBufferSize  uint32
 }
 
 // NewEngineBuilder initializes a new EngineBuilder instance with default sub-builders.

@@ -190,7 +190,12 @@ func TestEngine_SyncLogic(t *testing.T) {
 		creds:         mockConfig.creds,
 	})
 
-	sets, deletes, err := eng1.pullWithSyncer(&PullConfig{"node2", root2, shards2, buckets2}, *syncer1)
+	sets, deletes, err := eng1.pullWithSyncer(&PullConfig{
+		requesterID: "node2",
+		root:        root2,
+		shards:      shards2,
+		buckets:     buckets2,
+	}, *syncer1)
 	assert.NoError(t, err)
 	assert.Len(t, sets, 1)
 	assert.Len(t, deletes, 0)

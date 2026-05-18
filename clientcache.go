@@ -8,9 +8,9 @@ import (
 )
 
 type ClientCache struct {
-	clientMu sync.RWMutex
-	clients  map[PeerAddress]*Client
 	creds    credentials.TransportCredentials
+	clients  map[PeerAddress]*Client
+	clientMu sync.RWMutex
 }
 
 func newClientCache(creds credentials.TransportCredentials) *ClientCache {

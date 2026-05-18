@@ -27,11 +27,11 @@ type Waler interface {
 type walSegment struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
-	mu           sync.Mutex
-	syncInterval time.Duration
 	wrt          *bufio.Writer
 	file         *os.File
 	path         string
+	syncInterval time.Duration
+	mu           sync.Mutex
 }
 
 func (s *walSegment) backgroundSync() {
@@ -55,11 +55,11 @@ func (s *walSegment) backgroundSync() {
 
 // Wal implements the durable Write-Ahead Log (WAL) partitioned into segment files.
 type Wal struct {
-	segments   []*walSegment
-	count      int
 	headerPool sync.Pool
 	entryPool  sync.Pool
 	bufferPool sync.Pool
+	segments   []*walSegment
+	count      int
 }
 
 func newWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segmentCount int) (*Wal, error) {

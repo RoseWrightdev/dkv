@@ -12,13 +12,13 @@ import (
 // Snapshoter manages the background persistence of the engine state to disk.
 type Snapshoter struct {
 	ctx         context.Context
+	wal         Waler
 	cancel      context.CancelFunc
 	ch          chan struct{}
-	wg          sync.WaitGroup
-	path        string
-	interval    time.Duration
-	wal         Waler
 	encCallBack func(*gob.Encoder) error
+	path        string
+	wg          sync.WaitGroup
+	interval    time.Duration
 }
 
 type snapshotEntry struct {

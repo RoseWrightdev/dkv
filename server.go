@@ -88,7 +88,12 @@ func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, 
 		buckets[ShardID(id)] = sd.SubHashes
 	}
 
-	sets, deletes, err := s.eng.SyncPull(&PullConfig{NodeID(in.NodeId), in.RootDigest, shards, buckets})
+	sets, deletes, err := s.eng.SyncPull(&PullConfig{
+		requesterID: NodeID(in.NodeId),
+		root:        RootDigest(in.RootDigest),
+		shards:      shards,
+		buckets:     buckets,
+	})
 	if err != nil {
 		return nil, err
 	}

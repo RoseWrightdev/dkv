@@ -18,18 +18,18 @@ type NodeID string
 
 // HashRing implements consistent hashing for data partitioning across dkv nodes.
 type HashRing struct {
-	mu        sync.RWMutex
-	vnodes    []vnode
-	nodes     map[NodeID]bool
-	hashBufPool     sync.Pool // pools *[]byte for key serialization
-	ownersSlicePool sync.Pool // pools *[]NodeID for clockwise replica replication routing
+	hashBufPool     sync.Pool
+	ownersSlicePool sync.Pool
+	nodes           map[NodeID]bool
+	vnodes          []vnode
+	mu              sync.RWMutex
 }
 
 // Splitting a physical node into 128 virtual positions avoids statistical hotspotting
 // and ensures a uniform keyspace distribution across the cluster.
 type vnode struct {
-	hash uint64
 	node NodeID
+	hash uint64
 }
 
 // NewHashRing initializes an empty consistent hashing ring.
@@ -50,7 +50,6 @@ func NewHashRing() *HashRing {
 		},
 	}
 }
-
 
 // AddNode inserts a node into the ring with a predefined number of virtual nodes.
 func (r *HashRing) AddNode(nodeID NodeID) {
@@ -181,7 +180,6 @@ func (r *HashRing) PutOwners(owners []NodeID) {
 		r.ownersSlicePool.Put(&owners)
 	}
 }
-
 
 // GetNodes returns all unique node IDs currently in the ring.
 func (r *HashRing) GetNodes() []NodeID {
