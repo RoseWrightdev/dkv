@@ -156,6 +156,8 @@ func (s *Syncer) pull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteReq
 			}
 		}
 
+		// I tried to refactor this out into another function, but saw small performance regresssions
+		// this code is excepted from the usual codestyle requirements.
 		if mismatchMask > 0 {
 			shard := s.hm[int(shardID)]
 			shard.mu.RLock()
