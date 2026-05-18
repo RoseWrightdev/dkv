@@ -3,7 +3,6 @@ package dkv
 import (
 	"context"
 	"encoding/gob"
-	"io"
 	"log/slog"
 	"os"
 	"sync"
@@ -137,58 +136,6 @@ func (snp *Snapshoter) create() error {
 
 	if err := snp.wal.clear(offsets); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func (eng *engine) recover(snpPath string) error {
-	if info, err := os.Stat(snpPath); err == nil && info.Size() > 0 {
-		// #nosec G304
-		file, err := os.Open(snpPath)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			_ = file.Close()
-		}()
-
-		dec := gob.NewDecoder(file)
-		count := 0
-		for {
-			entry := eng.pools.snapshotEntries.Get().(*snapshotEntry)
-			if err := dec.Decode(entry); err != nil {
-				entry.Key = ""
-				entry.Data = nil
-				eng.pools.snapshotEntries.Put(entry)
-				if err == io.EOF {
-					break
-				}
-				return err
-			}
-			eng.hm.Store(entry.Key, hashFunc(entry.Key), Value{
-				Data:      entry.Data,
-				Timestamp: entry.Timestamp,
-				Tombstone: entry.Tombstone,
-			})
-			entry.Key = ""
-			entry.Data = nil
-			eng.pools.snapshotEntries.Put(entry)
-			count++
-		}
-		slog.Info("Loaded state from snapshot", "path", snpPath, "keys", count)
-	}
-
-	updates, err := eng.wal.replay()
-	if err != nil {
-		return err
-	}
-	for k, v := range updates {
-		h := hashFunc(k)
-		eng.hm.Store(k, h, v)
-	}
-	if len(updates) > 0 {
-		slog.Info("Replayed updates from WAL", "count", len(updates))
 	}
 
 	return nil
