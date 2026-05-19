@@ -4,15 +4,15 @@ dkv is a partitioned, state-replicated key-value database implemented in Go. In 
 
 ## Features
 
-* Consistent-hash partitioning
-* Real-time gossip replication
-* Hybrid logical clock (HLC) conflict resolution
+* Partitioning
+* Gossip replication
+* Hybrid logical clock (HLC) LWW conflict resolution
 * 3-level Merkle tree anti-entropy state synchronization
 * Multi-segment write-ahead log (WAL) crash durability
 * High-concurrency sharded memory map (128 independent locks)
 * Active snapshot persistence and recovery serialization
-* Dynamic LRU cache eviction (capacity and TTL modes)
-* Strongly-typed gRPC communication API
+* Dynamic LRU cache TTL eviction
+* gRPC API
 
 ## System Architecture
 
