@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-// Snapshoter manages the background persistence of the engine state to disk.
-type Snapshoter struct {
+// Snapshotter manages the background persistence of the engine state to disk.
+type Snapshotter struct {
 	ctx         context.Context
 	wal         Waler
 	cancel      context.CancelFunc
@@ -28,11 +28,11 @@ type snapshotEntry struct {
 	Tombstone bool
 }
 
-func newSnapshoter(path string, interval time.Duration, wal Waler, encCallBack func(*gob.Encoder) error) (*Snapshoter, error) {
+func newSnapshotter(path string, interval time.Duration, wal Waler, encCallBack func(*gob.Encoder) error) (*Snapshotter, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ch := make(chan struct{}, 1)
-	snp := Snapshoter{
+	snp := Snapshotter{
 		ctx:         ctx,
 		cancel:      cancel,
 		ch:          ch,
@@ -46,19 +46,19 @@ func newSnapshoter(path string, interval time.Duration, wal Waler, encCallBack f
 }
 
 // start begins the periodic snapshotting loop.
-func (snp *Snapshoter) start() {
+func (snp *Snapshotter) start() {
 	snp.wg.Add(2)
 	go snp.producer(snp.ctx)
 	go snp.consumer(snp.ctx)
 }
 
 // stop gracefully shuts down the snapshotting service.
-func (snp *Snapshoter) stop() {
+func (snp *Snapshotter) stop() {
 	snp.cancel()
 	snp.wg.Wait()
 }
 
-func (snp *Snapshoter) producer(ctx context.Context) {
+func (snp *Snapshotter) producer(ctx context.Context) {
 	defer snp.wg.Done()
 	ticker := time.NewTicker(snp.interval)
 	defer ticker.Stop()
@@ -72,7 +72,7 @@ func (snp *Snapshoter) producer(ctx context.Context) {
 	}
 }
 
-func (snp *Snapshoter) consumer(ctx context.Context) {
+func (snp *Snapshotter) consumer(ctx context.Context) {
 	defer snp.wg.Done()
 	for {
 		select {
@@ -91,7 +91,7 @@ func (snp *Snapshoter) consumer(ctx context.Context) {
 	}
 }
 
-func (snp *Snapshoter) queueSnapShot() {
+func (snp *Snapshotter) queueSnapShot() {
 	select {
 	case snp.ch <- struct{}{}:
 	default:
@@ -99,7 +99,7 @@ func (snp *Snapshoter) queueSnapShot() {
 	}
 }
 
-func (snp *Snapshoter) create() error {
+func (snp *Snapshotter) create() error {
 	offsets, err := snp.wal.prepareSnapshot()
 	if err != nil {
 		return err

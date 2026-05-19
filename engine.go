@@ -37,7 +37,7 @@ type engine struct {
 	syncer     *Syncer
 	pools      *pools
 	hm         *shardedMap
-	snp        *Snapshoter
+	snp        *Snapshotter
 	gossip     *Gossip
 	meshConfig MeshConfig
 	startOnce  sync.Once
@@ -83,7 +83,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	gossip := newGossip(eng.pools, eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
 	eng.gossip = gossip
 
-	snp, err := newSnapshoter(config.snpPath, config.snpInterval, wal, gossip.streamToEncoder)
+	snp, err := newSnapshotter(config.snpPath, config.snpInterval, wal, gossip.streamToEncoder)
 	if err != nil {
 		return nil, err
 	}

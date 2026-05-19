@@ -39,7 +39,7 @@ flowchart TD
     LocalStore -->|Eviction Callback| LRU[LRU Cache Service]
     
     WAL -->|Publish / Replay| MemMap
-    Snapshot[Snapshoter Service] -->|Periodic State Flush| MemMap
+    Snapshot[Snapshotter Service] -->|Periodic State Flush| MemMap
     HLC[Hybrid Logical Clock] -.->|Vector Timestamp| MemMap
     
     %% Replication & AE

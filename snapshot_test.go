@@ -21,13 +21,13 @@ func (mw *mockWal) prepareSnapshot() ([]int64, error)               { return nil
 func (mw *mockWal) stop()                                           {}
 func (mw *mockWal) start()                                          {}
 
-func TestNewSnapshoter(t *testing.T) {
+func TestNewSnapshotter(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
 	mw := &mockWal{}
 	callBack := func(_ *gob.Encoder) error { return nil }
 
-	snp, err := newSnapshoter(mockConfig.snpPath, mockConfig.snpInterval, mw, callBack)
+	snp, err := newSnapshotter(mockConfig.snpPath, mockConfig.snpInterval, mw, callBack)
 	assert.NoError(t, err)
 	assert.NotNil(t, snp)
 	assert.Equal(t, mockConfig.snpPath, snp.path)
@@ -49,7 +49,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 		}
 		return nil
 	}
-	snp, _ := newSnapshoter(mockConfig.snpPath, mockConfig.snpInterval, mw, callBack)
+	snp, _ := newSnapshotter(mockConfig.snpPath, mockConfig.snpInterval, mw, callBack)
 
 	err := snp.create()
 	assert.NoError(t, err)
@@ -81,7 +81,7 @@ func TestPeriodicSnapshots(t *testing.T) {
 	callBack := func(_ *gob.Encoder) error { return nil }
 
 	interval := 50 * time.Millisecond
-	snp, err := newSnapshoter(mockConfig.snpPath, interval, mw, callBack)
+	snp, err := newSnapshotter(mockConfig.snpPath, interval, mw, callBack)
 	assert.NoError(t, err)
 
 	snp.start()
