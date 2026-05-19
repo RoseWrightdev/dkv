@@ -3,20 +3,14 @@ package main
 
 import (
 	"fmt"
-	"net"
 
 	"github.com/rosewrightdev/dkv"
 )
 
 func main() {
-	// Initialize the Engine using the flat fluent API
+	// Initialize the Engine using the flat fluent API with sensible defaults
 	eng, err := dkv.NewEngineBuilder().
 		Default().
-		SetNodeID("node-1").
-		SetBindPort(7946).
-		SetGrpcPort(50051).
-		SetWalPath("data/wal").
-		SetSnpPath("data/snapshot.binb").
 		SetInsecure().
 		Build()
 
@@ -28,15 +22,10 @@ func main() {
 	eng.Start()
 	defer eng.Stop()
 
-	// Run the gRPC Server
-	listener, err := net.Listen("tcp", "127.0.0.1:50051")
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("dkv server listening on 127.0.0.1:50051...")
+	// Run the gRPC Server using the address/port configured from the engine
 	s := dkv.NewServer(eng)
-	if err := s.Run(listener); err != nil {
+	fmt.Printf("Starting DKV server on %s...\n", eng.Addr())
+	if err := s.Run(); err != nil {
 		panic(err)
 	}
 }

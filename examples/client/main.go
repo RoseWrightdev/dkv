@@ -4,21 +4,27 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/rosewrightdev/dkv"
 )
 
 func main() {
-	if err := run(); err != nil {
+	addr := "localhost:50051"
+	if len(os.Args) > 1 {
+		addr = os.Args[1]
+	}
+	if err := run(addr); err != nil {
 		log.Fatalf("Error: %v", err)
 	}
 }
 
-func run() error {
+func run(addr string) error {
 	// 1. Initialize an insecure client (for demonstration)
 	// In production, you'd use NewClient with proper TLS credentials.
-	client, err := dkv.NewInsecureClient("localhost:50051", 2*time.Second)
+	fmt.Printf("Connecting to dkv server at %s...\n", addr)
+	client, err := dkv.NewInsecureClient(addr, 2*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
 	}

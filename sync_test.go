@@ -1,7 +1,6 @@
 package dkv
 
 import (
-	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -35,10 +34,8 @@ func TestSync(t *testing.T) {
 	require.NoError(t, err)
 
 	s1 := NewServer(e1)
-	l1, err := net.Listen("tcp", "127.0.0.1:9002")
-	require.NoError(t, err)
 	go func() {
-		_ = s1.Run(l1)
+		_ = s1.Run()
 	}()
 	defer s1.Stop()
 
@@ -60,10 +57,8 @@ func TestSync(t *testing.T) {
 	require.NoError(t, err)
 
 	s2 := NewServer(e2)
-	l2, err := net.Listen("tcp", "127.0.0.1:9004")
-	require.NoError(t, err)
 	go func() {
-		_ = s2.Run(l2)
+		_ = s2.Run()
 	}()
 	defer s2.Stop()
 

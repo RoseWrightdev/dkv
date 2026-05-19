@@ -77,6 +77,11 @@ func TestClusterScale(t *testing.T) {
 		mlPort := mlLis.Addr().(*net.TCPAddr).Port
 		_ = mlLis.Close()
 
+		gLis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		grpcPort := gLis.Addr().(*net.TCPAddr).Port
+		_ = gLis.Close()
+
 		eb := dkv.NewEngineBuilder().
 			Default().
 			FastTest().
@@ -84,7 +89,7 @@ func TestClusterScale(t *testing.T) {
 			SetSnpPath(filepath.Join(nodeDir, "snp.gob")).
 			SetNodeID(dkv.NodeID(name)).
 			SetBindPort(mlPort).
-			SetGrpcPort(0).
+			SetGrpcPort(grpcPort).
 			SetInsecure().
 			SetReplicationFactor(3)
 
@@ -98,14 +103,10 @@ func TestClusterScale(t *testing.T) {
 		require.NoError(t, err, "Failed to create engine for %s", name)
 		engines = append(engines, eng)
 
-		lis, err := net.Listen("tcp", "127.0.0.1:0")
-		require.NoError(t, err)
-		actualPort := lis.Addr().(*net.TCPAddr).Port
-
 		server := dkv.NewServer(eng)
-		go func() { _ = server.Run(lis) }()
+		go func() { _ = server.Run() }()
 
-		client, err := dkv.NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", actualPort), time.Second)
+		client, err := dkv.NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", grpcPort), time.Second)
 		require.NoError(t, err)
 		clients = append(clients, client)
 	}

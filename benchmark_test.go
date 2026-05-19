@@ -3,7 +3,6 @@ package dkv
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"testing"
 	"time"
@@ -209,13 +208,12 @@ func BenchmarkServer_Get_gRPC(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b, false)
 	defer cleanup()
 	s := NewServer(eng)
-	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	go func() {
-		_ = s.Run(lis)
+		_ = s.Run()
 	}()
 	defer s.Stop()
 
-	client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
+	client, _ := NewInsecureClient(eng.Addr(), time.Second)
 	defer func() {
 		_ = client.Close()
 	}()
@@ -234,13 +232,12 @@ func BenchmarkServer_Delete_gRPC(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b, false)
 	defer cleanup()
 	s := NewServer(eng)
-	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	go func() {
-		_ = s.Run(lis)
+		_ = s.Run()
 	}()
 	defer s.Stop()
 
-	client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
+	client, _ := NewInsecureClient(eng.Addr(), time.Second)
 	defer func() {
 		_ = client.Close()
 	}()
@@ -259,9 +256,8 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b, true) // Distributed to measure marshaling overhead
 	defer cleanup()
 	s := NewServer(eng)
-	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	go func() {
-		_ = s.Run(lis)
+		_ = s.Run()
 	}()
 	defer s.Stop()
 
@@ -274,7 +270,7 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 	val := []byte("val")
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		client, _ := NewInsecureClient(lis.Addr().String(), time.Second)
+		client, _ := NewInsecureClient(eng.Addr(), time.Second)
 		defer func() {
 			_ = client.Close()
 		}()

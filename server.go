@@ -129,14 +129,15 @@ func NewServer(eng Engine) *Grpc {
 	return &Grpc{inner: s, handlers: h, eng: eng}
 }
 
-// Run starts the gRPC server and serves requests on the provided net.Listener.
-func (s *Grpc) Run(listener net.Listener) error {
-	if listener == nil {
-		return fmt.Errorf("dkv: cannot run server with nil listener")
+// Run starts the gRPC server and serves requests on the address/port configured by the engine.
+func (s *Grpc) Run() error {
+	addr := s.eng.Addr()
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("dkv: failed to create listener on %s: %w", addr, err)
 	}
 	slog.Info("Grpc server running on " + listener.Addr().String())
-	err := s.inner.Serve(listener)
-	return err
+	return s.inner.Serve(listener)
 }
 
 // Stop gracefully shuts down the gRPC server and stops the underlying engine.

@@ -4,7 +4,6 @@ package main
 import (
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -39,8 +38,7 @@ func main() {
 			SetNodeID(dkv.NodeID(name)).
 			SetBindPort(gossipPort).
 			SetGrpcPort(grpcPort).
-			SetInsecure().
-			SetReplicationFactor(3)
+			SetInsecure()
 
 		// Join nodes 2..10 to node-1 as the primary bootstrap seed
 		if i > 0 {
@@ -53,19 +51,14 @@ func main() {
 		}
 		engines = append(engines, eng)
 
-		lis, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", grpcPort))
-		if err != nil {
-			panic(fmt.Errorf("failed to listen on port %d: %w", grpcPort, err))
-		}
-
 		server := dkv.NewServer(eng)
 		servers = append(servers, server)
 
 		// Start background engines and gRPC server goroutine
 		eng.Start()
-		go func(s *dkv.Grpc, l net.Listener) {
-			_ = s.Run(l)
-		}(server, lis)
+		go func(s *dkv.Grpc) {
+			_ = s.Run()
+		}(server)
 
 		fmt.Printf("  -> %s online (gRPC: 127.0.0.1:%d, Gossip: 127.0.0.1:%d)\n", name, grpcPort, gossipPort)
 	}

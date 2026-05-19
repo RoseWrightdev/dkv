@@ -24,6 +24,7 @@ type Engine interface {
 	Stop()
 	SyncPull(pullConfog *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
+	Addr() string
 }
 
 type engine struct {
@@ -406,4 +407,12 @@ func (eng *engine) Owner(key Key) NodeID {
 		return eng.meshConfig.NodeID
 	}
 	return eng.mesh.Owner(key)
+}
+
+func (eng *engine) Addr() string {
+	addr := eng.meshConfig.BindAddr
+	if addr == "" {
+		panic("dkv: bind address not configured")
+	}
+	return fmt.Sprintf("%s:%d", addr, eng.meshConfig.GrpcPort)
 }

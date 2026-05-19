@@ -1,7 +1,11 @@
 package dkv
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"net"
 	"time"
 
 	"google.golang.org/grpc/credentials"
@@ -45,6 +49,26 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.clock = NewHLC()
 	eb.gossipInterval = 10 * time.Second
 	eb.meshBuilder = NewMeshConfigBuilder()
+
+	// Autoselect NodeID to a SHA-256 hash
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	hash := sha256.Sum256(b)
+	nodeID := hex.EncodeToString(hash[:])
+	eb.meshBuilder.SetNodeID(NodeID(nodeID))
+
+	// Find dynamic next available ports
+	bindAddr := "127.0.0.1"
+	gossipPort := nextAvailablePort(bindAddr, 7946)
+	grpcPort := nextAvailablePort(bindAddr, 50051)
+
+	eb.meshBuilder.SetBindAddr(bindAddr)
+	eb.meshBuilder.SetBindPort(gossipPort)
+	eb.meshBuilder.SetGrpcPort(grpcPort)
+	eb.meshBuilder.SetReplicationFactor(3)
+
+	eb.walPath = "data/wal"
+	eb.snpPath = "data/snapshot.bin"
 	return eb
 }
 
@@ -240,4 +264,15 @@ func (eb *EngineBuilder) Build() (Engine, error) {
 func isUnit[T comparable](val T) bool {
 	var zero T
 	return zero == val
+}
+
+func nextAvailablePort(addr string, startPort int) int {
+	for port := startPort; port < startPort+1000; port++ {
+		lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", addr, port))
+		if err == nil {
+			_ = lis.Close()
+			return port
+		}
+	}
+	return startPort
 }

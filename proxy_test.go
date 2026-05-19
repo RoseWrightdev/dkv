@@ -39,6 +39,7 @@ func TestReadProxying(t *testing.T) {
 
 		lis, _ := net.Listen("tcp", "127.0.0.1:0")
 		grpcPort := lis.Addr().(*net.TCPAddr).Port
+		_ = lis.Close()
 
 		eb := dkv.NewEngineBuilder().
 			Default().
@@ -64,7 +65,7 @@ func TestReadProxying(t *testing.T) {
 		srv := dkv.NewServer(eng)
 		servers = append(servers, srv)
 		go func() {
-			_ = srv.Run(lis)
+			_ = srv.Run()
 		}()
 
 		eng.Start()
