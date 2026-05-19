@@ -13,7 +13,7 @@ type EngineBuilder struct {
 	evt            Evictor
 	clock          Clock
 	creds          credentials.TransportCredentials
-	clusterBuilder *ClusterConfigBuilder
+	meshBuilder    *MeshConfigBuilder
 	walPath        string
 	snpPath        string
 	walInterval    time.Duration
@@ -26,7 +26,7 @@ type EngineBuilder struct {
 // NewEngineBuilder initializes a new EngineBuilder instance with default sub-builders.
 func NewEngineBuilder() *EngineBuilder {
 	return &EngineBuilder{
-		clusterBuilder: NewClusterConfigBuilder(),
+		meshBuilder: NewMeshConfigBuilder(),
 	}
 }
 
@@ -44,7 +44,7 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.evt = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
 	eb.clock = NewHLC()
 	eb.gossipInterval = 10 * time.Second
-	eb.clusterBuilder = NewClusterConfigBuilder()
+	eb.meshBuilder = NewMeshConfigBuilder()
 	return eb
 }
 
@@ -97,59 +97,59 @@ func (eb *EngineBuilder) SetClock(clock Clock) *EngineBuilder {
 }
 
 // SetCluster sets the cluster configuration builder.
-func (eb *EngineBuilder) SetCluster(cb *ClusterConfigBuilder) *EngineBuilder {
-	eb.clusterBuilder = cb
+func (eb *EngineBuilder) SetCluster(cb *MeshConfigBuilder) *EngineBuilder {
+	eb.meshBuilder = cb
 	return eb
 }
 
-// Proxy methods for ClusterConfigBuilder
+// Proxy methods for MeshConfigBuilder
 // These allow for a flatter API while maintaining modularity under the hood.
 
 // SetNodeID sets the unique node ID for cluster identity.
 func (eb *EngineBuilder) SetNodeID(id NodeID) *EngineBuilder {
-	eb.clusterBuilder.SetNodeID(id)
+	eb.meshBuilder.SetNodeID(id)
 	return eb
 }
 
 // SetReplicationFactor sets the replication factor for the cluster.
 func (eb *EngineBuilder) SetReplicationFactor(n int) *EngineBuilder {
-	eb.clusterBuilder.SetReplicationFactor(n)
+	eb.meshBuilder.SetReplicationFactor(n)
 	return eb
 }
 
 // SetBindAddr sets the bind address for gossip membership.
 func (eb *EngineBuilder) SetBindAddr(addr string) *EngineBuilder {
-	eb.clusterBuilder.SetBindAddr(addr)
+	eb.meshBuilder.SetBindAddr(addr)
 	return eb
 }
 
 // SetBindPort sets the bind port for gossip membership.
 func (eb *EngineBuilder) SetBindPort(port int) *EngineBuilder {
-	eb.clusterBuilder.SetBindPort(port)
+	eb.meshBuilder.SetBindPort(port)
 	return eb
 }
 
 // SetAdvertiseAddr sets the address advertised to other cluster nodes.
 func (eb *EngineBuilder) SetAdvertiseAddr(addr string) *EngineBuilder {
-	eb.clusterBuilder.SetAdvertiseAddr(addr)
+	eb.meshBuilder.SetAdvertiseAddr(addr)
 	return eb
 }
 
 // SetSeedNodes sets the seed nodes to join upon startup.
 func (eb *EngineBuilder) SetSeedNodes(seeds []string) *EngineBuilder {
-	eb.clusterBuilder.SetSeedNodes(seeds)
+	eb.meshBuilder.SetSeedNodes(seeds)
 	return eb
 }
 
 // SetGrpcPort sets the gRPC API port.
 func (eb *EngineBuilder) SetGrpcPort(port int) *EngineBuilder {
-	eb.clusterBuilder.SetGrpcPort(port)
+	eb.meshBuilder.SetGrpcPort(port)
 	return eb
 }
 
 // SingleNode configures the engine to run in single-node mode.
 func (eb *EngineBuilder) SingleNode() *EngineBuilder {
-	eb.clusterBuilder.SingleNode()
+	eb.meshBuilder.SingleNode()
 	return eb
 }
 
@@ -173,7 +173,7 @@ func (eb *EngineBuilder) SetInsecure() *EngineBuilder {
 
 // FastTest optimizes cluster parameters for quick unit/integration testing.
 func (eb *EngineBuilder) FastTest() *EngineBuilder {
-	eb.clusterBuilder.EnableFastTest()
+	eb.meshBuilder.EnableFastTest()
 	return eb
 }
 
@@ -211,9 +211,9 @@ func (eb *EngineBuilder) Build() (Engine, error) {
 		return nil, fmt.Errorf("required eb.clock is unset; configure eb.clock with SetClock(clock Clock)")
 	}
 
-	clusterConfig := eb.clusterBuilder.Build()
+	MeshConfig := eb.meshBuilder.Build()
 
-	if !clusterConfig.SingleNode {
+	if !MeshConfig.SingleNode {
 		// GrpcPort 0 is allowed for dynamic allocation (e.g., in tests)
 		if isUnit(eb.gossipInterval) {
 			return nil, fmt.Errorf("required eb.gossipInterval is unset for distributed mode; configure it via SetGossipInterval")
@@ -229,7 +229,7 @@ func (eb *EngineBuilder) Build() (Engine, error) {
 		walSegments:    eb.walSegments,
 		evt:            eb.evt,
 		clock:          eb.clock,
-		clusterConfig:  clusterConfig,
+		meshConfig:     MeshConfig,
 		gossipInterval: eb.gossipInterval,
 		creds:          eb.creds,
 	}

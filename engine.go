@@ -27,20 +27,20 @@ type Engine interface {
 }
 
 type engine struct {
-	creds         credentials.TransportCredentials
-	clock         Clock
-	wal           Waler
-	mesh          Mesh
-	evt           Evictor
-	cc            *ClientCache
-	syncer        *Syncer
-	pools         *pools
-	hm            *shardedMap
-	snp           *Snapshoter
-	gossip        *Gossip
-	clusterConfig ClusterConfig
-	startOnce     sync.Once
-	stopOnce      sync.Once
+	creds      credentials.TransportCredentials
+	clock      Clock
+	wal        Waler
+	mesh       Mesh
+	evt        Evictor
+	cc         *ClientCache
+	syncer     *Syncer
+	pools      *pools
+	hm         *shardedMap
+	snp        *Snapshoter
+	gossip     *Gossip
+	meshConfig MeshConfig
+	startOnce  sync.Once
+	stopOnce   sync.Once
 }
 
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
@@ -50,7 +50,7 @@ type EngineConfig struct {
 	creds          credentials.TransportCredentials
 	walPath        string
 	snpPath        string
-	clusterConfig  ClusterConfig
+	meshConfig     MeshConfig
 	walInterval    time.Duration
 	snpInterval    time.Duration
 	walSegments    int
@@ -66,20 +66,20 @@ func newEngine(config EngineConfig) (Engine, error) {
 
 	// todo: refactor toplevel engine pool
 	eng := &engine{
-		hm:            newShardedMap(),
-		wal:           wal,
-		clock:         config.clock,
-		clusterConfig: config.clusterConfig,
-		creds:         config.creds,
-		cc:            newClientCache(config.creds),
-		pools:         newPools(),
+		hm:         newShardedMap(),
+		wal:        wal,
+		clock:      config.clock,
+		meshConfig: config.meshConfig,
+		creds:      config.creds,
+		cc:         newClientCache(config.creds),
+		pools:      newPools(),
 	}
 
 	if err := eng.recover(config.snpPath); err != nil {
 		slog.Error("Failed to recover database state", "error", err)
 	}
 
-	gossip := newGossip(eng.pools, eng.hm, eng.wal, eng.clock, eng.mesh, &eng.clusterConfig)
+	gossip := newGossip(eng.pools, eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
 	eng.gossip = gossip
 
 	snp, err := newSnapshoter(config.snpPath, config.snpInterval, wal, gossip.streamToEncoder)
@@ -91,9 +91,9 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.evt.SetEvictCallback(eng.Evict)
 
 	eng.mesh = &NopMesh{}
-	if !config.clusterConfig.SingleNode {
+	if !config.meshConfig.SingleNode {
 		mesh, err := newMesher(
-			config.clusterConfig,
+			config.meshConfig,
 			gossip.onGossipMessage,
 			gossip.getLocalState,
 			gossip.mergeRemoteState,
@@ -105,16 +105,16 @@ func newEngine(config EngineConfig) (Engine, error) {
 		gossip.mesh = mesh
 	}
 
-	if !config.clusterConfig.SingleNode {
+	if !config.meshConfig.SingleNode {
 		eng.syncer = newSyncer(&SyncerConfig{
-			nodeID:        config.clusterConfig.NodeID,
-			gossip:        eng.gossip,
-			mesh:          eng.mesh,
-			clusterConfig: &config.clusterConfig,
-			hm:            eng.hm,
-			pools:         eng.pools,
-			interval:      config.gossipInterval,
-			creds:         config.creds,
+			nodeID:     config.meshConfig.NodeID,
+			gossip:     eng.gossip,
+			mesh:       eng.mesh,
+			meshConfig: &config.meshConfig,
+			hm:         eng.hm,
+			pools:      eng.pools,
+			interval:   config.gossipInterval,
+			creds:      config.creds,
 		})
 	}
 
@@ -165,8 +165,8 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 	}
 
 	// Gateway Proxy: If we don't have it locally, fetch it from an owner
-	if !eng.clusterConfig.SingleNode {
-		rf := eng.clusterConfig.ReplicationFactor
+	if !eng.meshConfig.SingleNode {
+		rf := eng.meshConfig.ReplicationFactor
 		if rf <= 0 {
 			rf = 1
 		}
@@ -174,7 +174,7 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 		defer eng.mesh.PutOwners(owners)
 
 		for _, owner := range owners {
-			if owner == eng.clusterConfig.NodeID {
+			if owner == eng.meshConfig.NodeID {
 				continue // We already checked local storage
 			}
 
@@ -210,7 +210,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 	req.Key = key
 	req.Value = value
 	req.Timestamp = ts
-	req.NodeId = string(eng.clusterConfig.NodeID)
+	req.NodeId = string(eng.meshConfig.NodeID)
 
 	err := eng.wal.publish(key, hash, req)
 
@@ -221,11 +221,11 @@ func (eng *engine) Set(key Key, value []byte) error {
 	eng.hm.Store(key, hash, Value{
 		Data:      value,
 		Timestamp: ts,
-		NodeID:    string(eng.clusterConfig.NodeID),
+		NodeID:    string(eng.meshConfig.NodeID),
 		Tombstone: false,
 	})
 
-	if !eng.clusterConfig.SingleNode {
+	if !eng.meshConfig.SingleNode {
 		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
 		wrapper := eng.pools.walSetWrappers.Get().(*pb.WalEntry_Set)
 		wrapper.Set = req
@@ -253,7 +253,7 @@ func (eng *engine) Delete(key Key) error {
 	req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = ts
-	req.NodeId = string(eng.clusterConfig.NodeID)
+	req.NodeId = string(eng.meshConfig.NodeID)
 
 	err := eng.wal.publish(key, hash, req)
 
@@ -262,11 +262,11 @@ func (eng *engine) Delete(key Key) error {
 	}
 	eng.hm.Store(key, hash, Value{
 		Timestamp: ts,
-		NodeID:    string(eng.clusterConfig.NodeID),
+		NodeID:    string(eng.meshConfig.NodeID),
 		Tombstone: true,
 	})
 
-	if !eng.clusterConfig.SingleNode {
+	if !eng.meshConfig.SingleNode {
 		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
 		wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
 		wrapper.Delete = req
@@ -307,11 +307,11 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 	}
 	eng.hm.Store(key, hash, Value{
 		Timestamp: ts,
-		NodeID:    string(eng.clusterConfig.NodeID),
+		NodeID:    string(eng.meshConfig.NodeID),
 		Tombstone: true,
 	})
 
-	if !eng.clusterConfig.SingleNode {
+	if !eng.meshConfig.SingleNode {
 		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
 		wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
 		wrapper.Delete = req
@@ -402,8 +402,8 @@ func (eng *engine) pushWithSyncer(sets []*pb.SetRequest, deletes []*pb.DeleteReq
 }
 
 func (eng *engine) Owner(key Key) NodeID {
-	if eng.clusterConfig.SingleNode {
-		return eng.clusterConfig.NodeID
+	if eng.meshConfig.SingleNode {
+		return eng.meshConfig.NodeID
 	}
 	return eng.mesh.Owner(key)
 }

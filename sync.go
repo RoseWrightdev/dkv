@@ -15,26 +15,26 @@ import (
 // Syncer performs periodic state reconciliation between nodes.
 // It detects divergence in storage shards and pulls missing data from peers.
 type Syncer struct {
-	gossip        Gossiper
-	mesh          Mesh
-	creds         credentials.TransportCredentials
-	clusterConfig *ClusterConfig
-	hm            *shardedMap
-	pools         *pools
-	stopChan      chan struct{}
-	nodeID        NodeID
-	interval      time.Duration
+	gossip     Gossiper
+	mesh       Mesh
+	creds      credentials.TransportCredentials
+	meshConfig *MeshConfig
+	hm         *shardedMap
+	pools      *pools
+	stopChan   chan struct{}
+	nodeID     NodeID
+	interval   time.Duration
 }
 
 type SyncerConfig struct {
-	gossip        Gossiper
-	mesh          Mesh
-	creds         credentials.TransportCredentials
-	clusterConfig *ClusterConfig
-	hm            *shardedMap
-	pools         *pools
-	nodeID        NodeID
-	interval      time.Duration
+	gossip     Gossiper
+	mesh       Mesh
+	creds      credentials.TransportCredentials
+	meshConfig *MeshConfig
+	hm         *shardedMap
+	pools      *pools
+	nodeID     NodeID
+	interval   time.Duration
 }
 
 // newSyncer initializes a new Syncer instance.
@@ -44,15 +44,15 @@ func newSyncer(config *SyncerConfig) *Syncer {
 	}
 
 	return &Syncer{
-		gossip:        config.gossip,
-		mesh:          config.mesh,
-		clusterConfig: config.clusterConfig,
-		hm:            config.hm,
-		nodeID:        config.nodeID,
-		pools:         config.pools,
-		interval:      config.interval,
-		creds:         config.creds,
-		stopChan:      make(chan struct{}),
+		gossip:     config.gossip,
+		mesh:       config.mesh,
+		meshConfig: config.meshConfig,
+		hm:         config.hm,
+		nodeID:     config.nodeID,
+		pools:      config.pools,
+		interval:   config.interval,
+		creds:      config.creds,
+		stopChan:   make(chan struct{}),
 	}
 }
 
@@ -195,10 +195,10 @@ func calculateMismatchMask(hasBuckets bool, remoteBucketHashes, localBucketHashe
 
 // isRequesterResponsible returns true if the remote node is responsible for replicating the key.
 func (s *Syncer) isRequesterResponsible(key string, requesterID NodeID) bool {
-	if s.clusterConfig.SingleNode {
+	if s.meshConfig.SingleNode {
 		return true
 	}
-	owners := s.mesh.GetOwners(Key(key), s.clusterConfig.ReplicationFactor)
+	owners := s.mesh.GetOwners(Key(key), s.meshConfig.ReplicationFactor)
 	isResponsible := slices.Contains(owners, requesterID)
 	s.mesh.PutOwners(owners)
 	return isResponsible

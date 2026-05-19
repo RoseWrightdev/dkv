@@ -92,7 +92,7 @@ func TestEngineBuilder_Validation(t *testing.T) {
 
 	t.Run("MissingGossipInterval_InDistributedMode", func(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
-		eb.clusterBuilder.config.SingleNode = false
+		eb.meshBuilder.config.SingleNode = false
 		eb.gossipInterval = 0
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.gossipInterval is unset")
@@ -108,7 +108,7 @@ func TestEngineBuilder_ProxyMethods(t *testing.T) {
 		SetSeedNodes([]string{"seed:1"}).
 		SetGrpcPort(8080)
 
-	cfg := eb.clusterBuilder.Build()
+	cfg := eb.meshBuilder.Build()
 	assert.Equal(t, NodeID("test-node"), cfg.NodeID)
 	assert.Equal(t, "127.0.0.1", cfg.BindAddr)
 	assert.Equal(t, 1234, cfg.BindPort)

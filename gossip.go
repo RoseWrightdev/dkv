@@ -19,16 +19,16 @@ type Gossiper interface {
 }
 
 type Gossip struct {
-	pools         *pools
-	hm            *shardedMap
-	wal           Waler
-	clock         Clock
-	mesh          Mesh
-	clusterConfig *ClusterConfig
+	pools      *pools
+	hm         *shardedMap
+	wal        Waler
+	clock      Clock
+	mesh       Mesh
+	meshConfig *MeshConfig
 }
 
-func newGossip(pools *pools, hm *shardedMap, wal Waler, clock Clock, mesh Mesh, clusterConfig *ClusterConfig) *Gossip {
-	return &Gossip{pools, hm, wal, clock, mesh, clusterConfig}
+func newGossip(pools *pools, hm *shardedMap, wal Waler, clock Clock, mesh Mesh, meshConfig *MeshConfig) *Gossip {
+	return &Gossip{pools, hm, wal, clock, mesh, meshConfig}
 }
 
 func (sip *Gossip) onGossipMessage(data []byte) {
@@ -125,10 +125,10 @@ func (sip *Gossip) getLocalState() []byte {
 }
 
 func (sip *Gossip) isLocal(key string) bool {
-	if sip.clusterConfig.SingleNode {
+	if sip.meshConfig.SingleNode {
 		return true
 	}
-	rf := sip.clusterConfig.ReplicationFactor
+	rf := sip.meshConfig.ReplicationFactor
 	if rf <= 0 {
 		rf = 1
 	}
@@ -136,7 +136,7 @@ func (sip *Gossip) isLocal(key string) bool {
 	// In a distributed cluster, we are responsible if we are one of the N owners
 	owners := sip.mesh.GetOwners(key, rf)
 	defer sip.mesh.PutOwners(owners)
-	return slices.Contains(owners, sip.clusterConfig.NodeID)
+	return slices.Contains(owners, sip.meshConfig.NodeID)
 }
 
 func (sip *Gossip) mergeRemoteState(buf []byte) {

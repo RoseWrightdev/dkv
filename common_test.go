@@ -21,7 +21,7 @@ var mockConfig = EngineConfig{
 	evt:            NewLRU(LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
 	gossipInterval: 10 * time.Second,
 	clock:          NewHLC(),
-	clusterConfig:  ClusterConfig{SingleNode: true},
+	meshConfig:     MeshConfig{SingleNode: true},
 	creds:          insecure.NewCredentials(),
 }
 

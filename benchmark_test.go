@@ -335,14 +335,14 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 		}
 	})
 	syncer := newSyncer(&SyncerConfig{
-		nodeID:        eng.clusterConfig.NodeID,
-		gossip:        eng.gossip,
-		mesh:          eng.mesh,
-		clusterConfig: &eng.clusterConfig,
-		hm:            eng.hm,
-		pools:         eng.pools,
-		interval:      10 * time.Second,
-		creds:         eng.creds,
+		nodeID:     eng.meshConfig.NodeID,
+		gossip:     eng.gossip,
+		mesh:       eng.mesh,
+		meshConfig: &eng.meshConfig,
+		hm:         eng.hm,
+		pools:      eng.pools,
+		interval:   10 * time.Second,
+		creds:      eng.creds,
 	})
 
 	mockPullConfig := &PullConfig{

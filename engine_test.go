@@ -180,14 +180,14 @@ func TestEngine_SyncLogic(t *testing.T) {
 	eng2.hm.FillDigests(buckets2)
 
 	syncer1 := newSyncer(&SyncerConfig{
-		nodeID:        eng1.clusterConfig.NodeID,
-		gossip:        eng1.gossip,
-		mesh:          eng1.mesh,
-		clusterConfig: &eng1.clusterConfig,
-		hm:            eng1.hm,
-		pools:         eng1.pools,
-		interval:      mockConfig.gossipInterval,
-		creds:         mockConfig.creds,
+		nodeID:     eng1.meshConfig.NodeID,
+		gossip:     eng1.gossip,
+		mesh:       eng1.mesh,
+		meshConfig: &eng1.meshConfig,
+		hm:         eng1.hm,
+		pools:      eng1.pools,
+		interval:   mockConfig.gossipInterval,
+		creds:      mockConfig.creds,
 	})
 
 	sets, deletes, err := eng1.pullWithSyncer(&PullConfig{
@@ -203,14 +203,14 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 	// 3. eng2 pushes the updates
 	syncer2 := newSyncer(&SyncerConfig{
-		nodeID:        eng2.clusterConfig.NodeID,
-		gossip:        eng2.gossip,
-		mesh:          eng2.mesh,
-		clusterConfig: &eng2.clusterConfig,
-		hm:            eng2.hm,
-		pools:         eng2.pools,
-		interval:      mockConfig.gossipInterval,
-		creds:         mockConfig.creds,
+		nodeID:     eng2.meshConfig.NodeID,
+		gossip:     eng2.gossip,
+		mesh:       eng2.mesh,
+		meshConfig: &eng2.meshConfig,
+		hm:         eng2.hm,
+		pools:      eng2.pools,
+		interval:   mockConfig.gossipInterval,
+		creds:      mockConfig.creds,
 	})
 
 	err = eng2.pushWithSyncer(sets, deletes, *syncer2)

@@ -16,7 +16,7 @@ func main() {
 		SetBindPort(7946).
 		SetGrpcPort(50051).
 		SetWalPath("data/wal").
-		SetSnpPath("data/snapshot.bin").
+		SetSnpPath("data/snapshot.binb").
 		SetInsecure().
 		Build()
 

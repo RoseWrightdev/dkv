@@ -24,8 +24,8 @@ type Mesh interface {
 	stop() error
 }
 
-// ClusterConfig holds configuration for decentralized node discovery and membership.
-type ClusterConfig struct {
+// MeshConfig holds configuration for decentralized node discovery and membership.
+type MeshConfig struct {
 	NodeID            NodeID
 	BindAddr          string
 	AdvertiseAddr     string
@@ -45,12 +45,12 @@ type Mesher struct {
 	getLocalState    func() []byte
 	mergeRemoteState func([]byte)
 	ring             *HashRing
-	config           ClusterConfig
+	config           MeshConfig
 }
 
 // newMesher initializes a new Mesher instance.
 func newMesher(
-	config ClusterConfig,
+	config MeshConfig,
 	onMessage func([]byte),
 	getLocalState func() []byte,
 	mergeRemoteState func([]byte),
