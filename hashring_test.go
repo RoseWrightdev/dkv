@@ -84,3 +84,25 @@ func TestHashRing_ClockwiseOrderAndWrap(t *testing.T) {
 		seen[node] = true
 	}
 }
+
+func TestHashRing_PoolCorrectness(t *testing.T) {
+	ring := NewHashRing()
+	ring.AddNode("node1")
+
+	// Get a slice from the pool via the public API GetOwners.
+	owners := ring.GetOwners("key", 1)
+	assert.Len(t, owners, 1)
+	assert.Equal(t, NodeID("node1"), owners[0])
+
+	// Recycle it.
+	ring.PutOwners(owners)
+
+	// Get an item directly from the pool and verify it is a direct slice, not a pointer.
+	pooledVal := ring.ownersSlicePool.Get()
+	slice, ok := pooledVal.([]NodeID)
+	assert.True(t, ok, "The pooled value must be a direct []NodeID slice")
+	assert.Equal(t, 0, len(slice), "The pooled slice should have length 0")
+	assert.GreaterOrEqual(t, cap(slice), 8, "The pooled slice should have capacity of at least 8")
+}
+
+

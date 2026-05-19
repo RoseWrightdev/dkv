@@ -71,8 +71,9 @@ func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, 
 		for k := range shards {
 			delete(shards, k)
 		}
-		for k := range buckets {
-			delete(buckets, k)
+		// Reset/clear the elements of the pre-allocated slices without deleting the keys
+		for _, slice := range buckets {
+			clear(slice)
 		}
 		s.pools.shards.Put(shards)
 		s.pools.buckets.Put(buckets)
@@ -85,7 +86,7 @@ func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, 
 
 	for id, sd := range in.SubDigests {
 		// #nosec G115
-		buckets[ShardID(id)] = sd.SubHashes
+		copy(buckets[ShardID(id)], sd.SubHashes)
 	}
 
 	sets, deletes, err := s.eng.SyncPull(&PullConfig{

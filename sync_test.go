@@ -1,11 +1,13 @@
 package dkv
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -92,3 +94,70 @@ func TestSync(t *testing.T) {
 	_, ok = e2.Get(Key(key))
 	assert.False(t, ok, "Node 2 should have reconciled the deletion via Syncer")
 }
+
+func TestSync_PreparePullRequestDataRace(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "dkv-syncer-race-*")
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
+
+	e, err := NewEngineBuilder().
+		Default().
+		SetWalPath(filepath.Join(tmpDir, "wal")).
+		SetSnpPath(filepath.Join(tmpDir, "snp.gob")).
+		SetInsecure().
+		Build()
+	require.NoError(t, err)
+	defer e.Stop()
+
+	eng := e.(*engine)
+
+	syn := newSyncer(&SyncerConfig{
+		nodeID:     eng.meshConfig.NodeID,
+		gossip:     eng.gossip,
+		mesh:       eng.mesh,
+		meshConfig: &eng.meshConfig,
+		hm:         eng.hm,
+		pools:      eng.pools,
+		interval:   10 * time.Second,
+		creds:      eng.creds,
+	})
+
+	stop := make(chan struct{})
+	
+	// Start the writer goroutine that keeps getting from pool, modifying/filling, and putting back.
+	go func() {
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				key := fmt.Sprintf("racekey-%d", i)
+				_ = e.Set(key, []byte("val"))
+				m := eng.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
+				eng.hm.FillDigests(m)
+				eng.pools.bucketMaps.Put(m)
+				i++
+			}
+		}
+	}()
+
+	// Main goroutine constantly prepares requests and reads the digests concurrently.
+	for range 100 {
+		req := eng.pools.pullRequests.Get().(*pb.PullRequest)
+		syn.preparePullRequest(req)
+		
+		// Concurrently read the request digests that reference the pool's slices.
+		for _, sd := range req.SubDigests {
+			for _, h := range sd.SubHashes {
+				_ = h
+			}
+		}
+		
+		syn.cleanupPullRequest(req)
+	}
+
+	close(stop)
+}
+

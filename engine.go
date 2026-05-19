@@ -22,7 +22,7 @@ type Engine interface {
 	Owner(key Key) NodeID
 	Start()
 	Stop()
-	SyncPull(pullConfog *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
+	SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 	Addr() string
 }
@@ -103,15 +103,15 @@ func newEngine(config EngineConfig) (Engine, error) {
 			return nil, err
 		}
 		eng.mesh = mesh
-		gossip.mesh = mesh
 	}
+	gossip.mesh = eng.mesh
 
 	if !config.meshConfig.SingleNode {
 		eng.syncer = newSyncer(&SyncerConfig{
 			nodeID:     config.meshConfig.NodeID,
 			gossip:     eng.gossip,
 			mesh:       eng.mesh,
-			meshConfig: &config.meshConfig,
+			meshConfig: &eng.meshConfig,
 			hm:         eng.hm,
 			pools:      eng.pools,
 			interval:   config.gossipInterval,

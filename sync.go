@@ -241,7 +241,11 @@ func (s *Syncer) performSync() {
 	}()
 
 	req := s.pools.pullRequests.Get().(*pb.PullRequest)
-	s.preparePullRequest(req)
+	localShards, localBuckets := s.preparePullRequest(req)
+	defer func() {
+		s.pools.shardMaps.Put(localShards)
+		s.pools.bucketMaps.Put(localBuckets)
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -264,13 +268,9 @@ func (s *Syncer) performSync() {
 	}
 }
 
-func (s *Syncer) preparePullRequest(req *pb.PullRequest) {
+func (s *Syncer) preparePullRequest(req *pb.PullRequest) (map[ShardID]Digest, map[ShardID]ShardDigest) {
 	localShards := s.pools.shardMaps.Get().(map[ShardID]Digest)
 	localBuckets := s.pools.bucketMaps.Get().(map[ShardID]ShardDigest)
-	defer func() {
-		s.pools.shardMaps.Put(localShards)
-		s.pools.bucketMaps.Put(localBuckets)
-	}()
 
 	s.hm.FillShardDigests(localShards)
 	s.hm.FillDigests(localBuckets)
@@ -299,6 +299,8 @@ func (s *Syncer) preparePullRequest(req *pb.PullRequest) {
 		idU := uint32(id)
 		req.SubDigests[idU] = sd
 	}
+
+	return localShards, localBuckets
 }
 
 func (s *Syncer) cleanupPullRequest(req *pb.PullRequest) {

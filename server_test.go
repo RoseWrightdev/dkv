@@ -126,3 +126,31 @@ func TestServerHandlers(t *testing.T) {
 		me.AssertExpectations(t)
 	})
 }
+
+func TestServer_PoolDegradation(t *testing.T) {
+	me := new(mockEngine)
+	srv := &server{
+		eng:   me,
+		pools: newServerPools(),
+	}
+
+	req1 := &pb.PullRequest{
+		RootDigest: 12345,
+		SubDigests: map[uint32]*pb.ShardDigests{
+			1: {SubHashes: make([]Digest, 64)},
+		},
+	}
+	me.On("SyncPull", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*pb.SetRequest{}, []*pb.DeleteRequest{}, nil).Once()
+	_, err := srv.Pull(context.Background(), req1)
+	assert.NoError(t, err)
+
+	var capturedBuckets map[ShardID]ShardDigest
+	me.On("SyncPull", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		capturedBuckets = args.Get(3).(map[ShardID]ShardDigest)
+	}).Return([]*pb.SetRequest{}, []*pb.DeleteRequest{}, nil).Once()
+
+	_, err = srv.Pull(context.Background(), &pb.PullRequest{})
+	assert.NoError(t, err)
+
+	assert.Equal(t, 128, len(capturedBuckets), "The recycled buckets map should contain all 128 pre-allocated shard entries!")
+}

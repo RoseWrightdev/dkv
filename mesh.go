@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/memberlist"
@@ -46,6 +47,7 @@ type Mesher struct {
 	mergeRemoteState func([]byte)
 	ring             *HashRing
 	config           MeshConfig
+	stopping         atomic.Bool
 }
 
 // newMesher initializes a new Mesher instance.
@@ -190,6 +192,7 @@ func (m *Mesher) start() error {
 }
 
 func (m *Mesher) stop() error {
+	m.stopping.Store(true)
 	if m.memberList == nil {
 		return nil
 	}
@@ -223,6 +226,9 @@ func (m *Mesher) GetBroadcasts(overhead, limit int) [][]byte {
 
 // LocalState returns the local node state for anti-entropy.
 func (m *Mesher) LocalState(_ bool) []byte {
+	if m.stopping.Load() {
+		return nil
+	}
 	if m.getLocalState != nil {
 		return m.getLocalState()
 	}

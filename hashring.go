@@ -44,8 +44,7 @@ func NewHashRing() *HashRing {
 		},
 		ownersSlicePool: sync.Pool{
 			New: func() any {
-				s := make([]NodeID, 0, 8)
-				return &s
+				return make([]NodeID, 0, 8)
 			},
 		},
 	}
@@ -154,8 +153,7 @@ func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
 		return r.vnodes[i].hash >= hash
 	})
 
-	slicePtr := r.ownersSlicePool.Get().(*[]NodeID)
-	owners := (*slicePtr)[:0]
+	owners := r.ownersSlicePool.Get().([]NodeID)[:0]
 
 	// Walk the circle clockwise modulo the ring length to gather N distinct physical nodes
 	for i := 0; i < len(r.vnodes) && len(owners) < replicationFactor; i++ {
@@ -176,8 +174,7 @@ func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
 // PutOwners returns a slice of NodeIDs back to the ring's slice pool for recycling.
 func (r *HashRing) PutOwners(owners []NodeID) {
 	if cap(owners) > 0 {
-		owners = owners[:0]
-		r.ownersSlicePool.Put(&owners)
+		r.ownersSlicePool.Put(owners[:0])
 	}
 }
 
