@@ -113,7 +113,7 @@ func TestEngine_LWW(t *testing.T) {
 	// Set with older timestamp (should be ignored)
 	ts3 := int64(1500)
 	// We call ApplySet directly to simulate a delayed gossip arrival
-	err := eng.sip.ApplySet(&pb.SetRequest{
+	err := eng.sw.ApplySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("delayed-old-value"),
 		Timestamp: ts3,
@@ -146,7 +146,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 
 	// Late-arriving Set with older timestamp
 	ts3 := int64(1500)
-	err := eng.sip.ApplySet(&pb.SetRequest{
+	err := eng.sw.ApplySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("zombie"),
 		Timestamp: ts3,
@@ -181,7 +181,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 	syncer1 := newSyncer(&SyncerConfig{
 		nodeID:     eng1.meshConfig.NodeID,
-		writer:     eng1.sip,
+		writer:     eng1.sw,
 		mesh:       eng1.mesh,
 		meshConfig: &eng1.meshConfig,
 		hm:         eng1.hm,
@@ -204,7 +204,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 	// 3. eng2 pushes the updates
 	syncer2 := newSyncer(&SyncerConfig{
 		nodeID:     eng2.meshConfig.NodeID,
-		writer:     eng2.sip,
+		writer:     eng2.sw,
 		mesh:       eng2.mesh,
 		meshConfig: &eng2.meshConfig,
 		hm:         eng2.hm,

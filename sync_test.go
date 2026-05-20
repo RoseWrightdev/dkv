@@ -114,7 +114,7 @@ func TestSync_PreparePullRequestDataRace(t *testing.T) {
 
 	syn := newSyncer(&SyncerConfig{
 		nodeID:     eng.meshConfig.NodeID,
-		writer:     eng.sip,
+		writer:     eng.sw,
 		mesh:       eng.mesh,
 		meshConfig: &eng.meshConfig,
 		hm:         eng.hm,

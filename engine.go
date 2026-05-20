@@ -38,7 +38,7 @@ type engine struct {
 	pools      *pools
 	hm         *shardedMap
 	snp        *Snapshotter
-	sip        *Gossip
+	sw         *StorageWriter
 	meshConfig MeshConfig
 	startOnce  sync.Once
 	stopOnce   sync.Once
@@ -80,10 +80,12 @@ func newEngine(config EngineConfig) (Engine, error) {
 		slog.Error("Failed to recover database state", "error", err)
 	}
 
-	gossip := newGossip(eng.pools, eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
-	eng.sip = gossip
+	writer := newStorageWriter(eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
+	eng.sw = writer
 
-	snp, err := newSnapshotter(config.snpPath, config.snpInterval, wal, gossip.streamToEncoder)
+	stateTransfer := newStateTransfer(eng.pools, eng.hm, writer)
+
+	snp, err := newSnapshotter(config.snpPath, config.snpInterval, wal, stateTransfer.streamToEncoder)
 	if err != nil {
 		return nil, err
 	}
@@ -91,11 +93,13 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.evt = config.evt
 	eng.evt.SetEvictCallback(eng.Evict)
 
+	gossip := newGossip(eng.pools, writer)
+
 	eng.mesh = &NopMesh{}
 	if !config.meshConfig.SingleNode {
 		mesh, err := newMesh(
 			gossip,
-			gossip,
+			stateTransfer,
 			config.meshConfig,
 		)
 		if err != nil {
@@ -103,12 +107,12 @@ func newEngine(config EngineConfig) (Engine, error) {
 		}
 		eng.mesh = mesh
 	}
-	gossip.mesh = eng.mesh
+	writer.mesh = eng.mesh
 
 	if !config.meshConfig.SingleNode {
 		eng.syncer = newSyncer(&SyncerConfig{
 			nodeID:     config.meshConfig.NodeID,
-			writer:     eng.sip,
+			writer:     eng.sw,
 			mesh:       eng.mesh,
 			meshConfig: &eng.meshConfig,
 			hm:         eng.hm,

@@ -1,0 +1,110 @@
+package dkv
+
+import (
+	"fmt"
+	"slices"
+
+	pb "github.com/rosewrightdev/dkv/api"
+)
+
+type StateWriter interface {
+	ApplySet(req *pb.SetRequest) error
+	ApplyDelete(req *pb.DeleteRequest) error
+}
+
+type StorageWriter struct {
+	hm         *shardedMap
+	wal        Waler
+	clock      Clock
+	mesh       Mesher
+	meshConfig *MeshConfig
+}
+
+// newStorageWriter creates a StorageWriter instance to process and persist key-value mutations.
+func newStorageWriter(hm *shardedMap, wal Waler, clock Clock, mesh Mesher, meshConfig *MeshConfig) *StorageWriter {
+	return &StorageWriter{
+		hm:         hm,
+		wal:        wal,
+		clock:      clock,
+		mesh:       mesh,
+		meshConfig: meshConfig,
+	}
+}
+
+// ApplySet updates the in-memory store and publishes the update to the WAL after performing LWW conflict resolution and cluster ownership checks.
+func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
+	sw.clock.Update(req.Timestamp)
+	hash := hashFunc(req.Key)
+	if !sw.isLocal(req.Key) {
+		return nil // Ignore keys we are not responsible for
+	}
+
+	// LWW Conflict Resolution
+	existing, ok := sw.hm.Load(req.Key, hash)
+	if ok {
+		if existing.Timestamp > req.Timestamp {
+			return nil
+		}
+		if existing.Timestamp == req.Timestamp && existing.NodeID >= req.NodeId {
+			return nil // Tie-break: existing node wins if NodeID is >= incoming
+		}
+	}
+
+	// Apply update
+	sw.hm.Store(req.Key, hash, Value{
+		Data:      req.Value,
+		Timestamp: req.Timestamp,
+		NodeID:    req.NodeId,
+		Tombstone: false,
+	})
+
+	if err := sw.wal.publish(req.Key, hash, req); err != nil {
+		return fmt.Errorf("failed to persist gossip set to WAL: %w", err)
+	}
+	return nil
+}
+
+// ApplyDelete marks a key as deleted (using a tombstone) in-memory and in the WAL after performing LWW conflict resolution and cluster ownership checks.
+func (sw *StorageWriter) ApplyDelete(req *pb.DeleteRequest) error {
+	sw.clock.Update(req.Timestamp)
+	hash := hashFunc(req.Key)
+	if !sw.isLocal(req.Key) {
+		return nil // Ignore keys we are not responsible for
+	}
+
+	existing, ok := sw.hm.Load(req.Key, hash)
+	if ok {
+		if existing.Timestamp > req.Timestamp {
+			return nil
+		}
+		if existing.Timestamp == req.Timestamp && existing.NodeID >= req.NodeId {
+			return nil
+		}
+	}
+
+	sw.hm.Store(req.Key, hash, Value{
+		Timestamp: req.Timestamp,
+		NodeID:    req.NodeId,
+		Tombstone: true,
+	})
+	if err := sw.wal.publish(req.Key, hash, req); err != nil {
+		return fmt.Errorf("failed to persist gossip delete to WAL: %w", err)
+	}
+	return nil
+}
+
+// isLocal checks if the current node is responsible for the given key based on cluster ring hash routing.
+func (sw *StorageWriter) isLocal(key string) bool {
+	if sw.meshConfig.SingleNode {
+		return true
+	}
+	rf := sw.meshConfig.ReplicationFactor
+	if rf <= 0 {
+		rf = 1
+	}
+
+	// In a distributed cluster, we are responsible if we are one of the N owners
+	owners := sw.mesh.GetOwners(key, rf)
+	defer sw.mesh.PutOwners(owners)
+	return slices.Contains(owners, sw.meshConfig.NodeID)
+}
