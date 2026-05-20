@@ -1,4 +1,3 @@
-// Package dkv provides benchmarks for testing engine and server performance.
 package dkv
 
 import (
@@ -332,7 +331,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 	})
 	syncer := newSyncer(&SyncerConfig{
 		nodeID:     eng.meshConfig.NodeID,
-		gossip:     eng.sip,
+		writer:     eng.sip,
 		mesh:       eng.mesh,
 		meshConfig: &eng.meshConfig,
 		hm:         eng.hm,

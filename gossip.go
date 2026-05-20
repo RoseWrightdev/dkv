@@ -13,11 +13,17 @@ import (
 )
 
 type Gossiper interface {
-	onMessage(data []byte)
-	applySet(req *pb.SetRequest) error
-	applyDelete(req *pb.DeleteRequest) error
-	getLocalState() []byte
-	mergeRemoteState(buf []byte)
+	OnGossip(msg []byte)
+}
+
+type StateExchanger interface {
+	ExportState() []byte
+	ImportState(state []byte)
+}
+
+type StateWriter interface {
+	ApplySet(req *pb.SetRequest) error
+	ApplyDelete(req *pb.DeleteRequest) error
 }
 
 type Gossip struct {
@@ -33,7 +39,7 @@ func newGossip(pools *pools, hm *shardedMap, wal Waler, clock Clock, mesh Mesher
 	return &Gossip{pools, hm, wal, clock, mesh, meshConfig}
 }
 
-func (sip *Gossip) onMessage(data []byte) {
+func (sip *Gossip) OnGossip(data []byte) {
 	entry := sip.pools.walEntries.Get().(*pb.WalEntry)
 	defer sip.pools.walEntries.Put(entry)
 	entry.Reset()
@@ -45,18 +51,18 @@ func (sip *Gossip) onMessage(data []byte) {
 
 	switch kv := entry.Entry.(type) {
 	case *pb.WalEntry_Set:
-		if err := sip.applySet(kv.Set); err != nil {
+		if err := sip.ApplySet(kv.Set); err != nil {
 			slog.Error("Critical: Failed to apply gossip set", "error", err)
 		}
 	case *pb.WalEntry_Delete:
-		if err := sip.applyDelete(kv.Delete); err != nil {
+		if err := sip.ApplyDelete(kv.Delete); err != nil {
 			slog.Error("Critical: Failed to apply gossip delete", "error", err)
 		}
 	}
 	entry.Entry = nil
 }
 
-func (sip *Gossip) applySet(req *pb.SetRequest) error {
+func (sip *Gossip) ApplySet(req *pb.SetRequest) error {
 	sip.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
 	if !sip.isLocal(req.Key) {
@@ -88,7 +94,7 @@ func (sip *Gossip) applySet(req *pb.SetRequest) error {
 	return nil
 }
 
-func (sip *Gossip) applyDelete(req *pb.DeleteRequest) error {
+func (sip *Gossip) ApplyDelete(req *pb.DeleteRequest) error {
 	sip.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
 	if !sip.isLocal(req.Key) {
@@ -116,7 +122,7 @@ func (sip *Gossip) applyDelete(req *pb.DeleteRequest) error {
 	return nil
 }
 
-func (sip *Gossip) getLocalState() []byte {
+func (sip *Gossip) ExportState() []byte {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	if err := sip.streamToEncoder(enc); err != nil {
@@ -141,7 +147,7 @@ func (sip *Gossip) isLocal(key string) bool {
 	return slices.Contains(owners, sip.meshConfig.NodeID)
 }
 
-func (sip *Gossip) mergeRemoteState(buf []byte) {
+func (sip *Gossip) ImportState(buf []byte) {
 	if len(buf) == 0 {
 		return
 	}
@@ -200,7 +206,7 @@ func (sip *Gossip) decodeFromReader(r io.Reader) error {
 			req := sip.pools.deleteRequests.Get().(*pb.DeleteRequest)
 			req.Key = entry.Key
 			req.Timestamp = entry.Timestamp
-			err := sip.applyDelete(req)
+			err := sip.ApplyDelete(req)
 			req.Reset()
 			sip.pools.deleteRequests.Put(req)
 			if err != nil {
@@ -215,7 +221,7 @@ func (sip *Gossip) decodeFromReader(r io.Reader) error {
 			req.Key = entry.Key
 			req.Value = entry.Data
 			req.Timestamp = entry.Timestamp
-			err := sip.applySet(req)
+			err := sip.ApplySet(req)
 			req.Reset()
 			sip.pools.setRequests.Put(req)
 			if err != nil {

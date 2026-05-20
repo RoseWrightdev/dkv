@@ -95,6 +95,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	if !config.meshConfig.SingleNode {
 		mesh, err := newMesh(
 			gossip,
+			gossip,
 			config.meshConfig,
 		)
 		if err != nil {
@@ -107,7 +108,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	if !config.meshConfig.SingleNode {
 		eng.syncer = newSyncer(&SyncerConfig{
 			nodeID:     config.meshConfig.NodeID,
-			gossip:     eng.sip,
+			writer:     eng.sip,
 			mesh:       eng.mesh,
 			meshConfig: &eng.meshConfig,
 			hm:         eng.hm,

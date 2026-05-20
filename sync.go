@@ -15,7 +15,7 @@ import (
 // Syncer performs periodic state reconciliation between nodes.
 // It detects divergence in storage shards and pulls missing data from peers.
 type Syncer struct {
-	gossip     Gossiper
+	writer     StateWriter
 	mesh       Mesher
 	creds      credentials.TransportCredentials
 	meshConfig *MeshConfig
@@ -27,7 +27,7 @@ type Syncer struct {
 }
 
 type SyncerConfig struct {
-	gossip     Gossiper
+	writer     StateWriter
 	mesh       Mesher
 	creds      credentials.TransportCredentials
 	meshConfig *MeshConfig
@@ -44,7 +44,7 @@ func newSyncer(config *SyncerConfig) *Syncer {
 	}
 
 	return &Syncer{
-		gossip:     config.gossip,
+		writer:     config.writer,
 		mesh:       config.mesh,
 		meshConfig: config.meshConfig,
 		hm:         config.hm,
@@ -91,12 +91,12 @@ func (s *Syncer) run() {
 
 func (syn *Syncer) push(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
 	for _, s := range sets {
-		if err := syn.gossip.applySet(s); err != nil {
+		if err := syn.writer.ApplySet(s); err != nil {
 			return err
 		}
 	}
 	for _, d := range deletes {
-		if err := syn.gossip.applyDelete(d); err != nil {
+		if err := syn.writer.ApplyDelete(d); err != nil {
 			return err
 		}
 	}

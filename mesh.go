@@ -43,18 +43,20 @@ type Mesh struct {
 	memberList *memberlist.Memberlist
 	broadcasts *memberlist.TransmitLimitedQueue
 	gossip     Gossiper
+	exchanger  StateExchanger
 	ring       *HashRing
 	config     MeshConfig
 	stopping   atomic.Bool
 }
 
 // newMesh initializes a new Mesh instance.
-func newMesh(gossip Gossiper, config MeshConfig) (*Mesh, error) {
+func newMesh(gossip Gossiper, exchanger StateExchanger, config MeshConfig) (*Mesh, error) {
 	ring := NewHashRing()
 	m := &Mesh{
-		gossip: gossip,
-		config: config,
-		ring:   ring,
+		gossip:    gossip,
+		exchanger: exchanger,
+		config:    config,
+		ring:      ring,
 	}
 
 	mlConfig := memberlist.DefaultLocalConfig()
@@ -202,7 +204,7 @@ func (m *Mesh) NodeMeta(_ int) []byte {
 
 // NotifyMsg is called when a user-space message is received.
 func (m *Mesh) NotifyMsg(b []byte) {
-	m.gossip.onMessage(b)
+	m.gossip.OnGossip(b)
 }
 
 // GetBroadcasts is called when memberlist needs messages to broadcast.
@@ -215,12 +217,12 @@ func (m *Mesh) LocalState(_ bool) []byte {
 	if m.stopping.Load() {
 		return nil
 	}
-	return m.gossip.getLocalState()
+	return m.exchanger.ExportState()
 }
 
 // MergeRemoteState merges incoming state from a peer.
 func (m *Mesh) MergeRemoteState(buf []byte, _ bool) {
-	m.gossip.mergeRemoteState(buf)
+	m.exchanger.ImportState(buf)
 }
 
 // NopMesh is a non-functional implementation of the Mesh interface used when distribution is disabled.
