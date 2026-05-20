@@ -65,7 +65,6 @@ func newEngine(config EngineConfig) (Engine, error) {
 		return nil, err
 	}
 
-	// todo: refactor toplevel engine pool
 	eng := &engine{
 		hm:         newShardedMap(),
 		wal:        wal,
@@ -204,18 +203,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 	})
 
 	if !eng.meshConfig.SingleNode {
-		// todo: refactor
-		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
-		wrapper := eng.pools.walSetWrappers.Get().(*pb.WalEntry_Set)
-		wrapper.Set = req
-		entry.Entry = wrapper
-		if data, err := proto.Marshal(entry); err == nil {
-			eng.mesh.Broadcast(data)
-		}
-		entry.Entry = nil
-		wrapper.Set = nil
-		eng.pools.walSetWrappers.Put(wrapper)
-		eng.pools.walEntries.Put(entry)
+		eng.broadcastSet(req)
 	}
 
 	req.Reset()
@@ -247,18 +235,7 @@ func (eng *engine) Delete(key Key) error {
 	})
 
 	if !eng.meshConfig.SingleNode {
-		// todo: refactor
-		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
-		wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
-		wrapper.Delete = req
-		entry.Entry = wrapper
-		if data, err := proto.Marshal(entry); err == nil {
-			eng.mesh.Broadcast(data)
-		}
-		entry.Entry = nil
-		wrapper.Delete = nil
-		eng.pools.walDeleteWrappers.Put(wrapper)
-		eng.pools.walEntries.Put(entry)
+		eng.broadcastDelete(req)
 	}
 
 	req.Reset()
@@ -293,24 +270,41 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 	})
 
 	if !eng.meshConfig.SingleNode {
-		// todo: refactor
-		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
-		wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
-		wrapper.Delete = req
-		entry.Entry = wrapper
-		if data, err := proto.Marshal(entry); err == nil {
-			eng.mesh.Broadcast(data)
-		}
-		entry.Entry = nil
-		wrapper.Delete = nil
-		eng.pools.walDeleteWrappers.Put(wrapper)
-		eng.pools.walEntries.Put(entry)
+		eng.broadcastDelete(req)
 	}
 
 	req.Reset()
 	eng.pools.deleteRequests.Put(req)
 
 	return nil
+}
+
+func (eng *engine) broadcastSet(req *pb.SetRequest) {
+	entry := eng.pools.walEntries.Get().(*pb.WalEntry)
+	wrapper := eng.pools.walSetWrappers.Get().(*pb.WalEntry_Set)
+	wrapper.Set = req
+	entry.Entry = wrapper
+	if data, err := proto.Marshal(entry); err == nil {
+		eng.mesh.Broadcast(data)
+	}
+	entry.Entry = nil
+	wrapper.Set = nil
+	eng.pools.walSetWrappers.Put(wrapper)
+	eng.pools.walEntries.Put(entry)
+}
+
+func (eng *engine) broadcastDelete(req *pb.DeleteRequest) {
+	entry := eng.pools.walEntries.Get().(*pb.WalEntry)
+	wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
+	wrapper.Delete = req
+	entry.Entry = wrapper
+	if data, err := proto.Marshal(entry); err == nil {
+		eng.mesh.Broadcast(data)
+	}
+	entry.Entry = nil
+	wrapper.Delete = nil
+	eng.pools.walDeleteWrappers.Put(wrapper)
+	eng.pools.walEntries.Put(entry)
 }
 
 func (eng *engine) recover(snpPath string) error {
