@@ -33,7 +33,7 @@ type engine struct {
 	wal        Waler
 	mesh       Mesher
 	evt        Evictor
-	cc         *ClientCache
+	gw         *Gateway
 	syncer     *Syncer
 	pools      *pools
 	hm         *shardedMap
@@ -72,7 +72,6 @@ func newEngine(config EngineConfig) (Engine, error) {
 		clock:      config.clock,
 		meshConfig: config.meshConfig,
 		creds:      config.creds,
-		cc:         newClientCache(config.creds),
 		pools:      newPools(),
 	}
 
@@ -108,6 +107,8 @@ func newEngine(config EngineConfig) (Engine, error) {
 		eng.mesh = mesh
 	}
 	writer.mesh = eng.mesh
+
+	eng.gw = newGateway(eng.mesh, &eng.meshConfig, config.creds)
 
 	if !config.meshConfig.SingleNode {
 		eng.syncer = newSyncer(&SyncerConfig{
@@ -152,7 +153,7 @@ func (eng *engine) Stop() {
 		if err := eng.mesh.stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
 		}
-		eng.cc.close()
+		eng.gw.Close()
 	})
 }
 
@@ -170,35 +171,7 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 
 	// Gateway Proxy: If we don't have it locally, fetch it from an owner
 	if !eng.meshConfig.SingleNode {
-		// todo: refactor
-		rf := eng.meshConfig.ReplicationFactor
-		if rf <= 0 {
-			rf = 1
-		}
-		owners := eng.mesh.GetOwners(key, rf)
-		defer eng.mesh.PutOwners(owners)
-
-		for _, owner := range owners {
-			if owner == eng.meshConfig.NodeID {
-				continue // We already checked local storage
-			}
-
-			addr := eng.mesh.AddressForNode(owner)
-			if addr == "" {
-				continue // Try next owner
-			}
-
-			// Proxy the read
-			client, err := eng.cc.get(addr)
-			if err != nil {
-				continue // Try next owner
-			}
-			val, ok, err := client.Get(key)
-			if err != nil || !ok {
-				continue
-			}
-			return val, true
-		}
+		return eng.gw.Get(key)
 	}
 
 	return nil, false
