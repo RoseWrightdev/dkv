@@ -166,6 +166,7 @@ func shouldSample(qLen, qCap int) bool {
 		return false
 	}
 
+	// todo: add configuration options
 	// 10-Tier Dynamic Exponential-Decay Sampling Tiers:
 	// - < 1% full   : Sample 1-in-2    (mask 0, always publish remaining 50%)
 	// - 1% - 5%     : Sample 1-in-4    (mask 1, discard 50% of remaining)

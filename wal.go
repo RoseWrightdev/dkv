@@ -220,6 +220,7 @@ func (w *Wal) replay() (map[Key]Value, error) {
 	return results, firstErr
 }
 
+// todo: refactor, too long and nested
 func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *sync.Mutex) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()

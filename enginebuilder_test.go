@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// todo: add more invarient testing
 func TestEngineBuilder(t *testing.T) {
 	eb := NewEngineBuilder()
 	assert.Equal(t, 0, eb.walSegments)

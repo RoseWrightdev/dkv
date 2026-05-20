@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// todo: add more fault tolerence tests
+
 func TestGossipReplication(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-gossip-*")
 	defer func() {

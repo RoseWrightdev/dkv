@@ -150,6 +150,8 @@ func (s *Syncer) pull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteReq
 	return sets, deletes, nil
 }
 
+// todo: refactor into struct, too many parameters
+
 // collectShardMismatches iterates over mismatched sub-buckets in a shard and collects changed keys.
 func (s *Syncer) collectShardMismatches(
 	shardID ShardID,

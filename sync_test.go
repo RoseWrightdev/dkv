@@ -114,7 +114,7 @@ func TestSync_PreparePullRequestDataRace(t *testing.T) {
 
 	syn := newSyncer(&SyncerConfig{
 		nodeID:     eng.meshConfig.NodeID,
-		gossip:     eng.gossip,
+		gossip:     eng.sip,
 		mesh:       eng.mesh,
 		meshConfig: &eng.meshConfig,
 		hm:         eng.hm,
@@ -124,7 +124,7 @@ func TestSync_PreparePullRequestDataRace(t *testing.T) {
 	})
 
 	stop := make(chan struct{})
-	
+
 	// Start the writer goroutine that keeps getting from pool, modifying/filling, and putting back.
 	go func() {
 		i := 0
@@ -147,17 +147,16 @@ func TestSync_PreparePullRequestDataRace(t *testing.T) {
 	for range 100 {
 		req := eng.pools.pullRequests.Get().(*pb.PullRequest)
 		syn.preparePullRequest(req)
-		
+
 		// Concurrently read the request digests that reference the pool's slices.
 		for _, sd := range req.SubDigests {
 			for _, h := range sd.SubHashes {
 				_ = h
 			}
 		}
-		
+
 		syn.cleanupPullRequest(req)
 	}
 
 	close(stop)
 }
-

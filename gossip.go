@@ -196,6 +196,7 @@ func (sip *Gossip) decodeFromReader(r io.Reader) error {
 		}
 
 		if entry.Tombstone {
+			// todo: refactor
 			req := sip.pools.deleteRequests.Get().(*pb.DeleteRequest)
 			req.Key = entry.Key
 			req.Timestamp = entry.Timestamp
@@ -209,6 +210,7 @@ func (sip *Gossip) decodeFromReader(r io.Reader) error {
 				return err
 			}
 		} else {
+			// todo: refactor
 			req := sip.pools.setRequests.Get().(*pb.SetRequest)
 			req.Key = entry.Key
 			req.Value = entry.Data

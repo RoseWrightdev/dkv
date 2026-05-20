@@ -113,7 +113,7 @@ func TestEngine_LWW(t *testing.T) {
 	// Set with older timestamp (should be ignored)
 	ts3 := int64(1500)
 	// We call applySet directly to simulate a delayed gossip arrival
-	err := eng.gossip.applySet(&pb.SetRequest{
+	err := eng.sip.applySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("delayed-old-value"),
 		Timestamp: ts3,
@@ -146,7 +146,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 
 	// Late-arriving Set with older timestamp
 	ts3 := int64(1500)
-	err := eng.gossip.applySet(&pb.SetRequest{
+	err := eng.sip.applySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("zombie"),
 		Timestamp: ts3,
@@ -181,7 +181,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 	syncer1 := newSyncer(&SyncerConfig{
 		nodeID:     eng1.meshConfig.NodeID,
-		gossip:     eng1.gossip,
+		gossip:     eng1.sip,
 		mesh:       eng1.mesh,
 		meshConfig: &eng1.meshConfig,
 		hm:         eng1.hm,
@@ -204,7 +204,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 	// 3. eng2 pushes the updates
 	syncer2 := newSyncer(&SyncerConfig{
 		nodeID:     eng2.meshConfig.NodeID,
-		gossip:     eng2.gossip,
+		gossip:     eng2.sip,
 		mesh:       eng2.mesh,
 		meshConfig: &eng2.meshConfig,
 		hm:         eng2.hm,
@@ -236,10 +236,10 @@ func TestEngine_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	for g := 0; g < goroutines; g++ {
+	for g := range goroutines {
 		go func(id int) {
 			defer wg.Done()
-			for i := 0; i < iterations; i++ {
+			for i := range iterations {
 				key := fmt.Sprintf("k-%d-%d", id, i)
 				_ = eng.Set(key, []byte("v"))
 				_, _ = eng.Get(Key(key))

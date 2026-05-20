@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// todo: add granual tests covering more functionality
 func TestTTLExpiration(t *testing.T) {
 	lru := NewLRU(LRUConfig{Capacity: 100, TTL: 100 * time.Millisecond, ShardCount: 16})
 

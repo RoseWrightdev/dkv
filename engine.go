@@ -38,7 +38,7 @@ type engine struct {
 	pools      *pools
 	hm         *shardedMap
 	snp        *Snapshotter
-	gossip     *Gossip
+	sip        *Gossip
 	meshConfig MeshConfig
 	startOnce  sync.Once
 	stopOnce   sync.Once
@@ -81,7 +81,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	}
 
 	gossip := newGossip(eng.pools, eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
-	eng.gossip = gossip
+	eng.sip = gossip
 
 	snp, err := newSnapshotter(config.snpPath, config.snpInterval, wal, gossip.streamToEncoder)
 	if err != nil {
@@ -107,7 +107,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	if !config.meshConfig.SingleNode {
 		eng.syncer = newSyncer(&SyncerConfig{
 			nodeID:     config.meshConfig.NodeID,
-			gossip:     eng.gossip,
+			gossip:     eng.sip,
 			mesh:       eng.mesh,
 			meshConfig: &eng.meshConfig,
 			hm:         eng.hm,
@@ -165,6 +165,7 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 
 	// Gateway Proxy: If we don't have it locally, fetch it from an owner
 	if !eng.meshConfig.SingleNode {
+		// todo: refactor
 		rf := eng.meshConfig.ReplicationFactor
 		if rf <= 0 {
 			rf = 1
@@ -225,6 +226,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 	})
 
 	if !eng.meshConfig.SingleNode {
+		// todo: refactor
 		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
 		wrapper := eng.pools.walSetWrappers.Get().(*pb.WalEntry_Set)
 		wrapper.Set = req
@@ -267,6 +269,7 @@ func (eng *engine) Delete(key Key) error {
 	})
 
 	if !eng.meshConfig.SingleNode {
+		// todo: refactor
 		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
 		wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
 		wrapper.Delete = req
@@ -312,6 +315,7 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 	})
 
 	if !eng.meshConfig.SingleNode {
+		// todo: refactor
 		entry := eng.pools.walEntries.Get().(*pb.WalEntry)
 		wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
 		wrapper.Delete = req
