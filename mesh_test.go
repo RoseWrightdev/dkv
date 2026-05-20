@@ -1,6 +1,7 @@
 package dkv
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -58,3 +59,36 @@ func TestClusterMembership(t *testing.T) {
 	assert.True(t, hasPort(members, ":8001"), "Members should contain node on gRPC port 8001")
 	assert.True(t, hasPort(members, ":8002"), "Members should contain node on gRPC port 8002")
 }
+
+func TestMesher_ConcurrentStop(t *testing.T) {
+	c1 := MeshConfig{
+		NodeID:   "node1",
+		BindPort: 7003,
+		GrpcPort: 8003,
+	}
+	noOp := func() []byte { return nil }
+	noOpMerge := func([]byte) {}
+	s1, err := newMesher(c1, func([]byte) {}, noOp, noOpMerge)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		for range 50 {
+			_ = s1.Members()
+			_ = s1.AddressForNode("node1")
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		time.Sleep(5 * time.Millisecond)
+		_ = s1.stop()
+	}()
+
+	wg.Wait()
+}
+

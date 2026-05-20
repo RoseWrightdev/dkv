@@ -73,19 +73,30 @@ func (c *HLC) Now() int64 {
 // Update incorporates a remote timestamp to maintain causality.
 // Should be called on every incoming message containing a timestamp.
 func (c *HLC) Update(remote int64) {
+	if remote < 0 {
+		return // Ignore invalid/negative remote timestamps
+	}
+
 	// #nosec G115
 	remoteU := uint64(remote)
 	
 	remotePhysical := remoteU >> logicalBits
 	remoteLogical := remoteU & logicalMask
 
+	// Max drift threshold: 5 seconds (5000 ms)
+	nowVal := max(time.Now().UnixMilli(), 0)
+	now := uint64(nowVal)
+	if remotePhysical > now+5000 {
+		return // Ignore excessively drifted remote timestamps to prevent clock poisoning
+	}
+
 	for {
 		old := c.state.Load()
 		oldPhysical := old >> logicalBits
 		oldLogical := old & logicalMask
 
-		nowVal := max(time.Now().UnixMilli(), 0)
-		now := uint64(nowVal)
+		nowVal = max(time.Now().UnixMilli(), 0)
+		now = uint64(nowVal)
 		
 		maxPhysical := now
 		if remotePhysical > maxPhysical {

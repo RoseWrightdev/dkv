@@ -1,6 +1,7 @@
 package dkv
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ type ClientCache struct {
 	creds    credentials.TransportCredentials
 	clients  map[PeerAddress]*Client
 	clientMu sync.RWMutex
+	closed   bool
 }
 
 func newClientCache(creds credentials.TransportCredentials) *ClientCache {
@@ -19,6 +21,10 @@ func newClientCache(creds credentials.TransportCredentials) *ClientCache {
 
 func (cc *ClientCache) get(addr PeerAddress) (*Client, error) {
 	cc.clientMu.RLock()
+	if cc.closed {
+		cc.clientMu.RUnlock()
+		return nil, fmt.Errorf("client cache is closed")
+	}
 	client, ok := cc.clients[addr]
 	cc.clientMu.RUnlock()
 	if ok {
@@ -27,6 +33,10 @@ func (cc *ClientCache) get(addr PeerAddress) (*Client, error) {
 
 	cc.clientMu.Lock()
 	defer cc.clientMu.Unlock()
+
+	if cc.closed {
+		return nil, fmt.Errorf("client cache is closed")
+	}
 
 	// Double check
 	if client, ok = cc.clients[addr]; ok {
@@ -43,9 +53,13 @@ func (cc *ClientCache) get(addr PeerAddress) (*Client, error) {
 
 func (cc *ClientCache) close() {
 	cc.clientMu.Lock()
+	if cc.closed {
+		cc.clientMu.Unlock()
+		return
+	}
+	cc.closed = true
 	for _, client := range cc.clients {
 		_ = client.Close()
 	}
-	cc.clients = nil
 	cc.clientMu.Unlock()
 }

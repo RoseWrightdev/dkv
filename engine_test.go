@@ -249,3 +249,28 @@ func TestEngine_Concurrency(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestEngine_SetRequestReset(t *testing.T) {
+	defer cleanupEngineMocks(t)
+	e, _ := newEngine(mockConfig)
+	eng := e.(*engine)
+	eng.Start()
+	defer eng.Stop()
+
+	err := eng.Set("pooled-key", []byte("large-val"))
+	assert.NoError(t, err)
+
+	foundRecycled := false
+	for range 20 {
+		req := eng.pools.setRequests.Get().(*pb.SetRequest)
+		if req.Key != "" {
+			foundRecycled = true
+			assert.Empty(t, req.Key, "recycled SetRequest was NOT reset, retaining memory references!")
+			assert.Nil(t, req.Value, "recycled SetRequest value slice should be cleared")
+		}
+	}
+	// Note: sync.Pool might not always return the recycled object in some platforms/runs,
+	// but when it does (which is very common), it will catch the failure before the fix.
+	_ = foundRecycled
+}
+

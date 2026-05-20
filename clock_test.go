@@ -30,15 +30,37 @@ func TestHLC_Monotonicity(t *testing.T) {
 
 func TestHLC_Drift(t *testing.T) {
 	hlc := NewHLC()
-	now := time.Now().UnixNano()
+	now := time.Now().UnixMilli()
 	
-	// Huge future jump
-	future := now + int64(time.Hour)
-	hlc.Update(future)
+	// Future jump within drift limit (e.g., 2 seconds)
+	futurePhysical := now + 2000
+	futureHLC := futurePhysical << logicalBits
+	hlc.Update(int64(futureHLC))
 	
 	ts := hlc.Now()
-	// Should be around 'future'
-	assert.InDelta(t, future, ts, float64(time.Second))
+	// Should be around 'futureHLC'
+	assert.InDelta(t, float64(futureHLC), float64(ts), float64(100<<logicalBits))
+}
+
+func TestHLC_PoisoningProtection(t *testing.T) {
+	hlc := NewHLC()
+	initialTS := hlc.Now()
+
+	// 1. Extreme future drift (1 hour) - should be ignored
+	now := time.Now().UnixMilli()
+	extremeFutureHLC := (now + int64(time.Hour/time.Millisecond)) << logicalBits
+	hlc.Update(int64(extremeFutureHLC))
+	
+	tsFuture := hlc.Now()
+	// It should NOT have jumped to the extreme future; should be near initial physical time
+	assert.Less(t, tsFuture, int64(extremeFutureHLC))
+	assert.InDelta(t, float64(initialTS), float64(tsFuture), float64(500<<logicalBits))
+
+	// 2. Negative HLC timestamp - should be ignored
+	hlc.Update(-1000)
+	tsNeg := hlc.Now()
+	assert.GreaterOrEqual(t, tsNeg, tsFuture)
+	assert.InDelta(t, float64(initialTS), float64(tsNeg), float64(500<<logicalBits))
 }
 
 func BenchmarkHLC_Now_Parallel(b *testing.B) {
@@ -49,4 +71,5 @@ func BenchmarkHLC_Now_Parallel(b *testing.B) {
 		}
 	})
 }
+
 

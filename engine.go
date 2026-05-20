@@ -240,6 +240,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 		eng.pools.walEntries.Put(entry)
 	}
 
+	req.Reset()
 	eng.pools.setRequests.Put(req)
 	return nil
 }

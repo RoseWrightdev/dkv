@@ -143,6 +143,6 @@ func (s *Grpc) Run() error {
 
 // Stop gracefully shuts down the gRPC server and stops the underlying engine.
 func (s *Grpc) Stop() {
-	s.handlers.eng.Stop()
 	s.inner.GracefulStop()
+	s.handlers.eng.Stop()
 }

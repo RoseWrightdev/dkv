@@ -125,6 +125,9 @@ func (m *Mesher) Broadcast(msg []byte) {
 
 // Members returns the gRPC API addresses of all active peers discovered via gossip.
 func (m *Mesher) Members() []PeerAddress {
+	if m.stopping.Load() || m.memberList == nil {
+		return nil
+	}
 	members := m.memberList.Members()
 	addrs := make([]PeerAddress, 0, len(members))
 	for _, member := range members {
@@ -137,6 +140,9 @@ func (m *Mesher) Members() []PeerAddress {
 
 // AddressForNode returns the gRPC address for a given node ID.
 func (m *Mesher) AddressForNode(nodeID NodeID) PeerAddress {
+	if m.stopping.Load() || m.memberList == nil {
+		return ""
+	}
 	for _, member := range m.memberList.Members() {
 		if member.Name == string(nodeID) {
 			if len(member.Meta) > 0 {
@@ -203,7 +209,6 @@ func (m *Mesher) stop() error {
 	}
 
 	err := m.memberList.Shutdown()
-	m.memberList = nil
 	return err
 }
 
