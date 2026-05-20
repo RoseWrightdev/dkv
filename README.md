@@ -18,36 +18,93 @@ dkv is a partitioned, state-replicated key-value database implemented in Go. In 
 
 ```mermaid
 flowchart TD
-    Client([gRPC Client]) -->|gRPC Requests| Server[gRPC Server]
-    Server -->|Engine Interface| Engine[engine Facade]
+    Client([gRPC Client]) -->|gRPC Requests| Engine[Engine Facade]
     
-    %% Routing Decisions
-    Engine -->|Consistent Hashing| Ring[HashRing]
-    Ring -->|GetOwners / Node Lookup| OwnerCheck{Is Key Local?}
+    subgraph DKVNode[Node Architecture]
+        direction TB
+        
+        subgraph Storage[Storage Core]
+            Disk(Disk)
+            Snapshot[Snapshoter]
+            WAL[(Write-Ahead Log)]
+            ShardedMap[(128-Sharded Map)]
+        end
+        
+        subgraph Routing[Proxy & Routing]
+            Gateway[Gateway Proxy]
+            Ring[HashRing]
+        end
+        
+        subgraph Replication[Replication Layer]
+            Gossip[Gossip Service]
+            Syncer[Anti-Entropy Syncer]
+            Writer[StorageWriter]
+        end
+        
+        %% Internal Data Flow
+        WAL --> Disk
+        Snapshot --> Disk
+        ShardedMap <--> Snapshot
+        Engine -->|Local Write| WAL
+        Engine -->|Local Write| ShardedMap
+        Engine <-->|Cache Misses| Gateway
+        Gateway -->|Lookup| Ring
+        Gossip -->|Applies Updates| Writer
+        Syncer -->|Applies Updates| Writer
+        Writer --> WAL
+        Writer -->|Last Write Wins| ShardedMap
+    end
     
-    %% Proxy path
-    OwnerCheck -->|No| ClientCache[ClientCache Pool]
-    ClientCache -->|gRPC Proxy Call| PeerNode[Remote Peer Node]
+    %% External Network Flow
+    Gateway <--> PeerNode[Remote Peer Nodes]
+    Gossip <-->|UDP Gossip| PeerNode
+    Syncer <-->|TCP Sync| PeerNode
+```
+
+The sequence of operations when a client writes data.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Engine
+    participant Gateway
+    participant Storage
+    participant Mesh
+
+    %% Write Path
+    Client->>Engine: Set(Key, Value)
+    Engine->>Storage: 1. Persist (WAL + Memory)
+    Engine->>Mesh: 2. Broadcast (UDP Gossip)
+    Engine-->>Client: Success
     
-    %% Local Path
-    OwnerCheck -->|Yes| LocalStore[Local State Operations]
-    Engine -->|Coordinates| LocalStore
+    %% Read Path
+    Client->>Engine: Get(Key)
+    Engine->>Storage: 1. Local Lookup
+    alt Local Miss (Not Owner)
+        Engine->>Gateway: 2. Proxy Request
+        Gateway->>Mesh: 3. Consistent Hash Routing
+        Mesh-->>Engine: Remote Value
+    end
+    Engine-->>Client: Value
+```
+
+### 3. Incoming Replication & Conflict Resolution
+How external updates are safely merged into the local node using the `StorageWriter` and Last-Write-Wins (LWW) conflict resolution.
+
+```mermaid
+flowchart LR
+    Gossip[Gossip UDP] -->|Incoming| Writer[StorageWriter]
+    Syncer[Anti-Entropy TCP] -->|Incoming| Writer
+    StateTransfer[Bulk Sync] -->|Incoming| Writer
     
-    %% Storage Core Stack (Vertically Aligned)
-    LocalStore -->|Durability| WAL[(Write-Ahead Log)]
-    LocalStore -->|In-Memory Storage| MemMap[(128-Sharded Map)]
-    LocalStore -->|Eviction Callback| LRU[LRU Cache Service]
+    subgraph Resolution[Conflict Resolution]
+        direction TB
+        Writer -->|1. Check| Ring[HashRing Ownership]
+        Writer -->|2. Compare| Clock[Hybrid Logical Clock]
+    end
     
-    WAL -->|Publish / Replay| MemMap
-    Snapshot[Snapshotter Service] -->|Periodic State Flush| MemMap
-    HLC[Hybrid Logical Clock] -.->|Vector Timestamp| MemMap
-    
-    %% Replication & AE
-    MemMap -.->|Mesh Interface| Gossip[Gossip Service]
-    MemMap -.->|Syncer| AE[Anti-Entropy Service]
-    
-    Gossip <-->|memberlist Broadcast| PeerNode
-    AE <-->|Merkle Tree Sync| PeerNode
+    Writer -->|3. Apply| WAL[(Write-Ahead Log)]
+    Writer -->|4. Apply| ShardedMap[(Sharded Map)]
 ```
 
 ## Quick Start
