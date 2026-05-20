@@ -5,9 +5,19 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type mockGossip struct{}
+
+func newMockGossip() *mockGossip                               { return &mockGossip{} }
+func (mg *mockGossip) onMessage(data []byte)                   {}
+func (mg *mockGossip) applySet(req *pb.SetRequest) error       { return nil }
+func (mg *mockGossip) applyDelete(req *pb.DeleteRequest) error { return nil }
+func (mg *mockGossip) getLocalState() []byte                   { return []byte("") }
+func (mg *mockGossip) mergeRemoteState(buf []byte)             {}
 
 func TestClusterMembership(t *testing.T) {
 	// Start first node
@@ -16,9 +26,7 @@ func TestClusterMembership(t *testing.T) {
 		BindPort: 7001,
 		GrpcPort: 8001,
 	}
-	noOp := func() []byte { return nil }
-	noOpMerge := func([]byte) {}
-	s1, err := newMesher(c1, func([]byte) {}, noOp, noOpMerge)
+	s1, err := newMesh(newMockGossip(), c1)
 	require.NoError(t, err)
 	defer func() {
 		_ = s1.stop()
@@ -31,7 +39,7 @@ func TestClusterMembership(t *testing.T) {
 		SeedNodes: []string{"127.0.0.1:7001"},
 		GrpcPort:  8002,
 	}
-	s2, err := newMesher(c2, func([]byte) {}, noOp, noOpMerge)
+	s2, err := newMesh(newMockGossip(), c2)
 	require.NoError(t, err)
 	defer func() {
 		_ = s2.stop()
@@ -66,9 +74,8 @@ func TestMesher_ConcurrentStop(t *testing.T) {
 		BindPort: 7003,
 		GrpcPort: 8003,
 	}
-	noOp := func() []byte { return nil }
-	noOpMerge := func([]byte) {}
-	s1, err := newMesher(c1, func([]byte) {}, noOp, noOpMerge)
+
+	s1, err := newMesh(newMockGossip(), c1)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -91,4 +98,3 @@ func TestMesher_ConcurrentStop(t *testing.T) {
 
 	wg.Wait()
 }
-

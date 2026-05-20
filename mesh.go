@@ -14,7 +14,7 @@ import (
 type PeerAddress string
 
 // Mesh defines the interface for distributed node discovery and replication.
-type Mesh interface {
+type Mesher interface {
 	Broadcast(msg []byte)
 	Members() []PeerAddress
 	Owner(key Key) NodeID
@@ -38,42 +38,23 @@ type MeshConfig struct {
 	FastTest          bool
 }
 
-// Mesher manages the lifecycle of the node within a gossip-based cluster.
-type Mesher struct {
-	memberList       *memberlist.Memberlist
-	broadcasts       *memberlist.TransmitLimitedQueue
-	onMessage        func([]byte)
-	getLocalState    func() []byte
-	mergeRemoteState func([]byte)
-	ring             *HashRing
-	config           MeshConfig
-	stopping         atomic.Bool
+// Mesh provides the implementation for L7 Routing and P2P communication between nodes.
+type Mesh struct {
+	memberList *memberlist.Memberlist
+	broadcasts *memberlist.TransmitLimitedQueue
+	gossip     Gossiper
+	ring       *HashRing
+	config     MeshConfig
+	stopping   atomic.Bool
 }
 
-// newMesher initializes a new Mesher instance.
-func newMesher(
-	config MeshConfig,
-	onMessage func([]byte),
-	getLocalState func() []byte,
-	mergeRemoteState func([]byte),
-) (*Mesher, error) {
+// newMesh initializes a new Mesh instance.
+func newMesh(gossip Gossiper, config MeshConfig) (*Mesh, error) {
 	ring := NewHashRing()
-	m := &Mesher{
-		config:           config,
-		onMessage:        onMessage,
-		getLocalState:    getLocalState,
-		mergeRemoteState: mergeRemoteState,
-		ring:             ring,
-	}
-
-	if onMessage == nil {
-		panic("onMessage must be defined for cluster service")
-	}
-	if getLocalState == nil {
-		panic("getLocalState must be defined for cluster service")
-	}
-	if mergeRemoteState == nil {
-		panic("mergeRemoteState must be defined for cluster service")
+	m := &Mesh{
+		gossip: gossip,
+		config: config,
+		ring:   ring,
 	}
 
 	mlConfig := memberlist.DefaultLocalConfig()
@@ -117,14 +98,14 @@ func newMesher(
 }
 
 // Broadcast serializes and spreads a message across the cluster using epidemic gossip.
-func (m *Mesher) Broadcast(msg []byte) {
+func (m *Mesh) Broadcast(msg []byte) {
 	m.broadcasts.QueueBroadcast(&broadcast{
 		msg: msg,
 	})
 }
 
 // Members returns the gRPC API addresses of all active peers discovered via gossip.
-func (m *Mesher) Members() []PeerAddress {
+func (m *Mesh) Members() []PeerAddress {
 	if m.stopping.Load() || m.memberList == nil {
 		return nil
 	}
@@ -139,7 +120,7 @@ func (m *Mesher) Members() []PeerAddress {
 }
 
 // AddressForNode returns the gRPC address for a given node ID.
-func (m *Mesher) AddressForNode(nodeID NodeID) PeerAddress {
+func (m *Mesh) AddressForNode(nodeID NodeID) PeerAddress {
 	if m.stopping.Load() || m.memberList == nil {
 		return ""
 	}
@@ -155,38 +136,38 @@ func (m *Mesher) AddressForNode(nodeID NodeID) PeerAddress {
 }
 
 // Owner returns the NodeID of the peer responsible for the given key.
-func (m *Mesher) Owner(key Key) NodeID {
+func (m *Mesh) Owner(key Key) NodeID {
 	return m.ring.GetNode(key)
 }
 
 // GetOwners returns the N closest NodeIDs on the hash ring responsible for replicating the given key.
-func (m *Mesher) GetOwners(key Key, n int) []NodeID {
+func (m *Mesh) GetOwners(key Key, n int) []NodeID {
 	return m.ring.GetOwners(key, n)
 }
 
 // PutOwners returns a slice of NodeIDs back to the ring's slice pool for recycling.
-func (m *Mesher) PutOwners(owners []NodeID) {
+func (m *Mesh) PutOwners(owners []NodeID) {
 	m.ring.PutOwners(owners)
 }
 
 // NotifyJoin is called by memberlist when a new node joins.
-func (m *Mesher) NotifyJoin(node *memberlist.Node) {
+func (m *Mesh) NotifyJoin(node *memberlist.Node) {
 	slog.Info("Node joined cluster", "node", node.Name, "addr", node.Addr.String())
 	m.ring.AddNode(NodeID(node.Name))
 }
 
 // NotifyLeave is called by memberlist when a node leaves.
-func (m *Mesher) NotifyLeave(node *memberlist.Node) {
+func (m *Mesh) NotifyLeave(node *memberlist.Node) {
 	slog.Info("Node left cluster", "node", node.Name)
 	m.ring.RemoveNode(NodeID(node.Name))
 }
 
 // NotifyUpdate is called by memberlist when a node's metadata changes.
-func (m *Mesher) NotifyUpdate(_ *memberlist.Node) {
+func (m *Mesh) NotifyUpdate(_ *memberlist.Node) {
 	// Ring distribution depends only on node name, so update is a no-op.
 }
 
-func (m *Mesher) start() error {
+func (m *Mesh) start() error {
 	if len(m.config.SeedNodes) > 0 {
 		count, err := m.memberList.Join(m.config.SeedNodes)
 		if err != nil {
@@ -197,7 +178,7 @@ func (m *Mesher) start() error {
 	return nil
 }
 
-func (m *Mesher) stop() error {
+func (m *Mesh) stop() error {
 	m.stopping.Store(true)
 	if m.memberList == nil {
 		return nil
@@ -215,34 +196,31 @@ func (m *Mesher) stop() error {
 // memberlist.Delegate implementation
 
 // NodeMeta returns the metadata of the node, which includes the gRPC port.
-func (m *Mesher) NodeMeta(_ int) []byte {
+func (m *Mesh) NodeMeta(_ int) []byte {
 	return fmt.Appendf(nil, "%d", m.config.GrpcPort)
 }
 
 // NotifyMsg is called when a user-space message is received.
-func (m *Mesher) NotifyMsg(b []byte) {
-	m.onMessage(b)
+func (m *Mesh) NotifyMsg(b []byte) {
+	m.gossip.onMessage(b)
 }
 
 // GetBroadcasts is called when memberlist needs messages to broadcast.
-func (m *Mesher) GetBroadcasts(overhead, limit int) [][]byte {
+func (m *Mesh) GetBroadcasts(overhead, limit int) [][]byte {
 	return m.broadcasts.GetBroadcasts(overhead, limit)
 }
 
 // LocalState returns the local node state for anti-entropy.
-func (m *Mesher) LocalState(_ bool) []byte {
+func (m *Mesh) LocalState(_ bool) []byte {
 	if m.stopping.Load() {
 		return nil
 	}
-	if m.getLocalState != nil {
-		return m.getLocalState()
-	}
-	return nil
+	return m.gossip.getLocalState()
 }
 
 // MergeRemoteState merges incoming state from a peer.
-func (m *Mesher) MergeRemoteState(buf []byte, _ bool) {
-	m.mergeRemoteState(buf)
+func (m *Mesh) MergeRemoteState(buf []byte, _ bool) {
+	m.gossip.mergeRemoteState(buf)
 }
 
 // NopMesh is a non-functional implementation of the Mesh interface used when distribution is disabled.

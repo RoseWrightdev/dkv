@@ -112,8 +112,8 @@ func TestEngine_LWW(t *testing.T) {
 
 	// Set with older timestamp (should be ignored)
 	ts3 := int64(1500)
-	// We call applyGossipSet directly to simulate a delayed gossip arrival
-	err := eng.gossip.applyGossipSet(&pb.SetRequest{
+	// We call applySet directly to simulate a delayed gossip arrival
+	err := eng.gossip.applySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("delayed-old-value"),
 		Timestamp: ts3,
@@ -146,7 +146,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 
 	// Late-arriving Set with older timestamp
 	ts3 := int64(1500)
-	err := eng.gossip.applyGossipSet(&pb.SetRequest{
+	err := eng.gossip.applySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("zombie"),
 		Timestamp: ts3,
@@ -273,4 +273,3 @@ func TestEngine_SetRequestReset(t *testing.T) {
 	// but when it does (which is very common), it will catch the failure before the fix.
 	_ = foundRecycled
 }
-

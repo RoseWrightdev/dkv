@@ -13,9 +13,11 @@ import (
 )
 
 type Gossiper interface {
-	onGossipMessage(data []byte)
-	applyGossipSet(req *pb.SetRequest) error
-	applyGossipDelete(req *pb.DeleteRequest) error
+	onMessage(data []byte)
+	applySet(req *pb.SetRequest) error
+	applyDelete(req *pb.DeleteRequest) error
+	getLocalState() []byte
+	mergeRemoteState(buf []byte)
 }
 
 type Gossip struct {
@@ -23,15 +25,15 @@ type Gossip struct {
 	hm         *shardedMap
 	wal        Waler
 	clock      Clock
-	mesh       Mesh
+	mesh       Mesher
 	meshConfig *MeshConfig
 }
 
-func newGossip(pools *pools, hm *shardedMap, wal Waler, clock Clock, mesh Mesh, meshConfig *MeshConfig) *Gossip {
+func newGossip(pools *pools, hm *shardedMap, wal Waler, clock Clock, mesh Mesher, meshConfig *MeshConfig) *Gossip {
 	return &Gossip{pools, hm, wal, clock, mesh, meshConfig}
 }
 
-func (sip *Gossip) onGossipMessage(data []byte) {
+func (sip *Gossip) onMessage(data []byte) {
 	entry := sip.pools.walEntries.Get().(*pb.WalEntry)
 	defer sip.pools.walEntries.Put(entry)
 	entry.Reset()
@@ -43,18 +45,18 @@ func (sip *Gossip) onGossipMessage(data []byte) {
 
 	switch kv := entry.Entry.(type) {
 	case *pb.WalEntry_Set:
-		if err := sip.applyGossipSet(kv.Set); err != nil {
+		if err := sip.applySet(kv.Set); err != nil {
 			slog.Error("Critical: Failed to apply gossip set", "error", err)
 		}
 	case *pb.WalEntry_Delete:
-		if err := sip.applyGossipDelete(kv.Delete); err != nil {
+		if err := sip.applyDelete(kv.Delete); err != nil {
 			slog.Error("Critical: Failed to apply gossip delete", "error", err)
 		}
 	}
 	entry.Entry = nil
 }
 
-func (sip *Gossip) applyGossipSet(req *pb.SetRequest) error {
+func (sip *Gossip) applySet(req *pb.SetRequest) error {
 	sip.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
 	if !sip.isLocal(req.Key) {
@@ -86,7 +88,7 @@ func (sip *Gossip) applyGossipSet(req *pb.SetRequest) error {
 	return nil
 }
 
-func (sip *Gossip) applyGossipDelete(req *pb.DeleteRequest) error {
+func (sip *Gossip) applyDelete(req *pb.DeleteRequest) error {
 	sip.clock.Update(req.Timestamp)
 	hash := hashFunc(req.Key)
 	if !sip.isLocal(req.Key) {
@@ -197,7 +199,7 @@ func (sip *Gossip) decodeFromReader(r io.Reader) error {
 			req := sip.pools.deleteRequests.Get().(*pb.DeleteRequest)
 			req.Key = entry.Key
 			req.Timestamp = entry.Timestamp
-			err := sip.applyGossipDelete(req)
+			err := sip.applyDelete(req)
 			req.Reset()
 			sip.pools.deleteRequests.Put(req)
 			if err != nil {
@@ -211,7 +213,7 @@ func (sip *Gossip) decodeFromReader(r io.Reader) error {
 			req.Key = entry.Key
 			req.Value = entry.Data
 			req.Timestamp = entry.Timestamp
-			err := sip.applyGossipSet(req)
+			err := sip.applySet(req)
 			req.Reset()
 			sip.pools.setRequests.Put(req)
 			if err != nil {

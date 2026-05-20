@@ -31,7 +31,7 @@ type engine struct {
 	creds      credentials.TransportCredentials
 	clock      Clock
 	wal        Waler
-	mesh       Mesh
+	mesh       Mesher
 	evt        Evictor
 	cc         *ClientCache
 	syncer     *Syncer
@@ -93,11 +93,9 @@ func newEngine(config EngineConfig) (Engine, error) {
 
 	eng.mesh = &NopMesh{}
 	if !config.meshConfig.SingleNode {
-		mesh, err := newMesher(
+		mesh, err := newMesh(
+			gossip,
 			config.meshConfig,
-			gossip.onGossipMessage,
-			gossip.getLocalState,
-			gossip.mergeRemoteState,
 		)
 		if err != nil {
 			return nil, err

@@ -16,7 +16,7 @@ import (
 // It detects divergence in storage shards and pulls missing data from peers.
 type Syncer struct {
 	gossip     Gossiper
-	mesh       Mesh
+	mesh       Mesher
 	creds      credentials.TransportCredentials
 	meshConfig *MeshConfig
 	hm         *shardedMap
@@ -28,7 +28,7 @@ type Syncer struct {
 
 type SyncerConfig struct {
 	gossip     Gossiper
-	mesh       Mesh
+	mesh       Mesher
 	creds      credentials.TransportCredentials
 	meshConfig *MeshConfig
 	hm         *shardedMap
@@ -91,12 +91,12 @@ func (s *Syncer) run() {
 
 func (syn *Syncer) push(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
 	for _, s := range sets {
-		if err := syn.gossip.applyGossipSet(s); err != nil {
+		if err := syn.gossip.applySet(s); err != nil {
 			return err
 		}
 	}
 	for _, d := range deletes {
-		if err := syn.gossip.applyGossipDelete(d); err != nil {
+		if err := syn.gossip.applyDelete(d); err != nil {
 			return err
 		}
 	}
