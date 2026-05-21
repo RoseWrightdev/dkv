@@ -4,107 +4,120 @@ dkv is a partitioned, state-replicated key-value database implemented in Go. In 
 
 ## Features
 
-* Partitioning
-* Gossip replication
+* Consistent-hash partitioning and direct write replication
+* Gossip membership propagation
 * Hybrid logical clock (HLC) LWW conflict resolution
 * 3-level Merkle tree anti-entropy state synchronization
 * Multi-segment write-ahead log (WAL) crash durability
 * High-concurrency sharded memory map (128 independent locks)
 * Active snapshot persistence and recovery serialization
 * Dynamic LRU cache TTL eviction
-* gRPC API
+* gRPC Client and Server API
 
 ## System Architecture
 
 ```mermaid
 flowchart TD
-    Client([gRPC Client]) -->|gRPC Requests| Engine[Engine Facade]
-    
-    subgraph DKVNode[Node Architecture]
+    Client([gRPC Client]) -->|gRPC| Engine[Engine Facade]
+
+    subgraph Node[This Node]
         direction TB
-        
+
         subgraph Storage[Storage Core]
-            Disk(Disk)
-            Snapshot[Snapshoter]
             WAL[(Write-Ahead Log)]
             ShardedMap[(128-Sharded Map)]
+            Snapshot[Snapshotter]
+            Disk(Disk)
         end
-        
-        subgraph Routing[Proxy & Routing]
-            Gateway[Gateway Proxy]
-            Ring[HashRing]
+
+        subgraph Routing[Gateway & Routing]
+            Gateway[Gateway]
+            Ring[Hash Ring]
         end
-        
-        subgraph Replication[Replication Layer]
-            Gossip[Gossip Service]
+
+        subgraph Replication[Incoming Replication]
+            Gossip["Gossip Handler\n(UDP, receive-only)"]
             Syncer[Anti-Entropy Syncer]
             Writer[StorageWriter]
         end
-        
-        %% Internal Data Flow
+
+        Engine -->|"Set / Delete"| Gateway
+        Gateway -->|GetOwners| Ring
+        Gateway -->|"Local replica"| Writer
+        Writer -->|Last Write Wins| ShardedMap
+
+        Writer --> WAL
+        Engine -->|"Local lookup"| ShardedMap
+
+        Gossip -->|ApplySet / ApplyDelete| Writer
+        Syncer -->|ApplySet / ApplyDelete| Writer
+
         WAL --> Disk
         Snapshot --> Disk
-        ShardedMap <--> Snapshot
-        Engine -->|Local Write| WAL
-        Engine -->|Local Write| ShardedMap
-        Engine <-->|Cache Misses| Gateway
-        Gateway -->|Lookup| Ring
-        Gossip -->|Applies Updates| Writer
-        Syncer -->|Applies Updates| Writer
-        Writer --> WAL
-        Writer -->|Last Write Wins| ShardedMap
+        ShardedMap <-->|Serialize / Load| Snapshot
+        Evictor["LRU Cache"] --> ShardedMap
     end
-    
-    %% External Network Flow
-    Gateway <--> PeerNode[Remote Peer Nodes]
-    Gossip <-->|UDP Gossip| PeerNode
-    Syncer <-->|TCP Sync| PeerNode
-```
 
-The sequence of operations when a client writes data.
+    Peers([Remote Peer Nodes])
+
+    Gateway -->|"gRPC proxy"| Peers([Remote Peer Nodes])
+    Peers -->|"UDP gossip (inbound)"| Gossip
+    Syncer <-->|TCP anti-entropy| Peers
+```
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Engine
     participant Gateway
-    participant Storage
-    participant Mesh
+    participant Writer as StorageWriter
+    participant Peers as Remote Peers
 
-    %% Write Path
-    Client->>Engine: Set(Key, Value)
-    Engine->>Storage: 1. Persist (WAL + Memory)
-    Engine->>Mesh: 2. Broadcast (UDP Gossip)
-    Engine-->>Client: Success
-    
-    %% Read Path
-    Client->>Engine: Get(Key)
-    Engine->>Storage: 1. Local Lookup
-    alt Local Miss (Not Owner)
-        Engine->>Gateway: 2. Proxy Request
-        Gateway->>Mesh: 3. Consistent Hash Routing
-        Mesh-->>Engine: Remote Value
+    %% Write
+    Client->>Engine: Set(key, value)
+    Engine->>Engine: hashFunc(key) + clock.Now()
+    Engine->>Gateway: Set(key, value, ts)
+    Gateway->>Gateway: HashRing.GetOwners(key, RF)
+    par to each owner
+        Gateway->>Writer: applySetLocal → ApplySet
+    and
+        Gateway->>Peers: gRPC Push(SetRequest) × (RF-1)
     end
-    Engine-->>Client: Value
+    Gateway-->>Engine: success
+    Engine-->>Client: nil
+
+    %% Read
+    Client->>Engine: Get(key)
+    Engine->>Engine: hm.Load (local lookup)
+    alt owner / local hit
+        Engine-->>Client: value
+    else not owner / miss
+        Engine->>Gateway: Get(key)
+        Gateway->>Peers: gRPC Get(key)
+        Peers-->>Gateway: value
+        Gateway-->>Engine: value
+        Engine-->>Client: value
+    end
 ```
 
-### 3. Incoming Replication & Conflict Resolution
-How external updates are safely merged into the local node using the `StorageWriter` and Last-Write-Wins (LWW) conflict resolution.
+### Incoming Replication & Conflict Resolution
+How external updates are merged into the local node via `StorageWriter` using atomic Last-Write-Wins (LWW).
 
 ```mermaid
 flowchart LR
-    Gossip[Gossip UDP] -->|Incoming| Writer[StorageWriter]
-    Syncer[Anti-Entropy TCP] -->|Incoming| Writer
-    StateTransfer[Bulk Sync] -->|Incoming| Writer
-    
-    subgraph Resolution[Conflict Resolution]
+    Gossip["Gossip Handler\n(UDP, receive-only)"] -->|Incoming| Writer[StorageWriter]
+    Syncer["Anti-Entropy Syncer\n(TCP)"] -->|Incoming| Writer
+    StateTransfer["Bulk State Transfer\n(TCP)"] -->|Incoming| Writer
+    GatewayLocal["Gateway\n(local replica)"] -->|Incoming| Writer
+
+    subgraph Resolution["Conflict Resolution (per write)"]
         direction TB
-        Writer -->|1. Check| Ring[HashRing Ownership]
-        Writer -->|2. Compare| Clock[Hybrid Logical Clock]
+        Writer -->|1. Check Ownership| Ring[HashRing]
+        Writer -->|2. StoreLWW| LWW["HLC Timestamp\n+ NodeID tiebreak"]
     end
-    
-    Writer -->|3. Apply| WAL[(Write-Ahead Log)]
-    Writer -->|4. Apply| ShardedMap[(Sharded Map)]
+
+    Writer -->|3. Persist| WAL[(Write-Ahead Log)]
+    LWW -->|4. Apply| ShardedMap[(Sharded Map)]
 ```
 
 ## Quick Start
