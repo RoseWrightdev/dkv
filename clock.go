@@ -35,19 +35,20 @@ func NewHLC() *HLC {
 
 // Now returns the current HLC timestamp and advances the local state.
 func (c *HLC) Now() int64 {
+	// Sample physical time once before the CAS loop. Retries reuse this value
+	// so we avoid a time.Now() syscall on every failed CAS iteration.
+	now := uint64(max(time.Now().UnixMilli(), 0))
+
 	for {
 		old := c.state.Load()
 		oldPhysical := old >> logicalBits
 		oldLogical := old & logicalMask
 
-		nowVal := max(time.Now().UnixMilli(), 0)
-		now := uint64(nowVal)
-
-		// Coordinated Backoff on Overflow:
-		// If physical time hasn't progressed and the logical counter is exhausted,
-		// sleep immediately to bypass atomic spinning contention entirely.
+		// Overflow: logical counter exhausted and physical time hasn't advanced.
+		// Sleep 1ms to let the wall clock tick, then re-sample.
 		if now <= oldPhysical && oldLogical >= logicalMask {
 			time.Sleep(1 * time.Millisecond)
+			now = uint64(max(time.Now().UnixMilli(), 0))
 			continue
 		}
 
@@ -67,26 +68,28 @@ func (c *HLC) Now() int64 {
 			}
 			return math.MaxInt64
 		}
+		// CAS lost the race — re-sample time and retry. Physical time may have
+		// advanced since our initial sample, keeping timestamps accurate under
+		// high contention without paying a syscall on every iteration.
+		now = uint64(max(time.Now().UnixMilli(), 0))
 	}
 }
 
 // Update incorporates a remote timestamp to maintain causality.
 // Should be called on every incoming message containing a timestamp.
 func (c *HLC) Update(remote int64) {
-	// todo: refactor
 	if remote < 0 {
 		return // Ignore invalid/negative remote timestamps
 	}
 
 	// #nosec G115
 	remoteU := uint64(remote)
-
 	remotePhysical := remoteU >> logicalBits
 	remoteLogical := remoteU & logicalMask
 
-	// Max drift threshold: 5 seconds (5000 ms)
-	nowVal := max(time.Now().UnixMilli(), 0)
-	now := uint64(nowVal)
+	// Sample once for the drift guard and as the initial loop value.
+	// Re-sample only after overflow sleep or a failed CAS.
+	now := uint64(max(time.Now().UnixMilli(), 0))
 	if remotePhysical > now+5000 {
 		return // Ignore excessively drifted remote timestamps to prevent clock poisoning
 	}
@@ -96,9 +99,6 @@ func (c *HLC) Update(remote int64) {
 		oldPhysical := old >> logicalBits
 		oldLogical := old & logicalMask
 
-		nowVal = max(time.Now().UnixMilli(), 0)
-		now = uint64(nowVal)
-
 		maxPhysical := now
 		if remotePhysical > maxPhysical {
 			maxPhysical = remotePhysical
@@ -107,8 +107,7 @@ func (c *HLC) Update(remote int64) {
 			maxPhysical = oldPhysical
 		}
 
-		// If the advanced logical counter under LWW rules exceeds the counter mask,
-		// sleep immediately before attempting any CAS operation to bypass atomic spinning contention.
+		// Overflow: logical counter would exceed mask — sleep and re-sample.
 		if maxPhysical == oldPhysical {
 			var expectedLogical uint64
 			if maxPhysical == remotePhysical {
@@ -118,13 +117,13 @@ func (c *HLC) Update(remote int64) {
 			}
 			if expectedLogical > logicalMask {
 				time.Sleep(1 * time.Millisecond)
+				now = uint64(max(time.Now().UnixMilli(), 0))
 				continue
 			}
-		} else if maxPhysical == remotePhysical {
-			if remoteLogical+1 > logicalMask {
-				time.Sleep(1 * time.Millisecond)
-				continue
-			}
+		} else if maxPhysical == remotePhysical && remoteLogical+1 > logicalMask {
+			time.Sleep(1 * time.Millisecond)
+			now = uint64(max(time.Now().UnixMilli(), 0))
+			continue
 		}
 
 		var newPhysical, newLogical uint64
@@ -149,5 +148,7 @@ func (c *HLC) Update(remote int64) {
 		if c.state.CompareAndSwap(old, newVal) {
 			return
 		}
+		// CAS failed — re-sample time and retry.
+		now = uint64(max(time.Now().UnixMilli(), 0))
 	}
 }
