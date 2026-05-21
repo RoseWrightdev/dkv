@@ -11,8 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// todo: add more fault tolerence tests
-
 func TestGossipReplication(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "dkv-gossip-*")
 	defer func() {
@@ -37,6 +35,10 @@ func TestGossipReplication(t *testing.T) {
 	e1.Start()
 	defer e1.Stop()
 
+	s1 := dkv.NewServer(e1)
+	go func() { _ = s1.Run() }()
+	defer s1.Stop()
+
 	// Setup Node 2
 	n2Dir := filepath.Join(tmpDir, "node2")
 	require.NoError(t, os.MkdirAll(n2Dir, 0750))
@@ -56,8 +58,12 @@ func TestGossipReplication(t *testing.T) {
 	e2.Start()
 	defer e2.Stop()
 
-	// Wait for nodes to discover each other
-	time.Sleep(500 * time.Millisecond)
+	s2 := dkv.NewServer(e2)
+	go func() { _ = s2.Run() }()
+	defer s2.Stop()
+
+	// Wait for nodes to discover each other and startup servers
+	time.Sleep(1 * time.Second)
 
 	// Set on Node 1 (using a key it owns)
 	key := dkv.FindKeyForNode(e1, "node1")
@@ -65,7 +71,7 @@ func TestGossipReplication(t *testing.T) {
 	err = e1.Set(key, val)
 	require.NoError(t, err)
 
-	// Wait for gossip to propagate
+	// Wait for write propagation to complete
 	time.Sleep(500 * time.Millisecond)
 
 	// Get from Node 2
@@ -77,7 +83,7 @@ func TestGossipReplication(t *testing.T) {
 	err = e1.Delete(key)
 	require.NoError(t, err)
 
-	// Wait for gossip to propagate
+	// Wait for propagation to complete
 	time.Sleep(500 * time.Millisecond)
 
 	// Verify deletion on Node 1

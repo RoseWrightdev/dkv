@@ -39,24 +39,16 @@ func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
 		return nil // Ignore keys we are not responsible for
 	}
 
-	// LWW Conflict Resolution
-	existing, ok := sw.hm.Load(req.Key, hash)
-	if ok {
-		if existing.Timestamp > req.Timestamp {
-			return nil
-		}
-		if existing.Timestamp == req.Timestamp && existing.NodeID >= req.NodeId {
-			return nil // Tie-break: existing node wins if NodeID is >= incoming
-		}
-	}
-
-	// Apply update
-	sw.hm.Store(req.Key, hash, Value{
+	val := Value{
 		Data:      req.Value,
 		Timestamp: req.Timestamp,
 		NodeID:    req.NodeId,
 		Tombstone: false,
-	})
+	}
+
+	if !sw.hm.StoreLWW(req.Key, hash, val) {
+		return nil // Stale update ignored under LWW rules
+	}
 
 	if err := sw.wal.publish(req.Key, hash, req); err != nil {
 		return fmt.Errorf("failed to persist gossip set to WAL: %w", err)
@@ -72,21 +64,16 @@ func (sw *StorageWriter) ApplyDelete(req *pb.DeleteRequest) error {
 		return nil // Ignore keys we are not responsible for
 	}
 
-	existing, ok := sw.hm.Load(req.Key, hash)
-	if ok {
-		if existing.Timestamp > req.Timestamp {
-			return nil
-		}
-		if existing.Timestamp == req.Timestamp && existing.NodeID >= req.NodeId {
-			return nil
-		}
-	}
-
-	sw.hm.Store(req.Key, hash, Value{
+	val := Value{
 		Timestamp: req.Timestamp,
 		NodeID:    req.NodeId,
 		Tombstone: true,
-	})
+	}
+
+	if !sw.hm.StoreLWW(req.Key, hash, val) {
+		return nil // Stale delete ignored under LWW rules
+	}
+
 	if err := sw.wal.publish(req.Key, hash, req); err != nil {
 		return fmt.Errorf("failed to persist gossip delete to WAL: %w", err)
 	}

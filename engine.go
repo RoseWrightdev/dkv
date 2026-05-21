@@ -11,7 +11,6 @@ import (
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/protobuf/proto"
 )
 
 // Engine defines the core storage and replication engine interface of the dkv node.
@@ -107,7 +106,8 @@ func newEngine(config EngineConfig) (Engine, error) {
 	}
 	writer.mesh = eng.mesh
 
-	eng.gw = newGateway(eng.mesh, &eng.meshConfig, config.creds)
+	eng.gw = newGateway(eng.mesh, &eng.meshConfig, eng.pools, config.creds)
+	eng.gw.sw = writer
 
 	if !config.meshConfig.SingleNode {
 		eng.syncer = newSyncer(&SyncerConfig{
@@ -183,32 +183,28 @@ func (eng *engine) Set(key Key, value []byte) error {
 
 	ts := eng.clock.Now()
 
-	req := eng.pools.setRequests.Get().(*pb.SetRequest)
-	req.Key = key
-	req.Value = value
-	req.Timestamp = ts
-	req.NodeId = string(eng.meshConfig.NodeID)
+	if eng.meshConfig.SingleNode {
+		// Hot path: bypass ApplySet to avoid redundant clock.Update, double hashFunc, and
+		// the always-true isLocal() ring check — restoring the pre-refactor baseline perf.
+		req := eng.pools.setRequests.Get().(*pb.SetRequest)
+		req.Key = key
+		req.Value = value
+		req.Timestamp = ts
+		req.NodeId = string(eng.meshConfig.NodeID)
 
-	err := eng.wal.publish(key, hash, req)
-
-	if err != nil {
+		eng.hm.Store(key, hash, Value{
+			Data:      value,
+			Timestamp: ts,
+			NodeID:    string(eng.meshConfig.NodeID),
+			Tombstone: false,
+		})
+		err := eng.wal.publish(key, hash, req)
+		req.Reset()
+		eng.pools.setRequests.Put(req)
 		return err
 	}
 
-	eng.hm.Store(key, hash, Value{
-		Data:      value,
-		Timestamp: ts,
-		NodeID:    string(eng.meshConfig.NodeID),
-		Tombstone: false,
-	})
-
-	if !eng.meshConfig.SingleNode {
-		eng.broadcastSet(req)
-	}
-
-	req.Reset()
-	eng.pools.setRequests.Put(req)
-	return nil
+	return eng.gw.Set(key, value, ts)
 }
 
 // Delete marks a key as deleted by publishing a tombstone to the WAL.
@@ -218,30 +214,25 @@ func (eng *engine) Delete(key Key) error {
 
 	ts := eng.clock.Now()
 
-	req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
-	req.Key = key
-	req.Timestamp = ts
-	req.NodeId = string(eng.meshConfig.NodeID)
+	if eng.meshConfig.SingleNode {
+		// Hot path: same bypass rationale as Set — skip ApplyDelete overhead.
+		req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
+		req.Key = key
+		req.Timestamp = ts
+		req.NodeId = string(eng.meshConfig.NodeID)
 
-	err := eng.wal.publish(key, hash, req)
-
-	if err != nil {
+		eng.hm.Store(key, hash, Value{
+			Timestamp: ts,
+			NodeID:    string(eng.meshConfig.NodeID),
+			Tombstone: true,
+		})
+		err := eng.wal.publish(key, hash, req)
+		req.Reset()
+		eng.pools.deleteRequests.Put(req)
 		return err
 	}
-	eng.hm.Store(key, hash, Value{
-		Timestamp: ts,
-		NodeID:    string(eng.meshConfig.NodeID),
-		Tombstone: true,
-	})
 
-	if !eng.meshConfig.SingleNode {
-		eng.broadcastDelete(req)
-	}
-
-	req.Reset()
-	eng.pools.deleteRequests.Put(req)
-
-	return nil
+	return eng.gw.Delete(key, ts)
 }
 
 func (eng *engine) Evict(key Key, reason EvictReason) error {
@@ -254,57 +245,25 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 
 	ts := eng.clock.Now()
 
-	req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
-	req.Key = key
-	req.Timestamp = ts
+	if eng.meshConfig.SingleNode {
+		// Hot path: same bypass rationale as Set/Delete.
+		req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
+		req.Key = key
+		req.Timestamp = ts
+		req.NodeId = string(eng.meshConfig.NodeID)
 
-	err := eng.wal.publish(key, hash, req)
-
-	if err != nil {
+		eng.hm.Store(key, hash, Value{
+			Timestamp: ts,
+			NodeID:    string(eng.meshConfig.NodeID),
+			Tombstone: true,
+		})
+		err := eng.wal.publish(key, hash, req)
+		req.Reset()
+		eng.pools.deleteRequests.Put(req)
 		return err
 	}
-	eng.hm.Store(key, hash, Value{
-		Timestamp: ts,
-		NodeID:    string(eng.meshConfig.NodeID),
-		Tombstone: true,
-	})
 
-	if !eng.meshConfig.SingleNode {
-		eng.broadcastDelete(req)
-	}
-
-	req.Reset()
-	eng.pools.deleteRequests.Put(req)
-
-	return nil
-}
-
-func (eng *engine) broadcastSet(req *pb.SetRequest) {
-	entry := eng.pools.walEntries.Get().(*pb.WalEntry)
-	wrapper := eng.pools.walSetWrappers.Get().(*pb.WalEntry_Set)
-	wrapper.Set = req
-	entry.Entry = wrapper
-	if data, err := proto.Marshal(entry); err == nil {
-		eng.mesh.Broadcast(data)
-	}
-	entry.Entry = nil
-	wrapper.Set = nil
-	eng.pools.walSetWrappers.Put(wrapper)
-	eng.pools.walEntries.Put(entry)
-}
-
-func (eng *engine) broadcastDelete(req *pb.DeleteRequest) {
-	entry := eng.pools.walEntries.Get().(*pb.WalEntry)
-	wrapper := eng.pools.walDeleteWrappers.Get().(*pb.WalEntry_Delete)
-	wrapper.Delete = req
-	entry.Entry = wrapper
-	if data, err := proto.Marshal(entry); err == nil {
-		eng.mesh.Broadcast(data)
-	}
-	entry.Entry = nil
-	wrapper.Delete = nil
-	eng.pools.walDeleteWrappers.Put(wrapper)
-	eng.pools.walEntries.Put(entry)
+	return eng.gw.Delete(key, ts)
 }
 
 func (eng *engine) recover(snpPath string) error {

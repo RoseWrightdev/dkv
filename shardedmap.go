@@ -105,6 +105,34 @@ func (sm *shardedMap) Store(key Key, hash hashKey, val Value) {
 	shard.buckets[subIndex][key] = val
 }
 
+// StoreLWW updates the value in the correct shard using LWW conflict resolution under a single write lock.
+// It returns true if the value was stored, and false if ignored as stale.
+func (sm *shardedMap) StoreLWW(key Key, hash hashKey, val Value) bool {
+	shard := sm.getShardByHash(hash)
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+
+	subIndex := (hash >> 16) % subBucketCount
+	existing, ok := shard.buckets[subIndex][key]
+	if ok {
+		if existing.Timestamp > val.Timestamp {
+			return false
+		}
+		if existing.Timestamp == val.Timestamp && existing.NodeID >= val.NodeID {
+			return false
+		}
+		oldItemHash := getItemHash(hash, existing)
+		shard.subDigests[subIndex] ^= oldItemHash
+		shard.shardDigest ^= oldItemHash
+	}
+
+	newItemHash := getItemHash(hash, val)
+	shard.subDigests[subIndex] ^= newItemHash
+	shard.shardDigest ^= newItemHash
+	shard.buckets[subIndex][key] = val
+	return true
+}
+
 // Delete removes a key from its shard and updates the rolling digest.
 func (sm *shardedMap) Delete(key Key, hash hashKey) {
 	shard := sm.getShardByHash(hash)
