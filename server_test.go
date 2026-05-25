@@ -36,9 +36,18 @@ func (m *mockEngine) Owner(key Key) NodeID {
 	return NodeID(args.String(0))
 }
 
+func (m *mockEngine) NodeID() NodeID {
+	args := m.Called()
+	return NodeID(args.String(0))
+}
+
 func (m *mockEngine) Start() { m.Called() }
 func (m *mockEngine) Stop()  { m.Called() }
 func (m *mockEngine) Addr() string {
+	args := m.Called()
+	return args.String(0)
+}
+func (m *mockEngine) GossipAddr() string {
 	args := m.Called()
 	return args.String(0)
 }

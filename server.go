@@ -146,3 +146,9 @@ func (s *Grpc) Stop() {
 	s.inner.GracefulStop()
 	s.handlers.eng.Stop()
 }
+
+// HardStop immediately shuts down the gRPC server and stops the underlying engine.
+func (s *Grpc) HardStop() {
+	s.inner.Stop()
+	s.handlers.eng.Stop()
+}

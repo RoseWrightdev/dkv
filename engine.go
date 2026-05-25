@@ -19,11 +19,13 @@ type Engine interface {
 	Set(key Key, value []byte) error
 	Delete(key Key) error
 	Owner(key Key) NodeID
+	NodeID() NodeID
 	Start()
 	Stop()
 	SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 	Addr() string
+	GossipAddr() string
 }
 
 type engine struct {
@@ -343,10 +345,22 @@ func (eng *engine) Owner(key Key) NodeID {
 	return eng.mesh.Owner(key)
 }
 
+func (eng *engine) NodeID() NodeID {
+	return eng.meshConfig.NodeID
+}
+
 func (eng *engine) Addr() string {
 	addr := eng.meshConfig.BindAddr
 	if addr == "" {
 		panic("dkv: bind address not configured")
 	}
 	return fmt.Sprintf("%s:%d", addr, eng.meshConfig.GrpcPort)
+}
+
+func (eng *engine) GossipAddr() string {
+	addr := eng.meshConfig.BindAddr
+	if addr == "" {
+		panic("dkv: bind address not configured")
+	}
+	return fmt.Sprintf("%s:%d", addr, eng.meshConfig.BindPort)
 }

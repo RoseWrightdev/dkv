@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "dkv.fullname" . }}
+  labels:
+    app: {{ include "dkv.fullname" . }}
+spec:
+  serviceName: {{ include "dkv.fullname" . }}-headless
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "dkv.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "dkv.fullname" . }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: gossip
+              containerPort: {{ .Values.gossip.port }}
+              protocol: TCP
+          env:
+            - name: DKV_INSECURE
+              value: "true"
+            - name: DKV_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: DKV_BIND_ADDR
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: DKV_ADVERTISE_ADDR
+              value: "$(DKV_BIND_ADDR)"
+            - name: DKV_BIND_PORT
+              value: "{{ .Values.gossip.port }}"
+            - name: DKV_GRPC_PORT
+              value: "{{ .Values.service.port }}"
+            - name: DKV_REPLICATION_FACTOR
+              value: "3"
+            - name: DKV_SEED_NODES
+              value: '{{- $replicaCount := int .Values.replicaCount }}{{- $fullName := include "dkv.fullname" . }}{{- $namespace := .Release.Namespace }}{{- $seeds := list }}{{- range $i := until $replicaCount }}{{- $seeds = append $seeds (printf "%s-%d.%s-headless.%s.svc.cluster.local:%d" $fullName $i $fullName $namespace (int $.Values.gossip.port)) }}{{- end }}{{- join "," $seeds }}'
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- if not .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: "{{ .Values.persistence.storageClass }}"
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

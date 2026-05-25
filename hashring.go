@@ -19,7 +19,6 @@ type NodeID string
 // HashRing implements consistent hashing for data partitioning across dkv nodes.
 type HashRing struct {
 	hashBufPool     sync.Pool
-	ownersSlicePool sync.Pool
 	nodes           map[NodeID]bool
 	vnodes          []vnode
 	mu              sync.RWMutex
@@ -42,11 +41,6 @@ func NewHashRing() *HashRing {
 				return &b
 			},
 		},
-		ownersSlicePool: sync.Pool{
-			New: func() any {
-				return make([]NodeID, 0, 8)
-			},
-		},
 	}
 }
 
@@ -59,22 +53,41 @@ func (r *HashRing) AddNode(nodeID NodeID) {
 		return
 	}
 
-	// Deterministically distribute 128 virtual points across the circular range
+	newVnodes := make([]vnode, 0, defaultVnodes)
 	bufPtr := r.hashBufPool.Get().(*[]byte)
 	buf := (*bufPtr)[:0]
 	for i := range defaultVnodes {
 		buf = fmt.Appendf(buf[:0], "%s-%d", nodeID, i)
 		h := sha256.Sum256(buf)
 		hash := binary.BigEndian.Uint64(h[:8])
-		r.vnodes = append(r.vnodes, vnode{hash: hash, node: nodeID})
+		newVnodes = append(newVnodes, vnode{hash: hash, node: nodeID})
 	}
 	*bufPtr = buf
 	r.hashBufPool.Put(bufPtr)
 
-	// Keep vnodes sorted in ascending order of their hash to enable O(log K) binary search lookup
-	sort.Slice(r.vnodes, func(i, j int) bool {
-		return r.vnodes[i].hash < r.vnodes[j].hash
+	slices.SortFunc(newVnodes, func(a, b vnode) int {
+		if a.hash < b.hash {
+			return -1
+		} else if a.hash > b.hash {
+			return 1
+		}
+		return 0
 	})
+
+	merged := make([]vnode, 0, len(r.vnodes)+len(newVnodes))
+	i, j := 0, 0
+	for i < len(r.vnodes) && j < len(newVnodes) {
+		if r.vnodes[i].hash < newVnodes[j].hash {
+			merged = append(merged, r.vnodes[i])
+			i++
+		} else {
+			merged = append(merged, newVnodes[j])
+			j++
+		}
+	}
+	merged = append(merged, r.vnodes[i:]...)
+	merged = append(merged, newVnodes[j:]...)
+	r.vnodes = merged
 
 	r.nodes[nodeID] = true
 }
@@ -153,7 +166,7 @@ func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
 		return r.vnodes[i].hash >= hash
 	})
 
-	owners := r.ownersSlicePool.Get().([]NodeID)[:0]
+	owners := make([]NodeID, 0, replicationFactor)
 
 	// Walk the circle clockwise modulo the ring length to gather N distinct physical nodes
 	for i := 0; i < len(r.vnodes) && len(owners) < replicationFactor; i++ {
@@ -171,11 +184,8 @@ func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
 	return owners
 }
 
-// PutOwners returns a slice of NodeIDs back to the ring's slice pool for recycling.
+// PutOwners is a no-op because slice pooling was removed to avoid staticcheck allocations.
 func (r *HashRing) PutOwners(owners []NodeID) {
-	if cap(owners) > 0 {
-		r.ownersSlicePool.Put(owners[:0])
-	}
 }
 
 // GetNodes returns all unique node IDs currently in the ring.
