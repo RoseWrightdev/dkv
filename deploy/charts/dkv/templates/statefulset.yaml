@@ -23,9 +23,12 @@ spec:
             - name: grpc
               containerPort: {{ .Values.service.port }}
               protocol: TCP
-            - name: gossip
+            - name: syncer
               containerPort: {{ .Values.gossip.port }}
               protocol: TCP
+            - name: gossip
+              containerPort: {{ .Values.gossip.port }}
+              protocol: UDP
           env:
             - name: DKV_INSECURE
               value: "true"

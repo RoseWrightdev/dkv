@@ -9,8 +9,12 @@ spec:
   clusterIP: None
   ports:
     - port: {{ .Values.gossip.port }}
-      targetPort: gossip
+      targetPort: syncer
       protocol: TCP
+      name: syncer
+    - port: {{ .Values.gossip.port }}
+      targetPort: gossip
+      protocol: UDP
       name: gossip
   selector:
     app: {{ include "dkv.fullname" . }}
