@@ -3,63 +3,68 @@ package dkv
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/credentials"
 )
 
+// ClientCache caches gRPC clients for each peer node to avoid
+// recreating network connections repeatedly during proxy routing.
 type ClientCache struct {
-	creds    credentials.TransportCredentials
-	clients  map[PeerAddress]*Client
-	clientMu sync.RWMutex
-	closed   bool
+	clients sync.Map // maps PeerAddress -> *Client
+	creds   credentials.TransportCredentials
+	closed  atomic.Bool
+	mu      sync.Mutex // only used for closing the cache safely and synchronizing writes
 }
 
 func newClientCache(creds credentials.TransportCredentials) *ClientCache {
-	return &ClientCache{clientMu: sync.RWMutex{}, clients: make(map[PeerAddress]*Client), creds: creds}
+	return &ClientCache{creds: creds}
 }
 
 func (cc *ClientCache) get(addr PeerAddress) (*Client, error) {
-	cc.clientMu.RLock()
-	if cc.closed {
-		cc.clientMu.RUnlock()
-		return nil, fmt.Errorf("client cache is closed")
-	}
-	client, ok := cc.clients[addr]
-	cc.clientMu.RUnlock()
-	if ok {
-		return client, nil
-	}
-
-	cc.clientMu.Lock()
-	defer cc.clientMu.Unlock()
-
-	if cc.closed {
+	if cc.closed.Load() {
 		return nil, fmt.Errorf("client cache is closed")
 	}
 
-	// Double check
-	if client, ok = cc.clients[addr]; ok {
-		return client, nil
+	// Fast path: optimistic read
+	if val, ok := cc.clients.Load(addr); ok {
+		return val.(*Client), nil
 	}
 
+	// Slow path: create client and load or store
 	client, err := NewClient(string(addr), 1*time.Second, cc.creds)
 	if err != nil {
 		return nil, err
 	}
-	cc.clients[addr] = client
+
+	// Re-check after dial
+	if cc.closed.Load() {
+		_ = client.Close()
+		return nil, fmt.Errorf("client cache is closed")
+	}
+
+	actual, loaded := cc.clients.LoadOrStore(addr, client)
+	if loaded {
+		// Another goroutine beat us to it, close the one we just created to prevent leak
+		_ = client.Close()
+		return actual.(*Client), nil
+	}
+
 	return client, nil
 }
 
 func (cc *ClientCache) close() {
-	cc.clientMu.Lock()
-	if cc.closed {
-		cc.clientMu.Unlock()
-		return
+	if !cc.closed.CompareAndSwap(false, true) {
+		return // already closed
 	}
-	cc.closed = true
-	for _, client := range cc.clients {
+
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+
+	cc.clients.Range(func(key, value any) bool {
+		client := value.(*Client)
 		_ = client.Close()
-	}
-	cc.clientMu.Unlock()
+		return true
+	})
 }

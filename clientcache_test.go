@@ -35,7 +35,7 @@ func TestClientCache_ConcurrentClose(t *testing.T) {
 
 	wg.Wait()
 	// If it didn't panic, we are good.
-	assert.True(t, cc.closed)
+	assert.True(t, cc.closed.Load(), "Cache should be marked closed")
 	_, err := cc.get("127.0.0.1:9091")
 	assert.Error(t, err)
 }
