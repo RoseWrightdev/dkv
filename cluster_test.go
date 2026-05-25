@@ -15,7 +15,7 @@ import (
 )
 
 func TestNewCluster(t *testing.T) {
-	cluster, err := NewCluster(10, "", insecure.NewCredentials())
+	cluster, err := newCluster(10, "", insecure.NewCredentials(), true)
 	assert.Nil(t, err)
 	assert.NotNil(t, cluster)
 	assert.Equal(t, 10, len(cluster.Engines))
@@ -37,7 +37,7 @@ func TestClusterScaleAndDurability(t *testing.T) {
 	numNodes := 10
 	dataDir := filepath.Join(tmpDir, "data")
 
-	cluster, err := NewCluster(numNodes, dataDir, insecure.NewCredentials())
+	cluster, err := newCluster(numNodes, dataDir, insecure.NewCredentials(), true)
 	require.NoError(t, err)
 
 	err = cluster.Start()
@@ -106,7 +106,7 @@ func TestClusterFullRestartDurability(t *testing.T) {
 	numNodes := 3
 	dataDir := filepath.Join(tmpDir, "data")
 
-	cluster, err := NewCluster(numNodes, dataDir, insecure.NewCredentials())
+	cluster, err := newCluster(numNodes, dataDir, insecure.NewCredentials(), true)
 	require.NoError(t, err)
 
 	err = cluster.Start()
@@ -171,7 +171,7 @@ func TestClusterFullRestartDurability(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Restart the cluster pointing to the SAME data directory
-	cluster2, err := NewCluster(numNodes, dataDir, insecure.NewCredentials())
+	cluster2, err := newCluster(numNodes, dataDir, insecure.NewCredentials(), true)
 	require.NoError(t, err)
 
 	err = cluster2.Start()
@@ -215,7 +215,7 @@ func TestClusterChaosDurability(t *testing.T) {
 
 	numNodes := 7
 	dataDir := filepath.Join(tmpDir, "data")
-	cluster, err := NewCluster(numNodes, dataDir, insecure.NewCredentials())
+	cluster, err := newCluster(numNodes, dataDir, insecure.NewCredentials(), true)
 	require.NoError(t, err)
 
 	err = cluster.Start()
@@ -318,7 +318,7 @@ func TestClusterDataRebalancing(t *testing.T) {
 	// Start a 3-node cluster
 	numInitialNodes := 3
 	dataDir := filepath.Join(tmpDir, "data")
-	cluster, err := NewCluster(numInitialNodes, dataDir, insecure.NewCredentials())
+	cluster, err := newCluster(numInitialNodes, dataDir, insecure.NewCredentials(), true)
 	require.NoError(t, err)
 
 	err = cluster.Start()
@@ -362,7 +362,7 @@ func TestClusterDataRebalancing(t *testing.T) {
 	for i := range 2 {
 		time.Sleep(100 * time.Millisecond)
 		newNodeName := fmt.Sprintf("node-%d", numInitialNodes+i+1)
-		err := cluster.addNode(newNodeName, seedAddr, dataDir, insecure.NewCredentials())
+		err := cluster.addNode(newNodeName, seedAddr, dataDir, insecure.NewCredentials(), true)
 		require.NoError(t, err, "failed to add new node")
 		t.Logf("Added node %s dynamically", newNodeName)
 	}

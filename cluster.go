@@ -32,6 +32,10 @@ func (c *Cluster) HardStop() {
 
 // NewCluster creates a new cluster.
 func NewCluster(nodeCount int, dataDir string, creds credentials.TransportCredentials) (*Cluster, error) {
+	return newCluster(nodeCount, dataDir, creds, false)
+}
+
+func newCluster(nodeCount int, dataDir string, creds credentials.TransportCredentials, fastTest bool) (*Cluster, error) {
 	cluster := &Cluster{}
 	var seedAddr string
 	basePort := 55000 // use a high port range to avoid conflicts
@@ -40,9 +44,13 @@ func NewCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 		name := fmt.Sprintf("node-%d", i+1)
 
 		eb := NewEngineBuilder().
-			Default().
-			FastTest().
-			SetNodeID(NodeID(name)).
+			Default()
+
+		if fastTest {
+			eb.FastTest()
+		}
+
+		eb.SetNodeID(NodeID(name)).
 			SetCreds(creds).
 			SetBindPort(basePort + i*2).
 			SetGrpcPort(basePort + i*2 + 1)
@@ -110,13 +118,17 @@ func (c *Cluster) stopEngine(id NodeID) {
 	}
 }
 
-func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds credentials.TransportCredentials) error {
+func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds credentials.TransportCredentials, fastTest bool) error {
 	basePort := 55000 + len(c.Engines)*2
 
 	eb := NewEngineBuilder().
-		Default().
-		FastTest().
-		SetNodeID(NodeID(name)).
+		Default()
+
+	if fastTest {
+		eb.FastTest()
+	}
+
+	eb.SetNodeID(NodeID(name)).
 		SetCreds(creds).
 		SetBindPort(basePort).
 		SetGrpcPort(basePort + 1).
