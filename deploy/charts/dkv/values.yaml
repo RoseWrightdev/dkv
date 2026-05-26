@@ -27,3 +27,31 @@ persistence:
   enabled: true
   size: 10Gi
   storageClass: ""
+
+# EngineBuilder Configuration Options
+engine:
+  # TLS configurations for secure node-to-node connectivity
+  tls:
+    enabled: false
+    certFile: ""
+    keyFile: ""
+  
+  replicationFactor: 3
+  singleNode: false
+
+  # Write-ahead log configurations
+  wal:
+    path: "/data/wal"
+    interval: "500ms"
+    bufferSize: "65536" # 64KB
+    segments: 16
+
+  # Snapshotting configurations
+  snapshot:
+    path: "/data/snapshot.bin"
+    interval: "5m"
+
+  # Gossip communications configurations
+  gossip:
+    interval: "10s"
+

@@ -2,7 +2,7 @@
 package main
 
 import (
-	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strconv"
@@ -23,14 +23,14 @@ func main() {
 	case certFile != "" && keyFile != "":
 		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "failed to load TLS keys: %v\n", err)
+			slog.Error("failed to load TLS keys", "error", err)
 			os.Exit(1)
 		}
 		builder.SetCreds(creds)
 	case os.Getenv("DKV_INSECURE") == "true":
 		builder.SetInsecure()
 	default:
-		fmt.Fprintf(os.Stderr, "TLS credentials are required (DKV_TLS_CERT_FILE, DKV_TLS_KEY_FILE). Use DKV_INSECURE=true for development.\n")
+		slog.Error("TLS credentials are required (DKV_TLS_CERT_FILE, DKV_TLS_KEY_FILE). Use DKV_INSECURE=true for development.")
 		os.Exit(1)
 	}
 
@@ -80,7 +80,7 @@ func main() {
 		if d, err := time.ParseDuration(snpStr); err == nil {
 			builder.SetSnpInterval(d)
 		} else {
-			fmt.Fprintf(os.Stderr, "invalid DKV_SNP_INTERVAL: %v\n", err)
+			slog.Error("invalid DKV_SNP_INTERVAL", "error", err)
 			os.Exit(1)
 		}
 	}
@@ -89,7 +89,7 @@ func main() {
 		if d, err := time.ParseDuration(walStr); err == nil {
 			builder.SetWalInterval(d)
 		} else {
-			fmt.Fprintf(os.Stderr, "invalid DKV_WAL_INTERVAL: %v\n", err)
+			slog.Error("invalid DKV_WAL_INTERVAL", "error", err)
 			os.Exit(1)
 		}
 	}
@@ -98,7 +98,7 @@ func main() {
 		if size, err := strconv.ParseUint(walBufStr, 10, 32); err == nil {
 			builder.SetWalBufferSize(uint32(size))
 		} else {
-			fmt.Fprintf(os.Stderr, "invalid DKV_WAL_BUFFER_SIZE: %v\n", err)
+			slog.Error("invalid DKV_WAL_BUFFER_SIZE", "error", err)
 			os.Exit(1)
 		}
 	}
@@ -107,7 +107,7 @@ func main() {
 		if segs, err := strconv.Atoi(walSegStr); err == nil {
 			builder.SetWalSegments(segs)
 		} else {
-			fmt.Fprintf(os.Stderr, "invalid DKV_WAL_SEGMENTS: %v\n", err)
+			slog.Error("invalid DKV_WAL_SEGMENTS", "error", err)
 			os.Exit(1)
 		}
 	}
@@ -116,7 +116,7 @@ func main() {
 		if d, err := time.ParseDuration(gossipStr); err == nil {
 			builder.SetGossipInterval(d)
 		} else {
-			fmt.Fprintf(os.Stderr, "invalid DKV_GOSSIP_INTERVAL: %v\n", err)
+			slog.Error("invalid DKV_GOSSIP_INTERVAL", "error", err)
 			os.Exit(1)
 		}
 	}
@@ -127,7 +127,7 @@ func main() {
 
 	eng, err := builder.Build()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to build engine: %v\n", err)
+		slog.Error("failed to build engine", "error", err)
 		os.Exit(1)
 	}
 
@@ -135,9 +135,9 @@ func main() {
 	s := dkv.NewServer(eng)
 
 	go func() {
-		fmt.Printf("Starting DKV server on %s...\n", eng.Addr())
+		slog.Info("Starting DKV server", "addr", eng.Addr())
 		if err := s.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "server failed: %v\n", err)
+			slog.Error("server failed", "error", err)
 			os.Exit(1)
 		}
 	}()
@@ -146,6 +146,6 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	fmt.Println("Shutting down gracefully...")
+	slog.Info("Shutting down gracefully...")
 	s.Stop()
 }

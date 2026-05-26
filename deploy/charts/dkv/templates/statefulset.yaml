@@ -31,7 +31,13 @@ spec:
               protocol: UDP
           env:
             - name: DKV_INSECURE
-              value: "true"
+              value: "{{ not .Values.engine.tls.enabled | ternary "true" "false" }}"
+            {{- if .Values.engine.tls.enabled }}
+            - name: DKV_TLS_CERT_FILE
+              value: "{{ .Values.engine.tls.certFile }}"
+            - name: DKV_TLS_KEY_FILE
+              value: "{{ .Values.engine.tls.keyFile }}"
+            {{- end }}
             - name: DKV_NODE_ID
               valueFrom:
                 fieldRef:
@@ -47,9 +53,25 @@ spec:
             - name: DKV_GRPC_PORT
               value: "{{ .Values.service.port }}"
             - name: DKV_REPLICATION_FACTOR
-              value: "3"
+              value: "{{ .Values.engine.replicationFactor }}"
             - name: DKV_SEED_NODES
               value: '{{- $replicaCount := int .Values.replicaCount }}{{- $fullName := include "dkv.fullname" . }}{{- $namespace := .Release.Namespace }}{{- $seeds := list }}{{- range $i := until $replicaCount }}{{- $seeds = append $seeds (printf "%s-%d.%s-headless.%s.svc.cluster.local:%d" $fullName $i $fullName $namespace (int $.Values.gossip.port)) }}{{- end }}{{- join "," $seeds }}'
+            - name: DKV_WAL_PATH
+              value: "{{ .Values.engine.wal.path }}"
+            - name: DKV_SNP_PATH
+              value: "{{ .Values.engine.snapshot.path }}"
+            - name: DKV_WAL_INTERVAL
+              value: "{{ .Values.engine.wal.interval }}"
+            - name: DKV_WAL_BUFFER_SIZE
+              value: "{{ .Values.engine.wal.bufferSize }}"
+            - name: DKV_WAL_SEGMENTS
+              value: "{{ .Values.engine.wal.segments }}"
+            - name: DKV_SNP_INTERVAL
+              value: "{{ .Values.engine.snapshot.interval }}"
+            - name: DKV_GOSSIP_INTERVAL
+              value: "{{ .Values.engine.gossip.interval }}"
+            - name: DKV_SINGLE_NODE
+              value: "{{ .Values.engine.singleNode | ternary "true" "false" }}"
           volumeMounts:
             - name: data
               mountPath: /data
