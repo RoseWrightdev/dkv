@@ -142,10 +142,10 @@ Micro-benchmarks measuring direct storage interaction with the 128-sharded memor
 | Benchmark | Throughput (ops/sec) | Latency | Allocations |
 | :--- | :--- | :--- | :--- |
 | Get (Parallel) | ~71,000,000 | 13.99 ns/op | 0 B/op (0 allocs) |
-| Get (Single-thread) | ~19,600,000 | 51.00 ns/op | 0 B/op (0 allocs) |
 | Set (Parallel + WAL) | ~3,392,000 | 294.8 ns/op | 0 B/op (0 allocs) |
-| Set (Single-thread + WAL) | ~2,700,000 | 358.7 ns/op | 0 B/op (0 allocs) |
 | Delete (Parallel + WAL) | ~4,300,000 | 231.3 ns/op | 0 B/op (0 allocs) |
+| Get (Single-thread) | ~19,600,000 | 51.00 ns/op | 0 B/op (0 allocs) |
+| Set (Single-thread + WAL) | ~2,700,000 | 358.7 ns/op | 0 B/op (0 allocs) |
 | Delete (Single-thread + WAL) | ~2,500,000 | 390.9 ns/op | 0 B/op (0 allocs) |
 
 ### 2. Multi-tier Merkle Tree & Anti-Entropy Sync
