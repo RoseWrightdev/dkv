@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dkv-py"
+version = "0.1.0"
+description = "Python client for the dkv distributed key-value store"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "grpcio>=1.50.0",
+    "protobuf>=4.21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "grpcio-tools>=1.50.0",
+]

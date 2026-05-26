@@ -2,5 +2,19 @@
 dkv.test
 .idea
 data
-node_modules
-target
+
+# Node
+node_modules/
+
+# Rust
+target/
+.rust
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.coverage
