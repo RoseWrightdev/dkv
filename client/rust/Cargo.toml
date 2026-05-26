@@ -1,0 +1,13 @@
+[package]
+name = "dkv"
+version = "0.1.0"
+edition = "2024"
+description = "Rust client for the dkv distributed key-value store"
+
+[dependencies]
+tonic = "0.10"
+prost = "0.12"
+tokio = { version = "1.0", features = ["full"] }
+
+[build-dependencies]
+tonic-build = "0.10"
