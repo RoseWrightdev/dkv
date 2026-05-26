@@ -3,6 +3,8 @@ syntax = "proto3";
 package dkv;
 
 option go_package = "./";
+option java_multiple_files = true;
+option java_package = "com.rosewrightdev.dkv.proto";
 
 service DkvService {
   rpc Get(GetRequest) returns (GetResponse) {}
