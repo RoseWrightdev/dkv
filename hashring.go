@@ -185,7 +185,7 @@ func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
 }
 
 // PutOwners is a no-op because slice pooling was removed to avoid staticcheck allocations.
-func (r *HashRing) PutOwners(owners []NodeID) {
+func (r *HashRing) PutOwners(_ []NodeID) {
 }
 
 // GetNodes returns all unique node IDs currently in the ring.

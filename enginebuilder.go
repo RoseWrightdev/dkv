@@ -183,7 +183,7 @@ func (eb *EngineBuilder) SetGossipInterval(interval time.Duration) *EngineBuilde
 	return eb
 }
 
-// Setcreds sets the transport credentials for secure node-to-node connections.
+// SetCreds sets the transport credentials for secure node-to-node connections.
 func (eb *EngineBuilder) SetCreds(creds credentials.TransportCredentials) *EngineBuilder {
 	eb.creds = creds
 	return eb

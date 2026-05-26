@@ -7,10 +7,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// Gossiper defines the interface for handling incoming gossip messages.
 type Gossiper interface {
 	OnGossip(msg []byte)
 }
 
+// Gossip manages the replication of messages received via gossip protocols.
 type Gossip struct {
 	pools  *pools
 	writer StateWriter

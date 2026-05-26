@@ -102,7 +102,6 @@ func (c *Cluster) Start() error {
 			return err
 		default:
 		}
-
 	}
 
 	return nil

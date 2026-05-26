@@ -13,7 +13,7 @@ import (
 // PeerAddress represents the network address (IP:Port) of a dkv node.
 type PeerAddress string
 
-// Mesh defines the interface for distributed node discovery and replication.
+// Mesher defines the interface for distributed node discovery and replication.
 type Mesher interface {
 	Broadcast(msg []byte)
 	Members() []PeerAddress

@@ -1,3 +1,4 @@
+// Package dkv provides benchmarks for the dkv engine and server.
 package dkv
 
 import (

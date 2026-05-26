@@ -145,6 +145,7 @@ func (s *lruShard) stop() {
 func (lru *LeastRecentlyUsed) publish(key Key, hash hashKey) {
 	// Fast-path filter: immediately discard 50% of telemetry events
 	// before executing any memory accesses, sharding, or queue checks.
+	// #nosec G404
 	if rand.Uint32()&1 != 0 {
 		return
 	}
@@ -179,28 +180,30 @@ func shouldSample(qLen, qCap int) bool {
 	// - 60% - 70%   : Sample 1-in-512  (mask 255)
 	// - 70% - 80%   : Sample 1-in-1024 (mask 511)
 	var mask uint32
-	if qLen*100 < qCap {
+	switch {
+	case qLen*100 < qCap:
 		mask = 0
-	} else if qLen*20 < qCap {
+	case qLen*20 < qCap:
 		mask = 1
-	} else if qLen*10 < qCap {
+	case qLen*10 < qCap:
 		mask = 3
-	} else if qLen*5 < qCap {
+	case qLen*5 < qCap:
 		mask = 7
-	} else if qLen*10 < qCap*3 {
+	case qLen*10 < qCap*3:
 		mask = 15
-	} else if qLen*5 < qCap*2 {
+	case qLen*5 < qCap*2:
 		mask = 31
-	} else if qLen*2 < qCap {
+	case qLen*2 < qCap:
 		mask = 63
-	} else if qLen*5 < qCap*3 {
+	case qLen*5 < qCap*3:
 		mask = 127
-	} else if qLen*10 < qCap*7 {
+	case qLen*10 < qCap*7:
 		mask = 255
-	} else {
+	default:
 		mask = 511
 	}
 
+	// #nosec G404
 	return mask == 0 || rand.Uint32()&mask == 0
 }
 

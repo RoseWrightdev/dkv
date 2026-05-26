@@ -10,11 +10,13 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 )
 
+// StateExchanger defines the interface for exporting and importing cluster state.
 type StateExchanger interface {
 	ExportState() []byte
 	ImportState(state []byte)
 }
 
+// StateTransfer coordinates the exchange of local and remote database state.
 type StateTransfer struct {
 	pools  *pools
 	hm     *shardedMap

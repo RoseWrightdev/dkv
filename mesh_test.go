@@ -1,3 +1,4 @@
+// Package dkv provides distributed cluster membership and peer-to-peer communication using HashRing.
 package dkv
 
 import (
@@ -12,9 +13,9 @@ import (
 type mockGossip struct{}
 
 func newMockGossip() *mockGossip                { return &mockGossip{} }
-func (mg *mockGossip) OnGossip(msg []byte)      {}
+func (mg *mockGossip) OnGossip(_ []byte)      {}
 func (mg *mockGossip) ExportState() []byte      { return []byte("") }
-func (mg *mockGossip) ImportState(state []byte) {}
+func (mg *mockGossip) ImportState(_ []byte) {}
 
 func TestClusterMembership(t *testing.T) {
 	// Start first node

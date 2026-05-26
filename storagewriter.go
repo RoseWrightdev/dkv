@@ -7,11 +7,13 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 )
 
+// StateWriter defines the interface for applying sets and deletes to the state.
 type StateWriter interface {
 	ApplySet(req *pb.SetRequest) error
 	ApplyDelete(req *pb.DeleteRequest) error
 }
 
+// StorageWriter handles applying mutations to the storage engine.
 type StorageWriter struct {
 	hm         *shardedMap
 	wal        Waler

@@ -26,6 +26,7 @@ type Syncer struct {
 	interval   time.Duration
 }
 
+// SyncerConfig holds configuration options for the Syncer service.
 type SyncerConfig struct {
 	writer     StateWriter
 	mesh       Mesher
@@ -89,20 +90,21 @@ func (s *Syncer) run() {
 	}
 }
 
-func (syn *Syncer) push(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
-	for _, s := range sets {
-		if err := syn.writer.ApplySet(s); err != nil {
+func (s *Syncer) push(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
+	for _, req := range sets {
+		if err := s.writer.ApplySet(req); err != nil {
 			return err
 		}
 	}
 	for _, d := range deletes {
-		if err := syn.writer.ApplyDelete(d); err != nil {
+		if err := s.writer.ApplyDelete(d); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// PullConfig contains metadata for requesting state reconciliation.
 type PullConfig struct {
 	shards      map[ShardID]Digest
 	buckets     map[ShardID]ShardDigest

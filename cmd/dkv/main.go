@@ -1,3 +1,4 @@
+// Package main is the entry point for the dkv server.
 package main
 
 import (
@@ -18,16 +19,17 @@ func main() {
 
 	certFile := os.Getenv("DKV_TLS_CERT_FILE")
 	keyFile := os.Getenv("DKV_TLS_KEY_FILE")
-	if certFile != "" && keyFile != "" {
+	switch {
+	case certFile != "" && keyFile != "":
 		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to load TLS keys: %v\n", err)
 			os.Exit(1)
 		}
 		builder.SetCreds(creds)
-	} else if os.Getenv("DKV_INSECURE") == "true" {
+	case os.Getenv("DKV_INSECURE") == "true":
 		builder.SetInsecure()
-	} else {
+	default:
 		fmt.Fprintf(os.Stderr, "TLS credentials are required (DKV_TLS_CERT_FILE, DKV_TLS_KEY_FILE). Use DKV_INSECURE=true for development.\n")
 		os.Exit(1)
 	}

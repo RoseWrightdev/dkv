@@ -62,7 +62,7 @@ func (cc *ClientCache) close() {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 
-	cc.clients.Range(func(key, value any) bool {
+	cc.clients.Range(func(_, value any) bool {
 		client := value.(*Client)
 		_ = client.Close()
 		return true
