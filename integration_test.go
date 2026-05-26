@@ -124,7 +124,7 @@ func TestClusterScale(t *testing.T) {
 	for i := range 50 {
 		go func(id int) {
 			k := fmt.Sprintf("key-%d", id)
-			v := []byte(fmt.Sprintf("val-%d", id))
+			v := fmt.Appendf(nil, "val-%d", id)
 			// Retry Set on different nodes until we find the owner
 			for j := range count {
 				client := clients[(id+j)%count]
@@ -139,7 +139,7 @@ func TestClusterScale(t *testing.T) {
 	// Verify replication with polling
 	for i := range 50 {
 		k := fmt.Sprintf("key-%d", i)
-		v := []byte(fmt.Sprintf("val-%d", i))
+		v := fmt.Appendf(nil, "val-%d", i)
 		client := clients[(i+1)%count]
 
 		require.Eventually(t, func() bool {
@@ -309,4 +309,3 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 	<-done
 	close(stopCh)
 }
-

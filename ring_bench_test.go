@@ -13,7 +13,7 @@ func BenchmarkHashRingAdd(b *testing.B) {
 		b.Run(fmt.Sprintf("%d", nodes), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				r := NewHashRing()
-				for j := 0; j < nodes; j++ {
+				for j := range nodes {
 					r.AddNode(NodeID(fmt.Sprintf("node-%d", j)))
 				}
 			}
@@ -26,7 +26,7 @@ func BenchmarkHashRingAddFast(b *testing.B) {
 		b.Run(fmt.Sprintf("%d", nodes), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				r := NewHashRing()
-				for j := 0; j < nodes; j++ {
+				for j := range nodes {
 					addNodeFast(r, NodeID(fmt.Sprintf("node-%d", j)))
 				}
 			}
@@ -73,4 +73,3 @@ func addNodeFast(r *HashRing, nodeID NodeID) {
 	r.vnodes = merged
 	r.nodes[nodeID] = true
 }
-

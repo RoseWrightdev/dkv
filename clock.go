@@ -99,10 +99,7 @@ func (c *HLC) Update(remote int64) {
 		oldPhysical := old >> logicalBits
 		oldLogical := old & logicalMask
 
-		maxPhysical := now
-		if remotePhysical > maxPhysical {
-			maxPhysical = remotePhysical
-		}
+		maxPhysical := max(remotePhysical, now)
 		if oldPhysical > maxPhysical {
 			maxPhysical = oldPhysical
 		}

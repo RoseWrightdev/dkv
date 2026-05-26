@@ -81,7 +81,7 @@ func TestClusterScaleAndDurability(t *testing.T) {
 	successCount := 0
 	for i := range numKeys {
 		k := fmt.Sprintf("durability-key-%d", i)
-		v := []byte(fmt.Sprintf("val-%d", i))
+		v := fmt.Appendf(nil, "val-%d", i)
 
 		got, exists, err := client.Get(k)
 		if err == nil && exists && string(got) == string(v) {
