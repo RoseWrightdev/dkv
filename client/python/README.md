@@ -2,8 +2,6 @@
 
 A modern, high-performance Python client wrapper for dkv supporting both synchronous and asynchronous (`asyncio`) interfaces.
 
-This project is configured to use [**uv**](https://github.com/astral-sh/uv), an extremely fast Python package and project manager written in Rust.
-
 ## Development Setup
 
 To create a virtual environment and install all dependencies (including developer tools, FastAPI, and Uvicorn for examples) using `uv`:
