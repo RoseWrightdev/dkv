@@ -24,6 +24,7 @@ type Syncer struct {
 	stopChan   chan struct{}
 	nodeID     NodeID
 	interval   time.Duration
+	cc         *ClientCache
 }
 
 // SyncerConfig holds configuration options for the Syncer service.
@@ -36,12 +37,16 @@ type SyncerConfig struct {
 	pools      *pools
 	nodeID     NodeID
 	interval   time.Duration
+	cc         *ClientCache
 }
 
 // newSyncer initializes a new Syncer instance.
 func newSyncer(config *SyncerConfig) *Syncer {
 	if config.mesh == nil {
 		panic("Syncer requires a mesh implementation")
+	}
+	if config.cc == nil {
+		panic("Syncer requires a non-nil ClientCache")
 	}
 
 	return &Syncer{
@@ -53,6 +58,7 @@ func newSyncer(config *SyncerConfig) *Syncer {
 		pools:      config.pools,
 		interval:   config.interval,
 		creds:      config.creds,
+		cc:         config.cc,
 		stopChan:   make(chan struct{}),
 	}
 }
@@ -235,14 +241,11 @@ func (s *Syncer) performSync() {
 
 	// #nosec G404
 	target := members[rand.Intn(len(members))]
-	client, err := NewClient(string(target), 2*time.Second, s.creds)
+	client, err := s.cc.get(target)
 	if err != nil {
 		slog.Debug("Failed to connect to peer for Syncer sync", "peer", target, "error", err)
 		return
 	}
-	defer func() {
-		_ = client.Close()
-	}()
 
 	req := s.pools.pullRequests.Get().(*pb.PullRequest)
 	localShards, localBuckets := s.preparePullRequest(req)

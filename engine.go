@@ -121,6 +121,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 			pools:      eng.pools,
 			interval:   config.gossipInterval,
 			creds:      config.creds,
+			cc:         eng.gw.cc,
 		})
 	}
 

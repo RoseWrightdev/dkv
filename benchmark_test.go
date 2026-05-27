@@ -339,6 +339,7 @@ func BenchmarkReconciliation_Hierarchical(b *testing.B) {
 		pools:      eng.pools,
 		interval:   10 * time.Second,
 		creds:      eng.creds,
+		cc:         eng.gw.cc,
 	})
 
 	mockPullConfig := &PullConfig{

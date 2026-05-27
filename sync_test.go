@@ -121,6 +121,7 @@ func TestSync_PreparePullRequestDataRace(t *testing.T) {
 		pools:      eng.pools,
 		interval:   10 * time.Second,
 		creds:      eng.creds,
+		cc:         eng.gw.cc,
 	})
 
 	stop := make(chan struct{})

@@ -188,6 +188,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 		pools:      eng1.pools,
 		interval:   mockConfig.gossipInterval,
 		creds:      mockConfig.creds,
+		cc:         eng1.gw.cc,
 	})
 
 	sets, deletes, err := eng1.pullWithSyncer(&PullConfig{
@@ -211,6 +212,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 		pools:      eng2.pools,
 		interval:   mockConfig.gossipInterval,
 		creds:      mockConfig.creds,
+		cc:         eng2.gw.cc,
 	})
 
 	err = eng2.pushWithSyncer(sets, deletes, *syncer2)
