@@ -33,9 +33,9 @@ func BenchmarkShardedMap_FillShardDigests(b *testing.B) {
 	}
 	shards := make(map[ShardID]Digest)
 
-	b.ResetTimer()
+	
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		sm.FillShardDigests(shards)
 	}
 }
@@ -54,9 +54,9 @@ func BenchmarkShardedMap_FillDigests(b *testing.B) {
 		buckets[ShardID(i)] = make([]Digest, subBucketCount)
 	}
 
-	b.ResetTimer()
+	
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		sm.FillDigests(buckets)
 	}
 }
@@ -73,9 +73,9 @@ func BenchmarkShardedMap_StoreUpdate(b *testing.B) {
 		Timestamp: 100,
 	})
 
-	b.ResetTimer()
+	
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		sm.Store(key, hash, Value{
 			NodeID:    "node-1",
 			Data:      []byte("some-value-payload-of-reasonable-size"),
