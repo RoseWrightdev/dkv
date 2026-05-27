@@ -60,3 +60,45 @@ func BenchmarkShardedMap_FillDigests(b *testing.B) {
 		sm.FillDigests(buckets)
 	}
 }
+
+func BenchmarkShardedMap_StoreUpdate(b *testing.B) {
+	sm := newShardedMap()
+	key := "test-key"
+	hash := hashFunc(key)
+	
+	// Pre-fill the key
+	sm.Store(key, hash, Value{
+		NodeID:    "node-1",
+		Data:      []byte("some-value-payload-of-reasonable-size"),
+		Timestamp: 100,
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		sm.Store(key, hash, Value{
+			NodeID:    "node-1",
+			Data:      []byte("some-value-payload-of-reasonable-size"),
+			Timestamp: int64(i + 101),
+		})
+	}
+}
+
+func BenchmarkShardedMap_Delete(b *testing.B) {
+	sm := newShardedMap()
+	key := "test-key"
+	hash := hashFunc(key)
+	
+	
+	b.ReportAllocs()
+	for i := 0; b.Loop(); i++ {
+		b.StopTimer()
+		sm.Store(key, hash, Value{
+			NodeID:    "node-1",
+			Data:      []byte("some-value-payload-of-reasonable-size"),
+			Timestamp: int64(i),
+		})
+		b.StartTimer()
+		sm.Delete(key, hash)
+	}
+}
