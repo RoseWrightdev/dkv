@@ -58,6 +58,14 @@ func (g *Gateway) Set(key Key, value []byte, ts int64) error {
 		return fmt.Errorf("no replica owners found for key: %s", key)
 	}
 
+	if len(owners) == 1 {
+		owner := owners[0]
+		if owner == g.meshConfig.NodeID {
+			return g.applySetLocal(key, value, ts)
+		}
+		return g.applySetRemote(owner, key, value, ts)
+	}
+
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(owners))
 
@@ -94,6 +102,14 @@ func (g *Gateway) Delete(key Key, ts int64) error {
 
 	if len(owners) == 0 {
 		return fmt.Errorf("no replica owners found for key: %s", key)
+	}
+
+	if len(owners) == 1 {
+		owner := owners[0]
+		if owner == g.meshConfig.NodeID {
+			return g.applyDeleteLocal(key, ts)
+		}
+		return g.applyDeleteRemote(owner, key, ts)
 	}
 
 	var wg sync.WaitGroup
