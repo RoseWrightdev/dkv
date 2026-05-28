@@ -99,3 +99,121 @@ func TestMesher_ConcurrentStop(t *testing.T) {
 
 	wg.Wait()
 }
+
+type trackingExchanger struct {
+	exported bool
+	imported []byte
+}
+
+func (te *trackingExchanger) ExportState() []byte {
+	te.exported = true
+	return []byte("exported-state")
+}
+
+func (te *trackingExchanger) ImportState(b []byte) {
+	te.imported = b
+}
+
+type trackingGossiper struct {
+	received []byte
+}
+
+func (tg *trackingGossiper) OnGossip(b []byte) {
+	tg.received = b
+}
+
+func TestMesh_DelegateCallbacks(t *testing.T) {
+	cfg := MeshConfig{
+		NodeID:   "test-delegate-node",
+		BindPort: 7005,
+		GrpcPort: 8005,
+	}
+	ex := &trackingExchanger{}
+	gs := &trackingGossiper{}
+
+	m, err := newMesh(gs, ex, cfg)
+	require.NoError(t, err)
+	defer func() {
+		_ = m.stop()
+	}()
+
+	// 1. NodeMeta
+	meta := m.NodeMeta(0)
+	assert.Equal(t, []byte("8005"), meta)
+
+	// 2. NotifyMsg
+	m.NotifyMsg([]byte("gossip-payload"))
+	assert.Equal(t, []byte("gossip-payload"), gs.received)
+
+	// 3. LocalState
+	state := m.LocalState(false)
+	assert.Equal(t, []byte("exported-state"), state)
+	assert.True(t, ex.exported)
+
+	// 4. MergeRemoteState
+	m.MergeRemoteState([]byte("incoming-state"), false)
+	assert.Equal(t, []byte("incoming-state"), ex.imported)
+
+	// 5. NotifyUpdate
+	m.NotifyUpdate(nil) // should be no-op
+
+	// 6. Broadcast logic
+	m.Broadcast([]byte("broadcast-msg"))
+	bcList := m.GetBroadcasts(0, 100)
+	assert.NotEmpty(t, bcList)
+
+	// Cover broadcast struct methods
+	bcStruct := &broadcast{msg: []byte("bc")}
+	assert.False(t, bcStruct.Invalidates(nil))
+	assert.Equal(t, []byte("bc"), bcStruct.Message())
+	bcStruct.Finished()
+}
+
+func TestNopMesh(t *testing.T) {
+	n := &NopMesh{}
+	n.Broadcast([]byte("noop"))
+	assert.Nil(t, n.Members())
+	assert.Equal(t, NodeID(""), n.Owner(Key("key")))
+	assert.Nil(t, n.GetOwners(Key("key"), 3))
+	n.PutOwners(nil)
+	assert.Equal(t, PeerAddress(""), n.AddressForNode(NodeID("node")))
+	assert.NoError(t, n.start())
+	assert.NoError(t, n.stop())
+}
+
+func TestMesh_ExtraEdgeCases(t *testing.T) {
+	// 1. newMesh with invalid config to force failure
+	cfg := MeshConfig{
+		BindAddr: "invalid-ip-address!!!",
+		BindPort: -100,
+	}
+	mg := newMockGossip()
+	m, err := newMesh(mg, mg, cfg)
+	assert.Error(t, err)
+	assert.Nil(t, m)
+
+	// 2. stop with nil memberList
+	mNil := &Mesh{}
+	assert.NoError(t, mNil.stop())
+
+	// 3. start join failure
+	cfgJoin := MeshConfig{
+		NodeID:    "test-join-fail",
+		BindPort:  7099,
+		SeedNodes: []string{"0.0.0.0:0"}, // invalid / unreachable seed
+	}
+	mJoin, err := newMesh(mg, mg, cfgJoin)
+	require.NoError(t, err)
+	defer func() {
+		_ = mJoin.stop()
+	}()
+	err = mJoin.start()
+	assert.Error(t, err)
+
+	// 4. AddressForNode when stopped or nil memberList
+	assert.Empty(t, mNil.AddressForNode("some-node"))
+	assert.Empty(t, mNil.Members())
+	assert.Nil(t, mNil.LocalState(false))
+}
+
+

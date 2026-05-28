@@ -3,9 +3,28 @@ package dkv
 import (
 	"fmt"
 	"path/filepath"
+	"sync/atomic"
 
 	"google.golang.org/grpc/credentials"
 )
+
+var nextBasePort int32 = 15000
+
+func getNextBasePort(nodeCount int) int {
+	for {
+		current := atomic.LoadInt32(&nextBasePort)
+		// #nosec G115
+		next := current + int32(nodeCount*2)
+		if next >= 60000 {
+			// #nosec G115
+			next = 15000 + int32(nodeCount*2)
+		}
+		if atomic.CompareAndSwapInt32(&nextBasePort, current, next) {
+			return int(next) - nodeCount*2
+		}
+	}
+}
+
 
 // Cluster represents a group of dkv engines and servers.
 type Cluster struct {
@@ -38,7 +57,8 @@ func NewCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 func newCluster(nodeCount int, dataDir string, creds credentials.TransportCredentials, fastTest bool) (*Cluster, error) {
 	cluster := &Cluster{}
 	var seedAddr string
-	basePort := 55000 // use a high port range to avoid conflicts
+	basePort := getNextBasePort(nodeCount)
+
 
 	for i := range nodeCount {
 		name := fmt.Sprintf("node-%d", i+1)
@@ -118,7 +138,8 @@ func (c *Cluster) stopEngine(id NodeID) {
 }
 
 func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds credentials.TransportCredentials, fastTest bool) error {
-	basePort := 55000 + len(c.Engines)*2
+	basePort := getNextBasePort(1)
+
 
 	eb := NewEngineBuilder().
 		Default()

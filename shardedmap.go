@@ -27,6 +27,7 @@ type Value struct {
 	Data      []byte
 	Timestamp int64
 	Tombstone bool
+	itemHash  uint64
 }
 
 // shard is a single thread-safe bucket within the shardedMap.
@@ -63,6 +64,7 @@ func (sm *shardedMap) Load(key Key, hash hashKey) (Value, bool) {
 	shard.mu.RLock()
 	val, ok := shard.buckets[subIndex][key]
 	shard.mu.RUnlock()
+	val.itemHash = 0 // Clear internal-only itemHash to preserve DeepEqual assertions in tests
 	return val, ok
 }
 
@@ -94,14 +96,14 @@ func (sm *shardedMap) Store(key Key, hash hashKey, val Value) {
 	// Update sub-bucket and shard digests incrementally
 	subIndex := (hash >> 16) % subBucketCount
 	if existing, ok := shard.buckets[subIndex][key]; ok {
-		oldItemHash := getItemHash(hash, existing)
+		oldItemHash := existing.itemHash
 		shard.subDigests[subIndex] ^= oldItemHash
 		shard.shardDigest ^= oldItemHash
 	}
 
-	newItemHash := getItemHash(hash, val)
-	shard.subDigests[subIndex] ^= newItemHash
-	shard.shardDigest ^= newItemHash
+	val.itemHash = getItemHash(hash, val)
+	shard.subDigests[subIndex] ^= val.itemHash
+	shard.shardDigest ^= val.itemHash
 	shard.buckets[subIndex][key] = val
 }
 
@@ -121,14 +123,14 @@ func (sm *shardedMap) StoreLWW(key Key, hash hashKey, val Value) bool {
 		if existing.Timestamp == val.Timestamp && existing.NodeID >= val.NodeID {
 			return false
 		}
-		oldItemHash := getItemHash(hash, existing)
+		oldItemHash := existing.itemHash
 		shard.subDigests[subIndex] ^= oldItemHash
 		shard.shardDigest ^= oldItemHash
 	}
 
-	newItemHash := getItemHash(hash, val)
-	shard.subDigests[subIndex] ^= newItemHash
-	shard.shardDigest ^= newItemHash
+	val.itemHash = getItemHash(hash, val)
+	shard.subDigests[subIndex] ^= val.itemHash
+	shard.shardDigest ^= val.itemHash
 	shard.buckets[subIndex][key] = val
 	return true
 }
@@ -141,7 +143,7 @@ func (sm *shardedMap) Delete(key Key, hash hashKey) {
 
 	subIndex := (hash >> 16) % subBucketCount
 	if existing, ok := shard.buckets[subIndex][key]; ok {
-		itemHash := getItemHash(hash, existing)
+		itemHash := existing.itemHash
 		shard.subDigests[subIndex] ^= itemHash
 		shard.shardDigest ^= itemHash
 		delete(shard.buckets[subIndex], key)

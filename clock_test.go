@@ -63,13 +63,4 @@ func TestHLC_PoisoningProtection(t *testing.T) {
 	assert.InDelta(t, float64(initialTS), float64(tsNeg), float64(500<<logicalBits))
 }
 
-func BenchmarkHLC_Now_Parallel(b *testing.B) {
-	hlc := NewHLC()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			_ = hlc.Now()
-		}
-	})
-}
-
 

@@ -99,10 +99,7 @@ func (c *HLC) Update(remote int64) {
 		oldPhysical := old >> logicalBits
 		oldLogical := old & logicalMask
 
-		maxPhysical := max(remotePhysical, now)
-		if oldPhysical > maxPhysical {
-			maxPhysical = oldPhysical
-		}
+		maxPhysical := max(oldPhysical, max(remotePhysical, now))
 
 		// Overflow: logical counter would exceed mask — sleep and re-sample.
 		if maxPhysical == oldPhysical {

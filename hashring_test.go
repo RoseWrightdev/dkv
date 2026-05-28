@@ -84,3 +84,116 @@ func TestHashRing_ClockwiseOrderAndWrap(t *testing.T) {
 		seen[node] = true
 	}
 }
+
+func TestHashRing_AddNodes(t *testing.T) {
+	t.Run("Bulk insert matches sequential insert", func(t *testing.T) {
+		// Build a ring using individual AddNode calls
+		ringA := NewHashRing()
+		ringA.AddNode("alpha")
+		ringA.AddNode("beta")
+		ringA.AddNode("gamma")
+
+		// Build a ring using bulk AddNodes
+		ringB := NewHashRing()
+		ringB.AddNodes([]NodeID{"alpha", "beta", "gamma"})
+
+		// Both rings should own the same nodes
+		nodesA := ringA.GetNodes()
+		nodesB := ringB.GetNodes()
+		assert.ElementsMatch(t, nodesA, nodesB)
+
+		// Routing should be consistent for both rings
+		keys := []Key{"test-key-1", "test-key-2", "routing-key-abc", "another-routing-key"}
+		for _, k := range keys {
+			assert.Equal(t, ringA.GetNode(k), ringB.GetNode(k),
+				"AddNodes should produce the same routing as sequential AddNode for key %s", k)
+		}
+	})
+
+	t.Run("AddNodes skips duplicates", func(t *testing.T) {
+		ring := NewHashRing()
+		ring.AddNode("existing-node")
+		ring.AddNodes([]NodeID{"existing-node", "new-node"})
+
+		nodes := ring.GetNodes()
+		assert.Len(t, nodes, 2, "Duplicate node should not be inserted twice")
+		assert.Contains(t, nodes, NodeID("existing-node"))
+		assert.Contains(t, nodes, NodeID("new-node"))
+	})
+
+	t.Run("AddNodes on empty ring", func(t *testing.T) {
+		ring := NewHashRing()
+		ring.AddNodes([]NodeID{"node-x", "node-y"})
+
+		nodes := ring.GetNodes()
+		assert.Len(t, nodes, 2)
+
+		owner := ring.GetNode("any-routing-key")
+		assert.Contains(t, nodes, owner)
+	})
+
+	t.Run("AddNodes with empty slice is a no-op", func(t *testing.T) {
+		ring := NewHashRing()
+		ring.AddNode("solo")
+		ring.AddNodes([]NodeID{})
+
+		nodes := ring.GetNodes()
+		assert.Len(t, nodes, 1)
+	})
+}
+
+func TestHashRing_PutOwners(t *testing.T) {
+	ring := NewHashRing()
+	ring.AddNode("node1")
+	ring.AddNode("node2")
+
+	owners := ring.GetOwners("test-key", 2)
+	assert.Len(t, owners, 2)
+
+	// PutOwners is a no-op; calling it should not panic or corrupt the ring
+	ring.PutOwners(owners)
+	ring.PutOwners(nil)
+
+	// Ring still works after PutOwners
+	owner := ring.GetNode("test-key")
+	assert.NotEmpty(t, owner)
+}
+
+func TestHashRing_ExtraEdgeCases(t *testing.T) {
+	ring := NewHashRing()
+
+	// 1. AddNode duplicate
+	ring.AddNode("node-dup")
+	ring.AddNode("node-dup")
+	assert.Len(t, ring.GetNodes(), 1)
+
+	// 2. RemoveNode non-existent
+	ring.RemoveNode("non-existent")
+	assert.Len(t, ring.GetNodes(), 1)
+
+	// 3. GetNode wrap-around: find a key whose hash is greater than all vnodes
+	// We can add a node, find the maximum hash in its vnodes, and then find a key that hashes higher than that.
+	// Since sha256 hashes are pseudo-random, we can just try a bunch of keys until we find one with a hash larger than the maximum vnode hash.
+	maxHash := uint64(0)
+	for _, vn := range ring.vnodes {
+		if vn.hash > maxHash {
+			maxHash = vn.hash
+		}
+	}
+
+	// Find a key that wraps around
+	var wrapKey string
+	for i := 0; i < 10000; i++ {
+		k := fmt.Sprintf("wrap-candidate-%d", i)
+		h := ring.hashKey(Key(k))
+		if h > maxHash {
+			wrapKey = k
+			break
+		}
+	}
+	assert.NotEmpty(t, wrapKey)
+	node := ring.GetNode(Key(wrapKey))
+	assert.Equal(t, NodeID("node-dup"), node)
+}
+
+

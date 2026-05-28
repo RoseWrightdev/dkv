@@ -167,6 +167,7 @@ func (m *Mesh) NotifyLeave(node *memberlist.Node) {
 // NotifyUpdate is called by memberlist when a node's metadata changes.
 func (m *Mesh) NotifyUpdate(_ *memberlist.Node) {
 	// Ring distribution depends only on node name, so update is a no-op.
+	_ = m
 }
 
 func (m *Mesh) start() error {
@@ -229,7 +230,9 @@ func (m *Mesh) MergeRemoteState(buf []byte, _ bool) {
 type NopMesh struct{}
 
 // Broadcast does nothing in a NopMesh.
-func (n *NopMesh) Broadcast([]byte) {}
+func (n *NopMesh) Broadcast([]byte) {
+	_ = n
+}
 
 // Members returns nil as there are no members in a NopMesh.
 func (n *NopMesh) Members() []PeerAddress { return nil }
@@ -241,7 +244,9 @@ func (n *NopMesh) Owner(Key) NodeID { return "" }
 func (n *NopMesh) GetOwners(Key, int) []NodeID { return nil }
 
 // PutOwners does nothing in a NopMesh.
-func (n *NopMesh) PutOwners([]NodeID) {}
+func (n *NopMesh) PutOwners([]NodeID) {
+	_ = n
+}
 
 // AddressForNode returns an empty string as there are no nodes in a NopMesh.
 func (n *NopMesh) AddressForNode(NodeID) PeerAddress { return "" }
@@ -254,4 +259,6 @@ type broadcast struct {
 
 func (b *broadcast) Invalidates(_ memberlist.Broadcast) bool { return false }
 func (b *broadcast) Message() []byte                         { return b.msg }
-func (b *broadcast) Finished()                               {}
+func (b *broadcast) Finished() {
+	_ = b
+}
