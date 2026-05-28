@@ -71,11 +71,15 @@ func (st *StateTransfer) streamToEncoder(enc *gob.Encoder) error {
 					shard.mu.RUnlock()
 					entry.Key = ""
 					entry.Data = nil
+					entry.Timestamp = 0
+					entry.Tombstone = false
 					st.pools.snapshotEntries.Put(entry)
 					return err
 				}
 				entry.Key = ""
 				entry.Data = nil
+				entry.Timestamp = 0
+				entry.Tombstone = false
 				st.pools.snapshotEntries.Put(entry)
 			}
 		}
@@ -93,6 +97,8 @@ func (st *StateTransfer) decodeFromReader(r io.Reader) error {
 		if err := dec.Decode(entry); err != nil {
 			entry.Key = ""
 			entry.Data = nil
+			entry.Timestamp = 0
+			entry.Tombstone = false
 			st.pools.snapshotEntries.Put(entry)
 			if err == io.EOF {
 				break
@@ -111,6 +117,8 @@ func (st *StateTransfer) decodeFromReader(r io.Reader) error {
 			if err != nil {
 				entry.Key = ""
 				entry.Data = nil
+				entry.Timestamp = 0
+				entry.Tombstone = false
 				st.pools.snapshotEntries.Put(entry)
 				return err
 			}
@@ -126,6 +134,8 @@ func (st *StateTransfer) decodeFromReader(r io.Reader) error {
 			if err != nil {
 				entry.Key = ""
 				entry.Data = nil
+				entry.Timestamp = 0
+				entry.Tombstone = false
 				st.pools.snapshotEntries.Put(entry)
 				return err
 			}
@@ -133,6 +143,8 @@ func (st *StateTransfer) decodeFromReader(r io.Reader) error {
 
 		entry.Key = ""
 		entry.Data = nil
+		entry.Timestamp = 0
+		entry.Tombstone = false
 		st.pools.snapshotEntries.Put(entry)
 		count++
 	}
