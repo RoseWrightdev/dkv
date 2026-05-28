@@ -13,15 +13,7 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License 2.0",
     "Operating System :: OS Independent",
 ]
-dependencies = [
-    "grpcio>=1.50.0",
-    "protobuf>=4.21.0",
-]
+dependencies = ["grpcio>=1.50.0", "protobuf>=4.21.0"]
 
-[project.optional-dependencies]
-dev = [
-    "grpcio-tools>=1.50.0",
-    "fastapi>=0.100.0",
-    "uvicorn>=0.20.0",
-]
-
+[dependency-groups]
+dev = ["grpcio-tools>=1.50.0", "fastapi>=0.100.0", "uvicorn>=0.20.0"]
