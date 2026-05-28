@@ -1,8 +1,6 @@
 package dkv
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"slices"
 	"sort"
@@ -18,7 +16,6 @@ type NodeID string
 
 // HashRing implements consistent hashing for data partitioning across dkv nodes.
 type HashRing struct {
-	hashBufPool sync.Pool
 	nodes       map[NodeID]uint32
 	nodeList    []NodeID
 	vnodes      []vnode
@@ -38,12 +35,6 @@ type vnode struct {
 func NewHashRing() *HashRing {
 	return &HashRing{
 		nodes: make(map[NodeID]uint32),
-		hashBufPool: sync.Pool{
-			New: func() any {
-				b := make([]byte, 0, 512)
-				return &b
-			},
-		},
 	}
 }
 
@@ -56,21 +47,16 @@ func (r *HashRing) AddNode(nodeID NodeID) {
 		return
 	}
 
+	// #nosec G115
 	nodeIdx := uint32(len(r.nodeList))
 	r.nodes[nodeID] = nodeIdx
 	r.nodeList = append(r.nodeList, nodeID)
 
 	var newVnodes [defaultVnodes]vnode
-	bufPtr := r.hashBufPool.Get().(*[]byte)
-	buf := (*bufPtr)[:0]
 	for i := range defaultVnodes {
-		buf = fmt.Appendf(buf[:0], "%s-%d", nodeID, i)
-		h := sha256.Sum256(buf)
-		hash := binary.BigEndian.Uint64(h[:8])
+		hash := hashFunc(fmt.Sprintf("%s-%d", nodeID, i))
 		newVnodes[i] = vnode{hash: hash, nodeIdx: nodeIdx}
 	}
-	*bufPtr = buf
-	r.hashBufPool.Put(bufPtr)
 
 	slices.SortFunc(newVnodes[:], func(a, b vnode) int {
 		if a.hash < b.hash {
@@ -118,6 +104,7 @@ func (r *HashRing) AddNodes(nodeIDs []NodeID) {
 
 	startIdx := len(r.nodeList)
 	for i, id := range newNodes {
+		// #nosec G115
 		r.nodes[id] = uint32(startIdx + i)
 		r.nodeList = append(r.nodeList, id)
 	}
@@ -125,22 +112,16 @@ func (r *HashRing) AddNodes(nodeIDs []NodeID) {
 	totalNewVnodes := len(newNodes) * defaultVnodes
 	newVnodes := make([]vnode, totalNewVnodes)
 
-	bufPtr := r.hashBufPool.Get().(*[]byte)
-	buf := (*bufPtr)[:0]
-
 	vIdx := 0
 	for i, id := range newNodes {
+		// #nosec G115
 		nodeIdx := uint32(startIdx + i)
 		for j := range defaultVnodes {
-			buf = fmt.Appendf(buf[:0], "%s-%d", id, j)
-			h := sha256.Sum256(buf)
-			hash := binary.BigEndian.Uint64(h[:8])
+			hash := hashFunc(fmt.Sprintf("%s-%d", id, j))
 			newVnodes[vIdx] = vnode{hash: hash, nodeIdx: nodeIdx}
 			vIdx++
 		}
 	}
-	*bufPtr = buf
-	r.hashBufPool.Put(bufPtr)
 
 	slices.SortFunc(newVnodes, func(a, b vnode) int {
 		if a.hash < b.hash {
@@ -197,14 +178,7 @@ func (r *HashRing) RemoveNode(nodeID NodeID) {
 
 // hashKey computes a uint64 hash of the given key.
 func (r *HashRing) hashKey(key Key) uint64 {
-	bufPtr := r.hashBufPool.Get().(*[]byte)
-	buf := (*bufPtr)[:0]
-	buf = append(buf, key...)
-	h := sha256.Sum256(buf)
-	hash := binary.BigEndian.Uint64(h[:8])
-	*bufPtr = buf
-	r.hashBufPool.Put(bufPtr)
-	return hash
+	return hashFunc(key)
 }
 
 // GetNode returns the ID of the node responsible for the given key.
@@ -267,6 +241,7 @@ func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
 
 // PutOwners is a no-op because slice pooling was removed to avoid staticcheck allocations.
 func (r *HashRing) PutOwners(_ []NodeID) {
+	_ = r
 }
 
 // GetNodes returns all unique node IDs currently in the ring.
