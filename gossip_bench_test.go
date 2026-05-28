@@ -9,8 +9,8 @@ import (
 
 type mockStateWriter struct{}
 
-func (m *mockStateWriter) ApplySet(req *pb.SetRequest) error       { return nil }
-func (m *mockStateWriter) ApplyDelete(req *pb.DeleteRequest) error { return nil }
+func (m *mockStateWriter) ApplySet(_ *pb.SetRequest) error       { return nil }
+func (m *mockStateWriter) ApplyDelete(_ *pb.DeleteRequest) error { return nil }
 
 func BenchmarkGossip_OnGossip(b *testing.B) {
 	pools := newPools()

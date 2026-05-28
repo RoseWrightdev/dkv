@@ -14,7 +14,7 @@ func BenchmarkEviction_Publish(b *testing.B) {
 	})
 	evt.start()
 	defer evt.stop()
-	evt.SetEvictCallback(func(key Key, reason EvictReason) error {
+	evt.SetEvictCallback(func(_ Key, _ EvictReason) error {
 		return nil
 	})
 

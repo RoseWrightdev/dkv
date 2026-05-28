@@ -13,8 +13,10 @@ var nextBasePort int32 = 15000
 func getNextBasePort(nodeCount int) int {
 	for {
 		current := atomic.LoadInt32(&nextBasePort)
+		// #nosec G115
 		next := current + int32(nodeCount*2)
 		if next >= 60000 {
+			// #nosec G115
 			next = 15000 + int32(nodeCount*2)
 		}
 		if atomic.CompareAndSwapInt32(&nextBasePort, current, next) {
