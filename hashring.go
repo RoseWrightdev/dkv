@@ -31,6 +31,13 @@ type vnode struct {
 	nodeIdx uint32
 }
 
+var vnodeSlicePool = sync.Pool{
+	New: func() any {
+		s := make([]vnode, 0, 1024)
+		return &s
+	},
+}
+
 // NewHashRing initializes an empty consistent hashing ring.
 func NewHashRing() *HashRing {
 	return &HashRing{
@@ -67,7 +74,20 @@ func (r *HashRing) AddNode(nodeID NodeID) {
 		return 0
 	})
 
-	merged := make([]vnode, len(r.vnodes)+defaultVnodes)
+	needed := len(r.vnodes) + defaultVnodes
+	var merged []vnode
+	if v := vnodeSlicePool.Get(); v != nil {
+		sPtr := v.(*[]vnode)
+		if cap(*sPtr) >= needed {
+			merged = (*sPtr)[:needed]
+		} else {
+			vnodeSlicePool.Put(sPtr)
+			merged = make([]vnode, needed)
+		}
+	} else {
+		merged = make([]vnode, needed)
+	}
+
 	i, j := 0, 0
 	k := 0
 	for i < len(r.vnodes) && j < defaultVnodes {
@@ -83,7 +103,13 @@ func (r *HashRing) AddNode(nodeID NodeID) {
 	copy(merged[k:], r.vnodes[i:])
 	k += len(r.vnodes) - i
 	copy(merged[k:], newVnodes[j:])
+
+	oldVnodes := r.vnodes
 	r.vnodes = merged
+	if cap(oldVnodes) > 0 {
+		oldVnodes = oldVnodes[:0]
+		vnodeSlicePool.Put(&oldVnodes)
+	}
 }
 
 // AddNodes inserts multiple nodes into the ring in a single highly-optimized pass.
@@ -137,7 +163,20 @@ func (r *HashRing) AddNodes(nodeIDs []NodeID) {
 		return
 	}
 
-	merged := make([]vnode, len(r.vnodes)+len(newVnodes))
+	needed := len(r.vnodes) + len(newVnodes)
+	var merged []vnode
+	if v := vnodeSlicePool.Get(); v != nil {
+		sPtr := v.(*[]vnode)
+		if cap(*sPtr) >= needed {
+			merged = (*sPtr)[:needed]
+		} else {
+			vnodeSlicePool.Put(sPtr)
+			merged = make([]vnode, needed)
+		}
+	} else {
+		merged = make([]vnode, needed)
+	}
+
 	i, j := 0, 0
 	k := 0
 	for i < len(r.vnodes) && j < len(newVnodes) {
@@ -153,7 +192,13 @@ func (r *HashRing) AddNodes(nodeIDs []NodeID) {
 	copy(merged[k:], r.vnodes[i:])
 	k += len(r.vnodes) - i
 	copy(merged[k:], newVnodes[j:])
+
+	oldVnodes := r.vnodes
 	r.vnodes = merged
+	if cap(oldVnodes) > 0 {
+		oldVnodes = oldVnodes[:0]
+		vnodeSlicePool.Put(&oldVnodes)
+	}
 }
 
 // RemoveNode removes a node and its virtual nodes from the ring.
@@ -166,13 +211,32 @@ func (r *HashRing) RemoveNode(nodeID NodeID) {
 		return
 	}
 
-	newVnodes := make([]vnode, 0, len(r.vnodes)-defaultVnodes)
+	neededCap := max(len(r.vnodes) - defaultVnodes, 0)
+	var newVnodes []vnode
+	if v := vnodeSlicePool.Get(); v != nil {
+		sPtr := v.(*[]vnode)
+		if cap(*sPtr) >= neededCap {
+			newVnodes = (*sPtr)[:0]
+		} else {
+			vnodeSlicePool.Put(sPtr)
+			newVnodes = make([]vnode, 0, neededCap)
+		}
+	} else {
+		newVnodes = make([]vnode, 0, neededCap)
+	}
+
 	for _, v := range r.vnodes {
 		if v.nodeIdx != nodeIdx {
 			newVnodes = append(newVnodes, v)
 		}
 	}
+
+	oldVnodes := r.vnodes
 	r.vnodes = newVnodes
+	if cap(oldVnodes) > 0 {
+		oldVnodes = oldVnodes[:0]
+		vnodeSlicePool.Put(&oldVnodes)
+	}
 	delete(r.nodes, nodeID)
 }
 
