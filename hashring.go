@@ -18,11 +18,11 @@ type NodeID string
 
 // HashRing implements consistent hashing for data partitioning across dkv nodes.
 type HashRing struct {
-	hashBufPool     sync.Pool
-	nodes           map[NodeID]uint32
-	nodeList        []NodeID
-	vnodes          []vnode
-	mu              sync.RWMutex
+	hashBufPool sync.Pool
+	nodes       map[NodeID]uint32
+	nodeList    []NodeID
+	vnodes      []vnode
+	mu          sync.RWMutex
 }
 
 // Splitting a physical node into 128 virtual positions avoids statistical hotspotting
