@@ -7,7 +7,7 @@ name = "dkv-py"
 version = "0.1.0"
 description = "Python client for the dkv distributed key-value store"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License 2.0",
