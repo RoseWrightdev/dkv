@@ -183,9 +183,9 @@ func TestHashRing_ExtraEdgeCases(t *testing.T) {
 
 	// Find a key that wraps around
 	var wrapKey string
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		k := fmt.Sprintf("wrap-candidate-%d", i)
-		h := ring.hashKey(Key(k))
+		h := hashFuncSecure(k)
 		if h > maxHash {
 			wrapKey = k
 			break
