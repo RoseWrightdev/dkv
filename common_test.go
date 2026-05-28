@@ -3,11 +3,14 @@ package dkv
 import (
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -52,4 +55,55 @@ func FindKeyForNode(e Engine, nodeID string) string {
 		}
 	}
 	panic("could not find key for node")
+}
+
+// newTestNode builds, starts, and registers t.Cleanup for a single dkv engine+server.
+// It returns the engine and a gRPC client pointing at it.
+func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds []string, rf int) (Engine, *Client) {
+	t.Helper()
+	nodeDir := filepath.Join(tmpDir, name)
+	require.NoError(t, os.MkdirAll(nodeDir, 0750))
+
+	eb := NewEngineBuilder().
+		Default().
+		FastTest().
+		SetWalPath(filepath.Join(nodeDir, "wal")).
+		SetSnpPath(filepath.Join(nodeDir, "snp.gob")).
+		SetNodeID(NodeID(name)).
+		SetBindPort(mlPort).
+		SetGrpcPort(grpcPort).
+		SetInsecure().
+		SetReplicationFactor(rf)
+
+	if len(seeds) > 0 {
+		eb.SetSeedNodes(seeds)
+	}
+
+	eng, err := eb.Build()
+	require.NoError(t, err)
+
+	srv := NewServer(eng)
+	go func() { _ = srv.Run() }()
+	eng.Start()
+
+	t.Cleanup(func() {
+		srv.Stop()
+		eng.Stop()
+	})
+
+	client, err := NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", grpcPort), 2*time.Second)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	return eng, client
+}
+
+// freePort returns an available TCP port on localhost.
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	return port
 }
