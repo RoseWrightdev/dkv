@@ -92,3 +92,53 @@ func TestPeriodicSnapshots(t *testing.T) {
 	_, err = os.Stat(mockConfig.snpPath)
 	assert.NoError(t, err, "Snapshot file should have been created by background task")
 }
+
+type errorWal struct {
+	mockWal
+	prepErr error
+}
+
+func (ew *errorWal) prepareSnapshot() ([]int64, error) {
+	if ew.prepErr != nil {
+		return nil, ew.prepErr
+	}
+	return nil, nil
+}
+
+func TestSnapshot_ExtraEdgeCases(t *testing.T) {
+	// 1. queueSnapShot skip / default path
+	mw := &mockWal{}
+	snp, err := newSnapshotter("testpath", time.Hour, mw, func(_ *gob.Encoder) error { return nil })
+	assert.NoError(t, err)
+
+	// fill the queue
+	snp.ch <- struct{}{}
+	// queue again - should hit default: no-op branch
+	snp.queueSnapShot()
+	// clean up channel
+	<-snp.ch
+
+	// 2. prepareSnapshot error
+	ew := &errorWal{prepErr: assert.AnError}
+	snpErr, err := newSnapshotter("testpath", time.Hour, ew, func(_ *gob.Encoder) error { return nil })
+	assert.NoError(t, err)
+	err = snpErr.create()
+	assert.Error(t, err)
+	assert.Equal(t, assert.AnError, err)
+
+	// 3. os.Create error (using invalid path)
+	snpCreateErr, err := newSnapshotter("/nonexistent-path-1234/file.snp", time.Hour, mw, func(_ *gob.Encoder) error { return nil })
+	assert.NoError(t, err)
+	err = snpCreateErr.create()
+	assert.Error(t, err)
+
+	// 4. encCallBack error
+	snpEncErr, err := newSnapshotter(mockConfig.snpPath, time.Hour, mw, func(_ *gob.Encoder) error {
+		return assert.AnError
+	})
+	assert.NoError(t, err)
+	err = snpEncErr.create()
+	assert.Error(t, err)
+	assert.Equal(t, assert.AnError, err)
+}
+

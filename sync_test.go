@@ -1,6 +1,7 @@
 package dkv
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -161,3 +162,97 @@ func TestSync_PreparePullRequestDataRace(t *testing.T) {
 
 	close(stop)
 }
+
+func TestSyncer_ExtraEdgeCases(t *testing.T) {
+	p := newPools()
+	cc := newClientCache(nil)
+
+	// 1. newSyncer panics
+	assert.Panics(t, func() {
+		newSyncer(&SyncerConfig{cc: cc})
+	})
+	assert.Panics(t, func() {
+		newSyncer(&SyncerConfig{mesh: &NopMesh{}})
+	})
+
+	// 2. start panic when interval <= 0
+	synPanic := newSyncer(&SyncerConfig{
+		mesh:     &NopMesh{},
+		cc:       cc,
+		interval: 0,
+	})
+	assert.Panics(t, func() {
+		synPanic.start()
+	})
+
+	// 3. stop idempotent check
+	synStop := newSyncer(&SyncerConfig{
+		mesh: &NopMesh{},
+		cc:   cc,
+	})
+	synStop.stop()
+	synStop.stop() // should not panic/block
+
+	// 4. push failures
+	swErr := &mockStateTransferWriter{
+		setErr:    errors.New("set push err"),
+		deleteErr: errors.New("del push err"),
+	}
+	synPush := newSyncer(&SyncerConfig{
+		mesh:   &NopMesh{},
+		cc:     cc,
+		writer: swErr,
+	})
+	err := synPush.push([]*pb.SetRequest{{}}, nil)
+	assert.Error(t, err)
+
+	err = synPush.push(nil, []*pb.DeleteRequest{{}})
+	assert.Error(t, err)
+
+	// 5. pull when root hash matches
+	hm := newShardedMap()
+	synPull := newSyncer(&SyncerConfig{
+		mesh: &NopMesh{},
+		cc:   cc,
+		hm:   hm,
+	})
+	sets, dels, err := synPull.pull(&PullConfig{root: hm.RootDigest()})
+	assert.NoError(t, err)
+	assert.Nil(t, sets)
+	assert.Nil(t, dels)
+
+	// 6. performSync when mesh.Members() is empty
+	synPerf := newSyncer(&SyncerConfig{
+		mesh:       &MockMesher{},
+		cc:         cc,
+		pools:      p,
+		meshConfig: &MeshConfig{},
+	})
+	synPerf.performSync() // should return early without panicking
+
+	// 7. buildDeleteRequest coverage!
+	// Populate map with a delete entry
+	hm.StoreLWW("user:deleted", hashFunc("user:deleted"), Value{Timestamp: 500, Tombstone: true})
+	synDel := newSyncer(&SyncerConfig{
+		mesh:       &MockMesher{Owners: []NodeID{"node-1"}},
+		cc:         cc,
+		hm:         hm,
+		pools:      p,
+		meshConfig: &MeshConfig{NodeID: "node-1", ReplicationFactor: 1},
+	})
+	
+	// Prepare pull config
+	pc := &PullConfig{
+		shards:      make(map[ShardID]Digest),
+		buckets:     make(map[ShardID]ShardDigest),
+		requesterID: "node-1",
+		root:        0, // force mismatch
+	}
+	// We want to trigger mismatch. Let's call pull
+	_, dels, err = synDel.pull(pc)
+	assert.NoError(t, err)
+	assert.Len(t, dels, 1)
+	assert.Equal(t, "user:deleted", dels[0].Key)
+	assert.Equal(t, int64(500), dels[0].Timestamp)
+}
+

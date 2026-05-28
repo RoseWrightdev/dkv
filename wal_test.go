@@ -7,6 +7,7 @@ import (
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewWal(t *testing.T) {
@@ -160,4 +161,73 @@ func TestWal_ClearNilOffsets(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Empty(t, replay, "all entries should be cleared when offsets is nil")
 }
+
+func TestWal_ExtraEdgeCases(t *testing.T) {
+	defer cleanupEngineMocks(t)
+
+	// 1. newWal directory creation failure
+	// We can create a regular file first, then try to create WAL with that file's path as the directory.
+	// This will make os.MkdirAll fail.
+	tmpFile, err := os.CreateTemp("", "wal-failure-test-*")
+	require.NoError(t, err)
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+	}()
+
+	_, err = newWal(tmpFile.Name(), mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	assert.Error(t, err)
+
+	// 2. publish pb.WalEntry directly
+	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	assert.NoError(t, err)
+	defer wal.stop()
+
+	entryMsg := &pb.WalEntry{
+		Entry: &pb.WalEntry_Set{
+			Set: &pb.SetRequest{Key: "direct-entry", Value: []byte("val"), Timestamp: 200},
+		},
+	}
+	err = wal.publish("direct-entry", hashFunc("direct-entry"), entryMsg)
+	assert.NoError(t, err)
+
+	// 3. publish unsupported type
+	err = wal.publish("key", hashFunc("key"), &pb.GetRequest{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported message type")
+
+	// 4. publish pb.DeleteRequest and verify unwrap recycled pool wrappers
+	delMsg := &pb.DeleteRequest{Key: "direct-del", Timestamp: 250}
+	err = wal.publish("direct-del", hashFunc("direct-del"), delMsg)
+	assert.NoError(t, err)
+
+	// Verify replay on sets and deletes
+	replay, err := wal.replay()
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("val"), replay["direct-entry"].Data)
+	assert.True(t, replay["direct-del"].Tombstone)
+
+	// 5. replaySegment unmarshal error by writing bad bytes to the log
+	wal.stop() // stop sync so we can manually edit file safely
+	segPath := mockConfig.walPath + "/seg_00.log"
+	
+	// Corrupt the file by writing a invalid header and payload
+	// #nosec G304
+	f, err := os.OpenFile(segPath, os.O_WRONLY|os.O_APPEND, 0600)
+	require.NoError(t, err)
+	// Write header: 4 bytes size
+	_, _ = f.Write([]byte{0, 0, 0, 10}) // says payload is 10 bytes
+	// Write bad payload: 10 bytes of garbage
+	_, _ = f.Write([]byte("garbagedata"))
+	_ = f.Close()
+
+	// Replay should fail due to protobuf unmarshal error
+	walReopen, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	assert.NoError(t, err)
+	defer walReopen.stop()
+
+	_, err = walReopen.replay()
+	assert.Error(t, err)
+}
+
 

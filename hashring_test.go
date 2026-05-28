@@ -159,3 +159,41 @@ func TestHashRing_PutOwners(t *testing.T) {
 	assert.NotEmpty(t, owner)
 }
 
+func TestHashRing_ExtraEdgeCases(t *testing.T) {
+	ring := NewHashRing()
+
+	// 1. AddNode duplicate
+	ring.AddNode("node-dup")
+	ring.AddNode("node-dup")
+	assert.Len(t, ring.GetNodes(), 1)
+
+	// 2. RemoveNode non-existent
+	ring.RemoveNode("non-existent")
+	assert.Len(t, ring.GetNodes(), 1)
+
+	// 3. GetNode wrap-around: find a key whose hash is greater than all vnodes
+	// We can add a node, find the maximum hash in its vnodes, and then find a key that hashes higher than that.
+	// Since sha256 hashes are pseudo-random, we can just try a bunch of keys until we find one with a hash larger than the maximum vnode hash.
+	maxHash := uint64(0)
+	for _, vn := range ring.vnodes {
+		if vn.hash > maxHash {
+			maxHash = vn.hash
+		}
+	}
+
+	// Find a key that wraps around
+	var wrapKey string
+	for i := 0; i < 10000; i++ {
+		k := fmt.Sprintf("wrap-candidate-%d", i)
+		h := ring.hashKey(Key(k))
+		if h > maxHash {
+			wrapKey = k
+			break
+		}
+	}
+	assert.NotEmpty(t, wrapKey)
+	node := ring.GetNode(Key(wrapKey))
+	assert.Equal(t, NodeID("node-dup"), node)
+}
+
+

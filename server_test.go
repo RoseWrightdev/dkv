@@ -163,3 +163,53 @@ func TestServer_PoolDegradation(t *testing.T) {
 
 	assert.Equal(t, 128, len(capturedBuckets), "The recycled buckets map should contain all 128 pre-allocated shard entries!")
 }
+
+func TestServer_ExtraEdgeCases(t *testing.T) {
+	me := new(mockEngine)
+	srv := &server{
+		eng:   me,
+		pools: newServerPools(),
+	}
+
+	// 1. Get handler
+	me.On("Get", Key("k-get")).Return([]byte("v-get"), true).Once()
+	respGet, err := srv.Get(context.Background(), &pb.GetRequest{Key: "k-get"})
+	assert.NoError(t, err)
+	assert.True(t, respGet.Exists)
+	assert.Equal(t, []byte("v-get"), respGet.Value)
+
+	// 2. Set error
+	me.On("Set", Key("k-set"), []byte("v-set")).Return(assert.AnError).Once()
+	_, err = srv.Set(context.Background(), &pb.SetRequest{Key: "k-set", Value: []byte("v-set")})
+	assert.Error(t, err)
+
+	// Set success
+	me.On("Set", Key("k-set"), []byte("v-set")).Return(nil).Once()
+	_, err = srv.Set(context.Background(), &pb.SetRequest{Key: "k-set", Value: []byte("v-set")})
+	assert.NoError(t, err)
+
+	// 3. Delete error
+	me.On("Delete", Key("k-del")).Return(assert.AnError).Once()
+	_, err = srv.Delete(context.Background(), &pb.DeleteRequest{Key: "k-del"})
+	assert.Error(t, err)
+
+	// Delete success
+	me.On("Delete", Key("k-del")).Return(nil).Once()
+	_, err = srv.Delete(context.Background(), &pb.DeleteRequest{Key: "k-del"})
+	assert.NoError(t, err)
+
+	// 4. Grpc.Run failure
+	me.On("Addr").Return("invalid-address-format-abc").Once()
+	gServer := NewServer(me)
+	err = gServer.Run()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create listener on")
+
+	// 5. Grpc life cycle (Mocking Stop calls)
+	me.On("Stop").Twice()
+	gServer.Stop()
+	gServer.HardStop()
+
+	me.AssertExpectations(t)
+}
+

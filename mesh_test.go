@@ -181,3 +181,39 @@ func TestNopMesh(t *testing.T) {
 	assert.NoError(t, n.stop())
 }
 
+func TestMesh_ExtraEdgeCases(t *testing.T) {
+	// 1. newMesh with invalid config to force failure
+	cfg := MeshConfig{
+		BindAddr: "invalid-ip-address!!!",
+		BindPort: -100,
+	}
+	mg := newMockGossip()
+	m, err := newMesh(mg, mg, cfg)
+	assert.Error(t, err)
+	assert.Nil(t, m)
+
+	// 2. stop with nil memberList
+	mNil := &Mesh{}
+	assert.NoError(t, mNil.stop())
+
+	// 3. start join failure
+	cfgJoin := MeshConfig{
+		NodeID:    "test-join-fail",
+		BindPort:  7099,
+		SeedNodes: []string{"0.0.0.0:0"}, // invalid / unreachable seed
+	}
+	mJoin, err := newMesh(mg, mg, cfgJoin)
+	require.NoError(t, err)
+	defer func() {
+		_ = mJoin.stop()
+	}()
+	err = mJoin.start()
+	assert.Error(t, err)
+
+	// 4. AddressForNode when stopped or nil memberList
+	assert.Empty(t, mNil.AddressForNode("some-node"))
+	assert.Empty(t, mNil.Members())
+	assert.Nil(t, mNil.LocalState(false))
+}
+
+
