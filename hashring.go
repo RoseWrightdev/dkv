@@ -16,16 +16,14 @@ type NodeID string
 
 // HashRing implements consistent hashing for data partitioning across dkv nodes.
 type HashRing struct {
-	nodes       map[NodeID]uint32
-	nodeList    []NodeID
-	vnodes      []vnode
-	mu          sync.RWMutex
+	nodes    map[NodeID]uint32
+	nodeList []NodeID
+	vnodes   []vnode
+	mu       sync.RWMutex
 }
 
 // Splitting a physical node into 128 virtual positions avoids statistical hotspotting
 // and ensures a uniform keyspace distribution across the cluster.
-// This struct is pointer-free (contains no pointers or strings), completely eliminating
-// Go GC Write Barrier overhead during merge copy operations.
 type vnode struct {
 	hash    uint64
 	nodeIdx uint32
@@ -61,7 +59,7 @@ func (r *HashRing) AddNode(nodeID NodeID) {
 
 	var newVnodes [defaultVnodes]vnode
 	for i := range defaultVnodes {
-		hash := hashFunc(fmt.Sprintf("%s-%d", nodeID, i))
+		hash := hashFuncSecure(fmt.Sprintf("%s-%d", nodeID, i))
 		newVnodes[i] = vnode{hash: hash, nodeIdx: nodeIdx}
 	}
 
@@ -143,7 +141,7 @@ func (r *HashRing) AddNodes(nodeIDs []NodeID) {
 		// #nosec G115
 		nodeIdx := uint32(startIdx + i)
 		for j := range defaultVnodes {
-			hash := hashFunc(fmt.Sprintf("%s-%d", id, j))
+			hash := hashFuncSecure(fmt.Sprintf("%s-%d", id, j))
 			newVnodes[vIdx] = vnode{hash: hash, nodeIdx: nodeIdx}
 			vIdx++
 		}
@@ -211,7 +209,7 @@ func (r *HashRing) RemoveNode(nodeID NodeID) {
 		return
 	}
 
-	neededCap := max(len(r.vnodes) - defaultVnodes, 0)
+	neededCap := max(len(r.vnodes)-defaultVnodes, 0)
 	var newVnodes []vnode
 	if v := vnodeSlicePool.Get(); v != nil {
 		sPtr := v.(*[]vnode)
@@ -240,11 +238,6 @@ func (r *HashRing) RemoveNode(nodeID NodeID) {
 	delete(r.nodes, nodeID)
 }
 
-// hashKey computes a uint64 hash of the given key.
-func (r *HashRing) hashKey(key Key) uint64 {
-	return hashFunc(key)
-}
-
 // GetNode returns the ID of the node responsible for the given key.
 func (r *HashRing) GetNode(key Key) NodeID {
 	r.mu.RLock()
@@ -254,7 +247,7 @@ func (r *HashRing) GetNode(key Key) NodeID {
 		return ""
 	}
 
-	hash := r.hashKey(key)
+	hash := hashFuncSecure(key)
 
 	// Perform an O(log K) binary search to locate the clockwise neighbor
 	idx := sort.Search(len(r.vnodes), func(i int) bool {
@@ -278,7 +271,7 @@ func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
 		return nil
 	}
 
-	hash := r.hashKey(key)
+	hash := hashFuncSecure(key)
 
 	// Locate the starting index clockwise from the key's hash with binary search
 	idx := sort.Search(len(r.vnodes), func(i int) bool {

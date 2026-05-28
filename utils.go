@@ -1,13 +1,21 @@
 package dkv
 
-import "github.com/cespare/xxhash/v2"
+import (
+	"crypto/sha256"
+	"encoding/binary"
 
-// todo: consider cryptographic hashing algorithm for routing
-// as it is now, dkv is vulnerable to a hashdos
+	"github.com/cespare/xxhash/v2"
+)
 
 // hashFunc implements the extremely fast xxhash algorithm for strings.
 func hashFunc(key string) hashKey {
 	return xxhash.Sum64String(key)
+}
+
+// hashFuncSecure implements a cryptographically secure SHA-256 hash function, returning a uint64 hash.
+func hashFuncSecure(key string) uint64 {
+	h := sha256.Sum256([]byte(key))
+	return binary.BigEndian.Uint64(h[:8])
 }
 
 // hashBytes implements the extremely fast xxhash algorithm for byte arrays.
