@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/hashmap"
-	"github.com/rosewrightdev/dkv/mesh"
+	"github.com/rosewrightdev/dkv/internal/hashmap"
+	"github.com/rosewrightdev/dkv/internal/mesh"
 )
 
 func BenchmarkStorageWriter_ApplySet(b *testing.B) {

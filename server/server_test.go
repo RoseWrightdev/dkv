@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/entropy"
-	"github.com/rosewrightdev/dkv/hashmap"
+	"github.com/rosewrightdev/dkv/internal/entropy"
+	"github.com/rosewrightdev/dkv/internal/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

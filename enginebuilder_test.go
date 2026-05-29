@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/clock"
+	"github.com/rosewrightdev/dkv/internal/clock"
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"

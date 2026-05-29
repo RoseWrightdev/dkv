@@ -3,7 +3,7 @@ package gateway
 import (
 	"testing"
 
-	"github.com/rosewrightdev/dkv/mesh"
+	"github.com/rosewrightdev/dkv/internal/mesh"
 )
 
 func BenchmarkGateway_GetReplicationFactor(b *testing.B) {

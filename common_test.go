@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/clock"
+	"github.com/rosewrightdev/dkv/internal/clock"
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/mesh"
+	"github.com/rosewrightdev/dkv/internal/mesh"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/proto"

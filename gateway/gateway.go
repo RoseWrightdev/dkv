@@ -8,7 +8,7 @@ import (
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/mesh"
+	"github.com/rosewrightdev/dkv/internal/mesh"
 	"google.golang.org/grpc/credentials"
 )
 

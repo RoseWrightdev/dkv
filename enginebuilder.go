@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/rosewrightdev/dkv/clock"
+	"github.com/rosewrightdev/dkv/internal/clock"
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/mesh"
+	"github.com/rosewrightdev/dkv/internal/mesh"
 )
 
 // EngineBuilder provides a fluent API for constructing and configuring a dkv engine.

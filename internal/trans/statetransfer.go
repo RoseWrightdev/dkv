@@ -9,9 +9,9 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/hashmap"
+	"github.com/rosewrightdev/dkv/internal/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/snap"
+	"github.com/rosewrightdev/dkv/internal/snap"
 )
 
 var (

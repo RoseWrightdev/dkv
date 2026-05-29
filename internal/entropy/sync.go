@@ -11,10 +11,10 @@ import (
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/gateway"
-	"github.com/rosewrightdev/dkv/hashmap"
+	"github.com/rosewrightdev/dkv/internal/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/mesh"
-	"github.com/rosewrightdev/dkv/writer"
+	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/internal/writer"
 	"google.golang.org/grpc/credentials"
 )
 

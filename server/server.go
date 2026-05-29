@@ -9,8 +9,8 @@ import (
 
 	"github.com/rosewrightdev/dkv"
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/entropy"
-	"github.com/rosewrightdev/dkv/hashmap"
+	"github.com/rosewrightdev/dkv/internal/entropy"
+	"github.com/rosewrightdev/dkv/internal/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc"
 )
