@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -70,7 +71,7 @@ func newCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 			eb.FastTest()
 		}
 
-		eb.SetNodeID(NodeID(name)).
+		eb.SetNodeID(kv.NodeID(name)).
 			SetCreds(creds).
 			SetBindPort(basePort + i*2).
 			SetGrpcPort(basePort + i*2 + 1)
@@ -128,7 +129,7 @@ func (c *Cluster) Start() error {
 }
 
 // stopEngine stops a specific engine and its corresponding server for integration tests.
-func (c *Cluster) stopEngine(id NodeID) {
+func (c *Cluster) stopEngine(id kv.NodeID) {
 	for i, engine := range c.Engines {
 		if engine.NodeID() == id {
 			c.Servers[i].HardStop()
@@ -148,7 +149,7 @@ func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds cr
 		eb.FastTest()
 	}
 
-	eb.SetNodeID(NodeID(name)).
+	eb.SetNodeID(kv.NodeID(name)).
 		SetCreds(creds).
 		SetBindPort(basePort).
 		SetGrpcPort(basePort + 1).

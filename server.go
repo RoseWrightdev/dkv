@@ -8,6 +8,8 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/entropy"
+	"github.com/rosewrightdev/dkv/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc"
 )
@@ -26,13 +28,13 @@ type serverPools struct {
 func newServerPools() *serverPools {
 	return &serverPools{
 		shards: sync.Pool{
-			New: func() any { return make(map[ShardID]Digest) },
+			New: func() any { return make(map[hashmap.ShardID]hashmap.Digest) },
 		},
 		buckets: sync.Pool{
 			New: func() any {
-				m := make(map[ShardID]ShardDigest, shardCount)
-				for i := range shardCount {
-					m[ShardID(i)] = make([]Digest, subBucketCount)
+				m := make(map[hashmap.ShardID]hashmap.ShardDigest, hashmap.ShardCount)
+				for i := range hashmap.ShardCount {
+					m[hashmap.ShardID(i)] = make([]hashmap.Digest, hashmap.SubBucketCount)
 				}
 				return m
 			},
@@ -64,8 +66,8 @@ func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResp
 }
 
 func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, error) {
-	shards := s.pools.shards.Get().(map[ShardID]Digest)
-	buckets := s.pools.buckets.Get().(map[ShardID]ShardDigest)
+	shards := s.pools.shards.Get().(map[hashmap.ShardID]hashmap.Digest)
+	buckets := s.pools.buckets.Get().(map[hashmap.ShardID]hashmap.ShardDigest)
 
 	// Clean up after use
 	defer func() {
@@ -82,19 +84,19 @@ func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, 
 
 	for id, h := range in.ShardDigests {
 		// #nosec G115
-		shards[ShardID(id)] = h
+		shards[hashmap.ShardID(id)] = h
 	}
 
 	for id, sd := range in.SubDigests {
 		// #nosec G115
-		copy(buckets[ShardID(id)], sd.SubHashes)
+		copy(buckets[hashmap.ShardID(id)], sd.SubHashes)
 	}
 
-	sets, deletes, err := s.eng.SyncPull(&PullConfig{
-		requesterID: NodeID(in.NodeId),
-		root:        RootDigest(in.RootDigest),
-		shards:      shards,
-		buckets:     buckets,
+	sets, deletes, err := s.eng.SyncPull(&entropy.PullConfig{
+		RequesterID: kv.NodeID(in.NodeId),
+		Root:        hashmap.RootDigest(in.RootDigest),
+		Shards:      shards,
+		Buckets:     buckets,
 	})
 	if err != nil {
 		return nil, err

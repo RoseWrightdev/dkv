@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/gateway"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials/insecure"
@@ -48,7 +50,7 @@ func TestClusterScaleAndDurability(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// We create an insecure client against the first node
-	client, err := NewInsecureClient(cluster.Engines[0].Addr(), 2*time.Second)
+	client, err := gateway.NewInsecureClient(cluster.Engines[0].Addr(), 2*time.Second)
 	require.NoError(t, err)
 
 	// Concurrently write 1000 keys
@@ -70,10 +72,10 @@ func TestClusterScaleAndDurability(t *testing.T) {
 
 	// While writes are happening, we take down node-3 and node-7
 	time.Sleep(50 * time.Millisecond)
-	cluster.stopEngine(NodeID("node-3"))
-	cluster.stopEngine(NodeID("node-7"))
-	cluster.stopEngine(NodeID("node-13"))
-	cluster.stopEngine(NodeID("node-14"))
+	cluster.stopEngine(kv.NodeID("node-3"))
+	cluster.stopEngine(kv.NodeID("node-7"))
+	cluster.stopEngine(kv.NodeID("node-13"))
+	cluster.stopEngine(kv.NodeID("node-14"))
 
 	wg.Wait()
 	close(errs)
@@ -115,7 +117,7 @@ func TestClusterFullRestartDurability(t *testing.T) {
 	// Wait a moment for gossip to stabilize
 	time.Sleep(1 * time.Second)
 
-	client, err := NewInsecureClient(cluster.Engines[0].Addr(), 2*time.Second)
+	client, err := gateway.NewInsecureClient(cluster.Engines[0].Addr(), 2*time.Second)
 	require.NoError(t, err)
 
 	numKeys := 2000
@@ -180,7 +182,7 @@ func TestClusterFullRestartDurability(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	client2, err := NewInsecureClient(cluster2.Engines[0].Addr(), 2*time.Second)
+	client2, err := gateway.NewInsecureClient(cluster2.Engines[0].Addr(), 2*time.Second)
 	require.NoError(t, err)
 
 	// Verify the 500 deleted keys are gone
@@ -224,9 +226,9 @@ func TestClusterChaosDurability(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	var clients []*Client
+	var clients []*gateway.Client
 	for _, eng := range cluster.Engines {
-		c, err := NewInsecureClient(eng.Addr(), 50*time.Millisecond)
+		c, err := gateway.NewInsecureClient(eng.Addr(), 50*time.Millisecond)
 		require.NoError(t, err)
 		clients = append(clients, c)
 	}
@@ -271,7 +273,7 @@ func TestClusterChaosDurability(t *testing.T) {
 			}
 			killed[target] = true
 			mu.Unlock()
-			cluster.stopEngine(NodeID(fmt.Sprintf("node-%d", target+1)))
+			cluster.stopEngine(kv.NodeID(fmt.Sprintf("node-%d", target+1)))
 		}
 	}()
 
@@ -328,9 +330,9 @@ func TestClusterDataRebalancing(t *testing.T) {
 	// Wait for gossip to settle
 	time.Sleep(1 * time.Second)
 
-	var clients []*Client
+	var clients []*gateway.Client
 	for _, eng := range cluster.Engines {
-		c, err := NewInsecureClient(eng.Addr(), 2*time.Second)
+		c, err := gateway.NewInsecureClient(eng.Addr(), 2*time.Second)
 		require.NoError(t, err)
 		clients = append(clients, c)
 	}

@@ -14,3 +14,7 @@ type Value struct {
 	Tombstone bool
 	ItemHash  uint64
 }
+
+// NodeID is a unique identifier for a node in the cluster.
+type NodeID string
+

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/entropy"
+	"github.com/rosewrightdev/dkv/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 )
@@ -175,48 +177,48 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 	// 2. eng2 is empty, it pulls from eng1
 	root2 := eng2.hm.RootDigest()
-	shards2 := make(map[ShardID]Digest)
-	buckets2 := make(map[ShardID]ShardDigest)
+	shards2 := make(map[hashmap.ShardID]hashmap.Digest)
+	buckets2 := make(map[hashmap.ShardID]hashmap.ShardDigest)
 	eng2.hm.FillShardDigests(shards2)
 	eng2.hm.FillDigests(buckets2)
 
-	syncer1 := newSyncer(&SyncerConfig{
-		nodeID:     eng1.meshConfig.NodeID,
-		writer:     eng1.sw,
-		mesh:       eng1.mesh,
-		meshConfig: &eng1.meshConfig,
-		hm:         eng1.hm,
-		pools:      eng1.pools,
-		interval:   mockConfig.gossipInterval,
-		creds:      mockConfig.creds,
-		cc:         eng1.gw.cc,
+	syncer1 := entropy.NewSyncer(&entropy.SyncerConfig{
+		NodeID:     eng1.meshConfig.NodeID,
+		Writer:     eng1.sw,
+		Mesh:       eng1.mesh,
+		MeshConfig: &eng1.meshConfig,
+		Hm:         eng1.hm,
+		Interval:   mockConfig.gossipInterval,
+		Creds:      mockConfig.creds,
+		Cc:         eng1.gw.Cc(),
 	})
+	eng1.syncer = syncer1
 
-	sets, deletes, err := eng1.pullWithSyncer(&PullConfig{
-		requesterID: "node2",
-		root:        root2,
-		shards:      shards2,
-		buckets:     buckets2,
-	}, *syncer1)
+	sets, deletes, err := eng1.SyncPull(&entropy.PullConfig{
+		RequesterID: "node2",
+		Root:        root2,
+		Shards:      shards2,
+		Buckets:     buckets2,
+	})
 	assert.NoError(t, err)
 	assert.Len(t, sets, 1)
 	assert.Len(t, deletes, 0)
 	assert.Equal(t, key1, sets[0].Key)
 
 	// 3. eng2 pushes the updates
-	syncer2 := newSyncer(&SyncerConfig{
-		nodeID:     eng2.meshConfig.NodeID,
-		writer:     eng2.sw,
-		mesh:       eng2.mesh,
-		meshConfig: &eng2.meshConfig,
-		hm:         eng2.hm,
-		pools:      eng2.pools,
-		interval:   mockConfig.gossipInterval,
-		creds:      mockConfig.creds,
-		cc:         eng2.gw.cc,
+	syncer2 := entropy.NewSyncer(&entropy.SyncerConfig{
+		NodeID:     eng2.meshConfig.NodeID,
+		Writer:     eng2.sw,
+		Mesh:       eng2.mesh,
+		MeshConfig: &eng2.meshConfig,
+		Hm:         eng2.hm,
+		Interval:   mockConfig.gossipInterval,
+		Creds:      mockConfig.creds,
+		Cc:         eng2.gw.Cc(),
 	})
+	eng2.syncer = syncer2
 
-	err = eng2.pushWithSyncer(sets, deletes, *syncer2)
+	err = eng2.SyncPush(sets, deletes)
 	assert.NoError(t, err)
 
 	got, ok := eng2.Get(kv.Key(key1))

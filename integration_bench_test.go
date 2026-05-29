@@ -35,7 +35,7 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 		FastTest().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
 		SetSnpPath(filepath.Join(n1Dir, "snp.gob")).
-		SetNodeID(dkv.NodeID("node1")).
+		SetNodeID(kv.NodeID("node1")).
 		SetBindPort(mlPort1).
 		SetGrpcPort(grpcPort1).
 		SetInsecure().
@@ -61,7 +61,7 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 		FastTest().
 		SetWalPath(filepath.Join(n2Dir, "wal")).
 		SetSnpPath(filepath.Join(n2Dir, "snp.gob")).
-		SetNodeID(dkv.NodeID("node2")).
+		SetNodeID(kv.NodeID("node2")).
 		SetBindPort(0).
 		SetGrpcPort(grpcPort2).
 		SetSeedNodes([]string{fmt.Sprintf("127.0.0.1:%d", mlPort1)}).

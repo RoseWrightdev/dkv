@@ -11,6 +11,8 @@ import (
 
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/mesh"
+	"github.com/rosewrightdev/dkv/gateway"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials/insecure"
@@ -27,7 +29,7 @@ var mockConfig = EngineConfig{
 	evt:            evict.NewLRU(evict.LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
 	gossipInterval: 10 * time.Second,
 	clock:          NewHLC(),
-	meshConfig:     MeshConfig{SingleNode: true},
+	meshConfig:     mesh.MeshConfig{SingleNode: true},
 	creds:          insecure.NewCredentials(),
 }
 
@@ -53,7 +55,7 @@ func cleanupEngineMocks(t *testing.T) {
 func FindKeyForNode(e Engine, nodeID string) string {
 	for i := range 1000 {
 		k := fmt.Sprintf("test-key-%d", i)
-		if e.Owner(kv.Key(k)) == NodeID(nodeID) {
+		if e.Owner(kv.Key(k)) == kv.NodeID(nodeID) {
 			return k
 		}
 	}
@@ -62,7 +64,7 @@ func FindKeyForNode(e Engine, nodeID string) string {
 
 // newTestNode builds, starts, and registers t.Cleanup for a single dkv engine+server.
 // It returns the engine and a gRPC client pointing at it.
-func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds []string, rf int) (Engine, *Client) {
+func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds []string, rf int) (Engine, *gateway.Client) {
 	t.Helper()
 	nodeDir := filepath.Join(tmpDir, name)
 	require.NoError(t, os.MkdirAll(nodeDir, 0750))
@@ -72,7 +74,7 @@ func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds 
 		FastTest().
 		SetWalPath(filepath.Join(nodeDir, "wal")).
 		SetSnpPath(filepath.Join(nodeDir, "snp.gob")).
-		SetNodeID(NodeID(name)).
+		SetNodeID(kv.NodeID(name)).
 		SetBindPort(mlPort).
 		SetGrpcPort(grpcPort).
 		SetInsecure().
@@ -94,7 +96,7 @@ func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds 
 		eng.Stop()
 	})
 
-	client, err := NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", grpcPort), 2*time.Second)
+	client, err := gateway.NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", grpcPort), 2*time.Second)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 

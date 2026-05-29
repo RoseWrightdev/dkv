@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv"
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -35,7 +36,7 @@ func main() {
 	}
 
 	if id := os.Getenv("DKV_NODE_ID"); id != "" {
-		builder.SetNodeID(dkv.NodeID(id))
+		builder.SetNodeID(kv.NodeID(id))
 	}
 
 	if addr := os.Getenv("DKV_BIND_ADDR"); addr != "" {

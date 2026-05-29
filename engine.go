@@ -10,11 +10,18 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/entropy"
 	"github.com/rosewrightdev/dkv/evict"
+	"github.com/rosewrightdev/dkv/gateway"
+	"github.com/rosewrightdev/dkv/gossip"
+	"github.com/rosewrightdev/dkv/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/mesh"
 	"github.com/rosewrightdev/dkv/security"
 	"github.com/rosewrightdev/dkv/snap"
+	"github.com/rosewrightdev/dkv/trans"
 	"github.com/rosewrightdev/dkv/wal"
+	"github.com/rosewrightdev/dkv/writer"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -23,11 +30,11 @@ type Engine interface {
 	Get(key kv.Key) ([]byte, bool)
 	Set(key kv.Key, value []byte) error
 	Delete(key kv.Key) error
-	Owner(key kv.Key) NodeID
-	NodeID() NodeID
+	Owner(key kv.Key) kv.NodeID
+	NodeID() kv.NodeID
 	Start()
 	Stop()
-	SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
+	SyncPull(pullConfig *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 	Addr() string
 	GossipAddr() string
@@ -37,15 +44,15 @@ type engine struct {
 	creds      credentials.TransportCredentials
 	clock      Clock
 	wal        wal.Waler
-	mesh       Mesher
+	mesh       mesh.Mesher
 	evt        evict.Evictor
-	gw         *Gateway
-	syncer     *Syncer
+	gw         *gateway.Gateway
+	syncer     *entropy.Syncer
 	pools      *pools
-	hm         *shardedMap
+	hm         *hashmap.ShardedMap
 	snp        *snap.Snapshotter
-	sw         *StorageWriter
-	meshConfig MeshConfig
+	sw         *writer.StorageWriter
+	meshConfig mesh.MeshConfig
 	startOnce  sync.Once
 	stopOnce   sync.Once
 }
@@ -57,7 +64,7 @@ type EngineConfig struct {
 	creds          credentials.TransportCredentials
 	walPath        string
 	snpPath        string
-	meshConfig     MeshConfig
+	meshConfig     mesh.MeshConfig
 	walInterval    time.Duration
 	snpInterval    time.Duration
 	walSegments    int
@@ -72,7 +79,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 	}
 
 	eng := &engine{
-		hm:         newShardedMap(),
+		hm:         hashmap.NewShardedMap(),
 		wal:        w,
 		clock:      config.clock,
 		meshConfig: config.meshConfig,
@@ -84,12 +91,12 @@ func newEngine(config EngineConfig) (Engine, error) {
 		slog.Error("Failed to recover database state", "error", err)
 	}
 
-	writer := newStorageWriter(eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
-	eng.sw = writer
+	swWriter := writer.NewStorageWriter(eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
+	eng.sw = swWriter
 
-	stateTransfer := newStateTransfer(eng.pools, eng.hm, writer)
+	stateTransfer := trans.NewStateTransfer(eng.hm, swWriter)
 
-	snp, err := snap.NewSnapshotter(config.snpPath, config.snpInterval, w, stateTransfer.streamToEncoder)
+	snp, err := snap.NewSnapshotter(config.snpPath, config.snpInterval, w, stateTransfer.StreamToEncoder)
 	if err != nil {
 		return nil, err
 	}
@@ -97,40 +104,59 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.evt = config.evt
 	eng.evt.SetEvictCallback(eng.Evict)
 
-	gossip := newGossip(eng.pools, writer)
+	gossipService := gossip.NewGossip(swWriter)
 
-	eng.mesh = &NopMesh{}
+	eng.mesh = &mesh.NopMesh{}
 	if !config.meshConfig.SingleNode {
-		mesh, err := newMesh(
-			gossip,
+		meshObj, err := mesh.NewMesh(
+			gossipService,
 			stateTransfer,
 			config.meshConfig,
 		)
 		if err != nil {
 			return nil, err
 		}
-		eng.mesh = mesh
+		eng.mesh = meshObj
 	}
-	writer.mesh = eng.mesh
+	swWriter.SetMesh(eng.mesh)
 
-	eng.gw = newGateway(eng.mesh, &eng.meshConfig, eng.pools, config.creds)
-	eng.gw.sw = writer
+	eng.gw = gateway.NewGateway(eng.mesh, &eng.meshConfig, config.creds)
+	eng.gw.SetStateWriter(swWriter)
 
 	if !config.meshConfig.SingleNode {
-		eng.syncer = newSyncer(&SyncerConfig{
-			nodeID:     config.meshConfig.NodeID,
-			writer:     eng.sw,
-			mesh:       eng.mesh,
-			meshConfig: &eng.meshConfig,
-			hm:         eng.hm,
-			pools:      eng.pools,
-			interval:   config.gossipInterval,
-			creds:      config.creds,
-			cc:         eng.gw.cc,
+		eng.syncer = entropy.NewSyncer(&entropy.SyncerConfig{
+			NodeID:     config.meshConfig.NodeID,
+			Writer:     eng.sw,
+			Mesh:       eng.mesh,
+			MeshConfig: &eng.meshConfig,
+			Hm:         eng.hm,
+			Interval:   config.gossipInterval,
+			Creds:      config.creds,
+			Cc:         eng.gw.Cc(),
 		})
 	}
 
 	return eng, nil
+}
+
+type pools struct {
+	setRequests     sync.Pool
+	deleteRequests  sync.Pool
+	snapshotEntries sync.Pool
+}
+
+func newPools() *pools {
+	return &pools{
+		setRequests: sync.Pool{
+			New: func() any { return &pb.SetRequest{} },
+		},
+		deleteRequests: sync.Pool{
+			New: func() any { return &pb.DeleteRequest{} },
+		},
+		snapshotEntries: sync.Pool{
+			New: func() any { return &snap.SnapshotEntry{} },
+		},
+	}
 }
 
 // Start initializes background services.
@@ -139,11 +165,11 @@ func (eng *engine) Start() {
 		eng.snp.Start()
 		eng.wal.Start()
 		eng.evt.Start()
-		if err := eng.mesh.start(); err != nil {
+		if err := eng.mesh.Start(); err != nil {
 			panic(fmt.Sprintf("failed to start cluster service: %v", err))
 		}
 		if eng.syncer != nil {
-			eng.syncer.start()
+			eng.syncer.Start()
 		}
 	})
 }
@@ -152,12 +178,12 @@ func (eng *engine) Start() {
 func (eng *engine) Stop() {
 	eng.stopOnce.Do(func() {
 		if eng.syncer != nil {
-			eng.syncer.stop()
+			eng.syncer.Stop()
 		}
 		eng.snp.Stop()
 		eng.wal.Stop()
 		eng.evt.Stop()
-		if err := eng.mesh.stop(); err != nil {
+		if err := eng.mesh.Stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
 		}
 		eng.gw.Close()
@@ -326,32 +352,22 @@ func (eng *engine) recover(snpPath string) error {
 	return nil
 }
 
-func (eng *engine) SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	return eng.syncer.pull(pullConfig)
-}
-
-// used for testing
-func (eng *engine) pullWithSyncer(pullConfig *PullConfig, syncer Syncer) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	return syncer.pull(pullConfig)
+func (eng *engine) SyncPull(pullConfig *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	return eng.syncer.Pull(pullConfig)
 }
 
 func (eng *engine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
-	return eng.syncer.push(sets, deletes)
+	return eng.syncer.Push(sets, deletes)
 }
 
-// used for testing
-func (eng *engine) pushWithSyncer(sets []*pb.SetRequest, deletes []*pb.DeleteRequest, syncer Syncer) error {
-	return syncer.push(sets, deletes)
-}
-
-func (eng *engine) Owner(key kv.Key) NodeID {
+func (eng *engine) Owner(key kv.Key) kv.NodeID {
 	if eng.meshConfig.SingleNode {
 		return eng.meshConfig.NodeID
 	}
 	return eng.mesh.Owner(key)
 }
 
-func (eng *engine) NodeID() NodeID {
+func (eng *engine) NodeID() kv.NodeID {
 	return eng.meshConfig.NodeID
 }
 

@@ -34,7 +34,7 @@ func TestReadProxying(t *testing.T) {
 	require.Eventually(t, func() bool {
 		for i := range 1000 {
 			k := fmt.Sprintf("key-%d", i)
-			if eng0.Owner(kv.Key(k)) == NodeID("node-2") && eng2.Owner(kv.Key(k)) == NodeID("node-2") {
+			if eng0.Owner(kv.Key(k)) == kv.NodeID("node-2") && eng2.Owner(kv.Key(k)) == kv.NodeID("node-2") {
 				key = k
 				return true
 			}

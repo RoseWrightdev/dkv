@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/entropy"
+	"github.com/rosewrightdev/dkv/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -32,14 +34,14 @@ func (m *mockEngine) Delete(key kv.Key) error {
 	return args.Error(0)
 }
 
-func (m *mockEngine) Owner(key kv.Key) NodeID {
+func (m *mockEngine) Owner(key kv.Key) kv.NodeID {
 	args := m.Called(key)
-	return NodeID(args.String(0))
+	return kv.NodeID(args.String(0))
 }
 
-func (m *mockEngine) NodeID() NodeID {
+func (m *mockEngine) NodeID() kv.NodeID {
 	args := m.Called()
-	return NodeID(args.String(0))
+	return kv.NodeID(args.String(0))
 }
 
 func (m *mockEngine) Start() { m.Called() }
@@ -58,8 +60,8 @@ func (m *mockEngine) Snapshot() error {
 	return args.Error(0)
 }
 
-func (m *mockEngine) SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	args := m.Called(pullConfig.requesterID, pullConfig.root, pullConfig.shards, pullConfig.buckets)
+func (m *mockEngine) SyncPull(pullConfig *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	args := m.Called(pullConfig.RequesterID, pullConfig.Root, pullConfig.Shards, pullConfig.Buckets)
 	return args.Get(0).([]*pb.SetRequest), args.Get(1).([]*pb.DeleteRequest), args.Error(2)
 }
 
@@ -68,15 +70,15 @@ func (m *mockEngine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest
 	return args.Error(0)
 }
 
-func (m *mockEngine) RootDigest() RootDigest {
-	return m.Called().Get(0).(RootDigest)
+func (m *mockEngine) RootDigest() hashmap.RootDigest {
+	return m.Called().Get(0).(hashmap.RootDigest)
 }
 
-func (m *mockEngine) FillShardDigests(dst map[ShardID]Digest) {
+func (m *mockEngine) FillShardDigests(dst map[hashmap.ShardID]hashmap.Digest) {
 	m.Called(dst)
 }
 
-func (m *mockEngine) FillDigests(dst map[ShardID]ShardDigest) {
+func (m *mockEngine) FillDigests(dst map[hashmap.ShardID]hashmap.ShardDigest) {
 	m.Called(dst)
 }
 
@@ -88,8 +90,8 @@ func TestServerHandlers(t *testing.T) {
 	}
 
 	t.Run("Pull_Success", func(t *testing.T) {
-		root := RootDigest(12345)
-		buckets := map[ShardID]ShardDigest{1: make([]Digest, 64)}
+		root := hashmap.RootDigest(12345)
+		buckets := map[hashmap.ShardID]hashmap.ShardDigest{1: make([]hashmap.Digest, 64)}
 		buckets[1][0] = 123
 
 		sets := []*pb.SetRequest{{Key: "k1", Value: []byte("v1")}}
@@ -147,16 +149,16 @@ func TestServer_PoolDegradation(t *testing.T) {
 	req1 := &pb.PullRequest{
 		RootDigest: 12345,
 		SubDigests: map[uint32]*pb.ShardDigests{
-			1: {SubHashes: make([]Digest, 64)},
+			1: {SubHashes: make([]hashmap.Digest, 64)},
 		},
 	}
 	me.On("SyncPull", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*pb.SetRequest{}, []*pb.DeleteRequest{}, nil).Once()
 	_, err := srv.Pull(context.Background(), req1)
 	assert.NoError(t, err)
 
-	var capturedBuckets map[ShardID]ShardDigest
+	var capturedBuckets map[hashmap.ShardID]hashmap.ShardDigest
 	me.On("SyncPull", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-		capturedBuckets = args.Get(3).(map[ShardID]ShardDigest)
+		capturedBuckets = args.Get(3).(map[hashmap.ShardID]hashmap.ShardDigest)
 	}).Return([]*pb.SetRequest{}, []*pb.DeleteRequest{}, nil).Once()
 
 	_, err = srv.Pull(context.Background(), &pb.PullRequest{})
@@ -213,4 +215,3 @@ func TestServer_ExtraEdgeCases(t *testing.T) {
 
 	me.AssertExpectations(t)
 }
-

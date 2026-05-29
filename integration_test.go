@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv"
+	"github.com/rosewrightdev/dkv/gateway"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,7 +66,7 @@ func TestClusterScale(t *testing.T) {
 
 	count := 3
 	var engines []dkv.Engine
-	var clients []*dkv.Client
+	var clients []*gateway.Client
 	var seedAddr string
 
 	for i := range count {
@@ -88,7 +89,7 @@ func TestClusterScale(t *testing.T) {
 			FastTest().
 			SetWalPath(filepath.Join(nodeDir, "wal")).
 			SetSnpPath(filepath.Join(nodeDir, "snp.gob")).
-			SetNodeID(dkv.NodeID(name)).
+			SetNodeID(kv.NodeID(name)).
 			SetBindPort(mlPort).
 			SetGrpcPort(grpcPort).
 			SetInsecure().
@@ -107,7 +108,7 @@ func TestClusterScale(t *testing.T) {
 		server := dkv.NewServer(eng)
 		go func() { _ = server.Run() }()
 
-		client, err := dkv.NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", grpcPort), time.Second)
+		client, err := gateway.NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", grpcPort), time.Second)
 		require.NoError(t, err)
 		clients = append(clients, client)
 	}
@@ -167,7 +168,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
 		SetSnpPath(filepath.Join(tmpDir, "n1-snp.gob")).
-		SetNodeID(dkv.NodeID("node1")).
+		SetNodeID(kv.NodeID("node1")).
 		SetBindPort(mlPort1).
 		SetGrpcPort(0).
 		SetInsecure().
@@ -190,7 +191,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n2-wal")).
 		SetSnpPath(filepath.Join(tmpDir, "n2-snp.gob")).
-		SetNodeID(dkv.NodeID("node2")).
+		SetNodeID(kv.NodeID("node2")).
 		SetBindPort(0).
 		SetGrpcPort(0).
 		SetSeedNodes([]string{fmt.Sprintf("127.0.0.1:%d", mlPort1)}).
@@ -233,7 +234,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
 		SetSnpPath(filepath.Join(tmpDir, "n1-snp.gob")).
-		SetNodeID(dkv.NodeID("node1")).
+		SetNodeID(kv.NodeID("node1")).
 		SetBindPort(mlPort1).
 		SetGrpcPort(grpcPort1).
 		SetInsecure().
@@ -256,7 +257,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n2-wal")).
 		SetSnpPath(filepath.Join(tmpDir, "n2-snp.gob")).
-		SetNodeID(dkv.NodeID("node2")).
+		SetNodeID(kv.NodeID("node2")).
 		SetBindPort(0).
 		SetGrpcPort(grpcPort2).
 		SetSeedNodes([]string{fmt.Sprintf("127.0.0.1:%d", mlPort1)}).

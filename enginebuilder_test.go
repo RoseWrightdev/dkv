@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv/evict"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -94,7 +95,7 @@ func TestEngineBuilder_Validation(t *testing.T) {
 
 	t.Run("MissingGossipInterval_InDistributedMode", func(t *testing.T) {
 		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
-		eb.meshBuilder.config.SingleNode = false
+		eb.meshBuilder.Distributed()
 		eb.gossipInterval = 0
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.gossipInterval is unset")
@@ -103,7 +104,7 @@ func TestEngineBuilder_Validation(t *testing.T) {
 
 func TestEngineBuilder_ProxyMethods(t *testing.T) {
 	eb := NewEngineBuilder()
-	eb.SetNodeID(NodeID("test-node")).
+	eb.SetNodeID(kv.NodeID("test-node")).
 		SetBindAddr("127.0.0.1").
 		SetBindPort(1234).
 		SetAdvertiseAddr("1.2.3.4").
@@ -111,7 +112,7 @@ func TestEngineBuilder_ProxyMethods(t *testing.T) {
 		SetGrpcPort(8080)
 
 	cfg := eb.meshBuilder.Build()
-	assert.Equal(t, NodeID("test-node"), cfg.NodeID)
+	assert.Equal(t, kv.NodeID("test-node"), cfg.NodeID)
 	assert.Equal(t, "127.0.0.1", cfg.BindAddr)
 	assert.Equal(t, 1234, cfg.BindPort)
 	assert.Equal(t, "1.2.3.4", cfg.AdvertiseAddr)

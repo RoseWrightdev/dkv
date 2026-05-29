@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/rosewrightdev/dkv/gateway"
 )
 
 func BenchmarkServer_Get_gRPC(b *testing.B) {
@@ -15,7 +17,7 @@ func BenchmarkServer_Get_gRPC(b *testing.B) {
 	}()
 	defer s.Stop()
 
-	client, _ := NewInsecureClient(eng.Addr(), time.Second)
+	client, _ := gateway.NewInsecureClient(eng.Addr(), time.Second)
 	defer func() {
 		_ = client.Close()
 	}()
@@ -39,7 +41,7 @@ func BenchmarkServer_Delete_gRPC(b *testing.B) {
 	}()
 	defer s.Stop()
 
-	client, _ := NewInsecureClient(eng.Addr(), time.Second)
+	client, _ := gateway.NewInsecureClient(eng.Addr(), time.Second)
 	defer func() {
 		_ = client.Close()
 	}()
@@ -72,7 +74,7 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 	val := []byte("val")
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
-		client, _ := NewInsecureClient(eng.Addr(), time.Second)
+		client, _ := gateway.NewInsecureClient(eng.Addr(), time.Second)
 		defer func() {
 			_ = client.Close()
 		}()
