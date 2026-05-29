@@ -1,6 +1,7 @@
 *.out
 dkv.test
 .idea
+.vscode
 data
 
 # Node
