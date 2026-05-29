@@ -8,9 +8,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var walEntriesPool sync.Pool = sync.Pool{
-	New: func() any { return &pb.WalEntry{} },
-}
 
 // StateWriter defines the interface for applying sets and deletes to the state.
 type StateWriter interface {
@@ -25,20 +22,24 @@ type Gossiper interface {
 
 // Gossip manages the replication of messages received via gossip protocols.
 type Gossip struct {
-	writer StateWriter
+	writer         StateWriter
+	walEntriesPool sync.Pool
 }
 
 // NewGossip creates a new Gossip instance that handles incoming UDP replication messages.
 func NewGossip(writer StateWriter) *Gossip {
 	return &Gossip{
 		writer: writer,
+		walEntriesPool: sync.Pool{
+			New: func() any { return &pb.WalEntry{} },
+		},
 	}
 }
 
 // OnGossip processes raw incoming UDP gossip packets, unmarshals them into WAL entries, and applies the updates via the StateWriter.
 func (g *Gossip) OnGossip(data []byte) {
-	entry := walEntriesPool.Get().(*pb.WalEntry)
-	defer walEntriesPool.Put(entry)
+	entry := g.walEntriesPool.Get().(*pb.WalEntry)
+	defer g.walEntriesPool.Put(entry)
 	entry.Reset()
 
 	if err := proto.Unmarshal(data, entry); err != nil {

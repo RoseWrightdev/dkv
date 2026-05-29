@@ -14,17 +14,6 @@ import (
 	"github.com/rosewrightdev/dkv/kv"
 )
 
-var (
-	snapshotEntries = sync.Pool{
-		New: func() any { return &snap.SnapshotEntry{} },
-	}
-	setRequests = sync.Pool{
-		New: func() any { return &pb.SetRequest{} },
-	}
-	deleteRequests = sync.Pool{
-		New: func() any { return &pb.DeleteRequest{} },
-	}
-)
 
 // StateWriter defines the interface for applying sets and deletes to the state.
 type StateWriter interface {
@@ -40,8 +29,11 @@ type StateExchanger interface {
 
 // StateTransfer coordinates the exchange of local and remote database state.
 type StateTransfer struct {
-	hm     *hashmap.ShardedMap
-	writer StateWriter
+	hm              *hashmap.ShardedMap
+	writer          StateWriter
+	snapshotEntries sync.Pool
+	setRequests     sync.Pool
+	deleteRequests  sync.Pool
 }
 
 // NewStateTransfer creates a StateTransfer instance to handle state import/export across cluster nodes.
@@ -49,6 +41,15 @@ func NewStateTransfer(hm *hashmap.ShardedMap, writer StateWriter) *StateTransfer
 	return &StateTransfer{
 		hm:     hm,
 		writer: writer,
+		snapshotEntries: sync.Pool{
+			New: func() any { return &snap.SnapshotEntry{} },
+		},
+		setRequests: sync.Pool{
+			New: func() any { return &pb.SetRequest{} },
+		},
+		deleteRequests: sync.Pool{
+			New: func() any { return &pb.DeleteRequest{} },
+		},
 	}
 }
 
@@ -78,7 +79,7 @@ func (st *StateTransfer) ImportState(buf []byte) {
 func (st *StateTransfer) StreamToEncoder(enc *gob.Encoder) error {
 	var err error
 	st.hm.Range(func(k kv.Key, v kv.Value) bool {
-		entry := snapshotEntries.Get().(*snap.SnapshotEntry)
+		entry := st.snapshotEntries.Get().(*snap.SnapshotEntry)
 		entry.Key = k
 		entry.Data = v.Data
 		entry.Timestamp = v.Timestamp
@@ -90,14 +91,14 @@ func (st *StateTransfer) StreamToEncoder(enc *gob.Encoder) error {
 			entry.Data = nil
 			entry.Timestamp = 0
 			entry.Tombstone = false
-			snapshotEntries.Put(entry)
+			st.snapshotEntries.Put(entry)
 			return false // stop iteration
 		}
 		entry.Key = ""
 		entry.Data = nil
 		entry.Timestamp = 0
 		entry.Tombstone = false
-		snapshotEntries.Put(entry)
+		st.snapshotEntries.Put(entry)
 		return true // continue iteration
 	})
 	return err
@@ -108,13 +109,13 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 	dec := gob.NewDecoder(r)
 	count := 0
 	for {
-		entry := snapshotEntries.Get().(*snap.SnapshotEntry)
+		entry := st.snapshotEntries.Get().(*snap.SnapshotEntry)
 		if err := dec.Decode(entry); err != nil {
 			entry.Key = ""
 			entry.Data = nil
 			entry.Timestamp = 0
 			entry.Tombstone = false
-			snapshotEntries.Put(entry)
+			st.snapshotEntries.Put(entry)
 			if err == io.EOF {
 				break
 			}
@@ -122,34 +123,34 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 		}
 
 		if entry.Tombstone {
-			req := deleteRequests.Get().(*pb.DeleteRequest)
+			req := st.deleteRequests.Get().(*pb.DeleteRequest)
 			req.Key = entry.Key
 			req.Timestamp = entry.Timestamp
 			err := st.writer.ApplyDelete(req)
 			req.Reset()
-			deleteRequests.Put(req)
+			st.deleteRequests.Put(req)
 			if err != nil {
 				entry.Key = ""
 				entry.Data = nil
 				entry.Timestamp = 0
 				entry.Tombstone = false
-				snapshotEntries.Put(entry)
+				st.snapshotEntries.Put(entry)
 				return err
 			}
 		} else {
-			req := setRequests.Get().(*pb.SetRequest)
+			req := st.setRequests.Get().(*pb.SetRequest)
 			req.Key = entry.Key
 			req.Value = entry.Data
 			req.Timestamp = entry.Timestamp
 			err := st.writer.ApplySet(req)
 			req.Reset()
-			setRequests.Put(req)
+			st.setRequests.Put(req)
 			if err != nil {
 				entry.Key = ""
 				entry.Data = nil
 				entry.Timestamp = 0
 				entry.Tombstone = false
-				snapshotEntries.Put(entry)
+				st.snapshotEntries.Put(entry)
 				return err
 			}
 		}
@@ -158,7 +159,7 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 		entry.Data = nil
 		entry.Timestamp = 0
 		entry.Tombstone = false
-		snapshotEntries.Put(entry)
+		st.snapshotEntries.Put(entry)
 		count++
 	}
 

@@ -133,7 +133,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 			Hm:         eng.hm,
 			Interval:   config.gossipInterval,
 			Creds:      config.creds,
-			Cc:         eng.gw.Cc(),
+			Cc:         eng.gw.GetClientCache(),
 		})
 	}
 

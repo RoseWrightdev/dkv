@@ -190,7 +190,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 		Hm:         eng1.hm,
 		Interval:   mockConfig.gossipInterval,
 		Creds:      mockConfig.creds,
-		Cc:         eng1.gw.Cc(),
+		Cc:         eng1.gw.GetClientCache(),
 	})
 	eng1.syncer = syncer1
 
@@ -214,7 +214,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 		Hm:         eng2.hm,
 		Interval:   mockConfig.gossipInterval,
 		Creds:      mockConfig.creds,
-		Cc:         eng2.gw.Cc(),
+		Cc:         eng2.gw.GetClientCache(),
 	})
 	eng2.syncer = syncer2
 

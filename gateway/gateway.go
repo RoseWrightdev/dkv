@@ -12,14 +12,6 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-var (
-	setRequests = sync.Pool{
-		New: func() any { return &pb.SetRequest{} },
-	}
-	deleteRequests = sync.Pool{
-		New: func() any { return &pb.DeleteRequest{} },
-	}
-)
 
 // StateWriter defines the interface for applying sets and deletes to the state.
 type StateWriter interface {
@@ -30,10 +22,12 @@ type StateWriter interface {
 // Gateway wraps a client cache and consistent hashing routing to proxy
 // requests to the appropriate peer nodes.
 type Gateway struct {
-	cc         *ClientCache
-	mesh       mesh.Mesher
-	meshConfig *mesh.MeshConfig
-	sw         StateWriter // Set during engine initialization
+	cc             *ClientCache
+	mesh           mesh.Mesher
+	meshConfig     *mesh.MeshConfig
+	sw             StateWriter // Set during engine initialization
+	setRequests    sync.Pool
+	deleteRequests sync.Pool
 }
 
 // NewGateway initializes a new Gateway instance.
@@ -42,6 +36,12 @@ func NewGateway(meshObj mesh.Mesher, meshConfig *mesh.MeshConfig, creds credenti
 		cc:         NewClientCache(creds),
 		mesh:       meshObj,
 		meshConfig: meshConfig,
+		setRequests: sync.Pool{
+			New: func() any { return &pb.SetRequest{} },
+		},
+		deleteRequests: sync.Pool{
+			New: func() any { return &pb.DeleteRequest{} },
+		},
 	}
 }
 
@@ -165,8 +165,8 @@ func (g *Gateway) Close() {
 	g.cc.Close()
 }
 
-// Cc returns the gateway's ClientCache.
-func (g *Gateway) Cc() *ClientCache {
+// GetClientCache returns the gateway's ClientCache.
+func (g *Gateway) GetClientCache() *ClientCache {
 	return g.cc
 }
 
@@ -194,8 +194,8 @@ func (g *Gateway) proxyGetRemote(node kv.NodeID, key kv.Key) ([]byte, bool, erro
 }
 
 func (g *Gateway) applySetLocal(key kv.Key, value []byte, ts int64) error {
-	req := setRequests.Get().(*pb.SetRequest)
-	defer setRequests.Put(req)
+	req := g.setRequests.Get().(*pb.SetRequest)
+	defer g.setRequests.Put(req)
 	req.Key = key
 	req.Value = value
 	req.Timestamp = ts
@@ -216,8 +216,8 @@ func (g *Gateway) applySetRemote(node kv.NodeID, key kv.Key, value []byte, ts in
 		return err
 	}
 
-	req := setRequests.Get().(*pb.SetRequest)
-	defer setRequests.Put(req)
+	req := g.setRequests.Get().(*pb.SetRequest)
+	defer g.setRequests.Put(req)
 	req.Key = key
 	req.Value = value
 	req.Timestamp = ts
@@ -236,8 +236,8 @@ func (g *Gateway) applySetRemote(node kv.NodeID, key kv.Key, value []byte, ts in
 }
 
 func (g *Gateway) applyDeleteLocal(key kv.Key, ts int64) error {
-	req := deleteRequests.Get().(*pb.DeleteRequest)
-	defer deleteRequests.Put(req)
+	req := g.deleteRequests.Get().(*pb.DeleteRequest)
+	defer g.deleteRequests.Put(req)
 	req.Key = key
 	req.Timestamp = ts
 	req.NodeId = string(g.meshConfig.NodeID)
@@ -257,8 +257,8 @@ func (g *Gateway) applyDeleteRemote(node kv.NodeID, key kv.Key, ts int64) error 
 		return err
 	}
 
-	req := deleteRequests.Get().(*pb.DeleteRequest)
-	defer deleteRequests.Put(req)
+	req := g.deleteRequests.Get().(*pb.DeleteRequest)
+	defer g.deleteRequests.Put(req)
 	req.Key = key
 	req.Timestamp = ts
 	req.NodeId = string(g.meshConfig.NodeID)
