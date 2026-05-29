@@ -13,6 +13,7 @@ import (
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/security"
+	"github.com/rosewrightdev/dkv/wal"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -34,7 +35,7 @@ type Engine interface {
 type engine struct {
 	creds      credentials.TransportCredentials
 	clock      Clock
-	wal        Waler
+	wal        wal.Waler
 	mesh       Mesher
 	evt        evict.Evictor
 	gw         *Gateway
@@ -64,14 +65,14 @@ type EngineConfig struct {
 }
 
 func newEngine(config EngineConfig) (Engine, error) {
-	wal, err := newWal(config.walPath, config.walInterval, config.walBufferSize, config.walSegments)
+	w, err := wal.NewWal(config.walPath, config.walInterval, config.walBufferSize, config.walSegments)
 	if err != nil {
 		return nil, err
 	}
 
 	eng := &engine{
 		hm:         newShardedMap(),
-		wal:        wal,
+		wal:        w,
 		clock:      config.clock,
 		meshConfig: config.meshConfig,
 		creds:      config.creds,
@@ -87,7 +88,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 
 	stateTransfer := newStateTransfer(eng.pools, eng.hm, writer)
 
-	snp, err := newSnapshotter(config.snpPath, config.snpInterval, wal, stateTransfer.streamToEncoder)
+	snp, err := newSnapshotter(config.snpPath, config.snpInterval, w, stateTransfer.streamToEncoder)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 func (eng *engine) Start() {
 	eng.startOnce.Do(func() {
 		eng.snp.start()
-		eng.wal.start()
+		eng.wal.Start()
 		eng.evt.Start()
 		if err := eng.mesh.start(); err != nil {
 			panic(fmt.Sprintf("failed to start cluster service: %v", err))
@@ -153,7 +154,7 @@ func (eng *engine) Stop() {
 			eng.syncer.stop()
 		}
 		eng.snp.stop()
-		eng.wal.stop()
+		eng.wal.Stop()
 		eng.evt.Stop()
 		if err := eng.mesh.stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
@@ -204,7 +205,7 @@ func (eng *engine) Set(key kv.Key, value []byte) error {
 			NodeID:    string(eng.meshConfig.NodeID),
 			Tombstone: false,
 		})
-		err := eng.wal.publish(key, hash, req)
+		err := eng.wal.Publish(key, hash, req)
 		req.Reset()
 		eng.pools.setRequests.Put(req)
 		return err
@@ -232,7 +233,7 @@ func (eng *engine) Delete(key kv.Key) error {
 			NodeID:    string(eng.meshConfig.NodeID),
 			Tombstone: true,
 		})
-		err := eng.wal.publish(key, hash, req)
+		err := eng.wal.Publish(key, hash, req)
 		req.Reset()
 		eng.pools.deleteRequests.Put(req)
 		return err
@@ -263,7 +264,7 @@ func (eng *engine) Evict(key kv.Key, reason evict.EvictReason) error {
 			NodeID:    string(eng.meshConfig.NodeID),
 			Tombstone: true,
 		})
-		err := eng.wal.publish(key, hash, req)
+		err := eng.wal.Publish(key, hash, req)
 		req.Reset()
 		eng.pools.deleteRequests.Put(req)
 		return err
@@ -309,7 +310,7 @@ func (eng *engine) recover(snpPath string) error {
 		slog.Info("Loaded state from snapshot", "path", snpPath, "keys", count)
 	}
 
-	updates, err := eng.wal.replay()
+	updates, err := eng.wal.Replay()
 	if err != nil {
 		return err
 	}

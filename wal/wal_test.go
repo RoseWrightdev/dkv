@@ -1,9 +1,10 @@
-package dkv
+package wal
 
 import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/kv"
@@ -12,33 +13,45 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var (
+	mockWalPath       = "test_wal_dir"
+	mockWalInterval   = 100 * time.Millisecond
+	mockWalBufferSize = uint32(64 * 1024)
+)
+
+func cleanupWal(t *testing.T) {
+	if err := os.RemoveAll(mockWalPath); err != nil && !os.IsNotExist(err) {
+		assert.Nil(t, err)
+	}
+}
+
 func TestNewWal(t *testing.T) {
-	_, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	_, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 1)
 	assert.Nil(t, err)
 
-	cleanupEngineMocks(t)
+	cleanupWal(t)
 }
 
 func TestPublish(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupWal(t)
 
 	req := pb.SetRequest{Key: "key", Value: []byte{byte(32)}, Timestamp: 100}
-	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	wal, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 1)
 	assert.Nil(t, err)
 
-	err = wal.publish(req.Key, security.HashFunc(req.Key), &req)
+	err = wal.Publish(req.Key, security.HashFunc(req.Key), &req)
 	assert.Nil(t, err)
 
-	replay, err := wal.replay()
+	replay, err := wal.Replay()
 	assert.Nil(t, err)
 	assert.Equal(t, []byte{32}, replay["key"].Data)
 	assert.Equal(t, int64(100), replay["key"].Timestamp)
 }
 
 func TestReplay(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupWal(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 4)
+	wal, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 4)
 	exceptedValues := make([][]byte, 1000)
 	exceptedKeys := make([]string, 1000)
 	assert.Nil(t, err)
@@ -48,10 +61,10 @@ func TestReplay(t *testing.T) {
 		exceptedValues[i] = val
 		exceptedKeys[i] = key
 		req := pb.SetRequest{Key: key, Value: val, Timestamp: int64(i)}
-		err = wal.publish(key, security.HashFunc(key), &req)
+		err = wal.Publish(key, security.HashFunc(key), &req)
 		assert.Nil(t, err)
 	}
-	replay, err := wal.replay()
+	replay, err := wal.Replay()
 	assert.Nil(t, err, "Replay returned error")
 
 	gotValues := make([][]byte, 0, 1000)
@@ -66,33 +79,33 @@ func TestReplay(t *testing.T) {
 }
 
 func TestClear(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupWal(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	wal, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 1)
 	assert.Nil(t, err)
 
-	assert.Nil(t, wal.clear(nil))
-	content, err := os.ReadFile(mockConfig.walPath + "/seg_00.log")
+	assert.Nil(t, wal.Clear(nil))
+	content, err := os.ReadFile(mockWalPath + "/seg_00.log")
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(content))
 }
 
 func TestWal_PrepareSnapshot(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupWal(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 2)
+	wal, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 2)
 	assert.Nil(t, err)
 
 	// Write entries so segment files are non-empty
 	for i := range 20 {
 		key := strconv.Itoa(i)
 		req := pb.SetRequest{Key: key, Value: []byte{byte(i)}, Timestamp: int64(i)}
-		assert.Nil(t, wal.publish(key, security.HashFunc(key), &req))
+		assert.Nil(t, wal.Publish(key, security.HashFunc(key), &req))
 	}
 
-	offsets, err := wal.prepareSnapshot()
+	offsets, err := wal.PrepareSnapshot()
 	assert.Nil(t, err)
-	assert.Len(t, offsets, 2, "prepareSnapshot should return one offset per segment")
+	assert.Len(t, offsets, 2, "PrepareSnapshot should return one offset per segment")
 
 	// Each offset should be positive (segments are non-empty)
 	for i, off := range offsets {
@@ -101,39 +114,39 @@ func TestWal_PrepareSnapshot(t *testing.T) {
 }
 
 func TestWal_ClearWithOffsets(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupWal(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	wal, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 1)
 	assert.Nil(t, err)
 
 	// Write some entries before snapshot point
 	for i := range 5 {
 		key := strconv.Itoa(i)
 		req := pb.SetRequest{Key: key, Value: []byte{byte(i)}, Timestamp: int64(i)}
-		assert.Nil(t, wal.publish(key, security.HashFunc(key), &req))
+		assert.Nil(t, wal.Publish(key, security.HashFunc(key), &req))
 	}
 
 	// Capture snapshot offsets
-	offsets, err := wal.prepareSnapshot()
+	offsets, err := wal.PrepareSnapshot()
 	assert.Nil(t, err)
 
 	// Write more entries AFTER the snapshot point
 	postKeys := []string{"post-a", "post-b", "post-c"}
 	for _, k := range postKeys {
 		req := pb.SetRequest{Key: k, Value: []byte("post-snapshot"), Timestamp: 999}
-		assert.Nil(t, wal.publish(k, security.HashFunc(k), &req))
+		assert.Nil(t, wal.Publish(k, security.HashFunc(k), &req))
 	}
 
-	// clear with offsets: only data before snapshot should be removed;
+	// Clear with offsets: only data before snapshot should be removed;
 	// post-snapshot entries should survive.
-	assert.Nil(t, wal.clear(offsets))
+	assert.Nil(t, wal.Clear(offsets))
 
 	// Replay and verify only post-snapshot entries remain
-	replay, err := wal.replay()
+	replay, err := wal.Replay()
 	assert.Nil(t, err)
 	for _, k := range postKeys {
 		_, ok := replay[kv.Key(k)]
-		assert.True(t, ok, "post-snapshot key %q should survive clear(offsets)", k)
+		assert.True(t, ok, "post-snapshot key %q should survive Clear(offsets)", k)
 	}
 
 	// Pre-snapshot keys should be gone
@@ -145,29 +158,29 @@ func TestWal_ClearWithOffsets(t *testing.T) {
 }
 
 func TestWal_ClearNilOffsets(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupWal(t)
 
-	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 2)
+	wal, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 2)
 	assert.Nil(t, err)
 
 	for i := range 10 {
 		key := strconv.Itoa(i)
 		req := pb.SetRequest{Key: key, Value: []byte{byte(i)}, Timestamp: int64(i)}
-		assert.Nil(t, wal.publish(key, security.HashFunc(key), &req))
+		assert.Nil(t, wal.Publish(key, security.HashFunc(key), &req))
 	}
 
-	// clear(nil) should truncate all segments entirely
-	assert.Nil(t, wal.clear(nil))
+	// Clear(nil) should truncate all segments entirely
+	assert.Nil(t, wal.Clear(nil))
 
-	replay, err := wal.replay()
+	replay, err := wal.Replay()
 	assert.Nil(t, err)
 	assert.Empty(t, replay, "all entries should be cleared when offsets is nil")
 }
 
 func TestWal_ExtraEdgeCases(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupWal(t)
 
-	// 1. newWal directory creation failure
+	// 1. NewWal directory creation failure
 	// We can create a regular file first, then try to create WAL with that file's path as the directory.
 	// This will make os.MkdirAll fail.
 	tmpFile, err := os.CreateTemp("", "wal-failure-test-*")
@@ -177,41 +190,41 @@ func TestWal_ExtraEdgeCases(t *testing.T) {
 		_ = os.Remove(tmpFile.Name())
 	}()
 
-	_, err = newWal(tmpFile.Name(), mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	_, err = NewWal(tmpFile.Name(), mockWalInterval, mockWalBufferSize, 1)
 	assert.Error(t, err)
 
-	// 2. publish pb.WalEntry directly
-	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	// 2. Publish pb.WalEntry directly
+	wal, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 1)
 	assert.NoError(t, err)
-	defer wal.stop()
+	defer wal.Stop()
 
 	entryMsg := &pb.WalEntry{
 		Entry: &pb.WalEntry_Set{
 			Set: &pb.SetRequest{Key: "direct-entry", Value: []byte("val"), Timestamp: 200},
 		},
 	}
-	err = wal.publish("direct-entry", security.HashFunc("direct-entry"), entryMsg)
+	err = wal.Publish("direct-entry", security.HashFunc("direct-entry"), entryMsg)
 	assert.NoError(t, err)
 
-	// 3. publish unsupported type
-	err = wal.publish("key", security.HashFunc("key"), &pb.GetRequest{})
+	// 3. Publish unsupported type
+	err = wal.Publish("key", security.HashFunc("key"), &pb.GetRequest{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported message type")
 
-	// 4. publish pb.DeleteRequest and verify unwrap recycled pool wrappers
+	// 4. Publish pb.DeleteRequest and verify unwrap recycled pool wrappers
 	delMsg := &pb.DeleteRequest{Key: "direct-del", Timestamp: 250}
-	err = wal.publish("direct-del", security.HashFunc("direct-del"), delMsg)
+	err = wal.Publish("direct-del", security.HashFunc("direct-del"), delMsg)
 	assert.NoError(t, err)
 
-	// Verify replay on sets and deletes
-	replay, err := wal.replay()
+	// Verify Replay on sets and deletes
+	replay, err := wal.Replay()
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("val"), replay["direct-entry"].Data)
 	assert.True(t, replay["direct-del"].Tombstone)
 
 	// 5. replaySegment unmarshal error by writing bad bytes to the log
-	wal.stop() // stop sync so we can manually edit file safely
-	segPath := mockConfig.walPath + "/seg_00.log"
+	wal.Stop() // stop sync so we can manually edit file safely
+	segPath := mockWalPath + "/seg_00.log"
 
 	// Corrupt the file by writing a invalid header and payload
 	// #nosec G304
@@ -224,10 +237,10 @@ func TestWal_ExtraEdgeCases(t *testing.T) {
 	_ = f.Close()
 
 	// Replay should fail due to protobuf unmarshal error
-	walReopen, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
+	walReopen, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 1)
 	assert.NoError(t, err)
-	defer walReopen.stop()
+	defer walReopen.Stop()
 
-	_, err = walReopen.replay()
+	_, err = walReopen.Replay()
 	assert.Error(t, err)
 }

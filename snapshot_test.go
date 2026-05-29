@@ -15,12 +15,12 @@ type mockWal struct {
 	clearCalled bool
 }
 
-func (mw *mockWal) publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error { return nil }
-func (mw *mockWal) replay() (map[kv.Key]kv.Value, error)                  { return nil, nil }
-func (mw *mockWal) clear(_ []int64) error                           { mw.clearCalled = true; return nil }
-func (mw *mockWal) prepareSnapshot() ([]int64, error)               { return nil, nil }
-func (mw *mockWal) stop()                                           {}
-func (mw *mockWal) start()                                          {}
+func (mw *mockWal) Publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error { return nil }
+func (mw *mockWal) Replay() (map[kv.Key]kv.Value, error)                  { return nil, nil }
+func (mw *mockWal) Clear(_ []int64) error                           { mw.clearCalled = true; return nil }
+func (mw *mockWal) PrepareSnapshot() ([]int64, error)               { return nil, nil }
+func (mw *mockWal) Stop()                                           {}
+func (mw *mockWal) Start()                                          {}
 
 func TestNewSnapshotter(t *testing.T) {
 	defer cleanupEngineMocks(t)
@@ -99,7 +99,7 @@ type errorWal struct {
 	prepErr error
 }
 
-func (ew *errorWal) prepareSnapshot() ([]int64, error) {
+func (ew *errorWal) PrepareSnapshot() ([]int64, error) {
 	if ew.prepErr != nil {
 		return nil, ew.prepErr
 	}

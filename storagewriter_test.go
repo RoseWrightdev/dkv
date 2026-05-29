@@ -15,7 +15,7 @@ type mockStorageWal struct {
 	pubErr error
 }
 
-func (m *mockStorageWal) publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error {
+func (m *mockStorageWal) Publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error {
 	return m.pubErr
 }
 

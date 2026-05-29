@@ -8,12 +8,13 @@ import (
 	"sync"
 	"time"
 	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/wal"
 )
 
 // Snapshotter manages the background persistence of the engine state to disk.
 type Snapshotter struct {
 	ctx         context.Context
-	wal         Waler
+	wal         wal.Waler
 	cancel      context.CancelFunc
 	ch          chan struct{}
 	encCallBack func(*gob.Encoder) error
@@ -29,7 +30,7 @@ type snapshotEntry struct {
 	Tombstone bool
 }
 
-func newSnapshotter(path string, interval time.Duration, wal Waler, encCallBack func(*gob.Encoder) error) (*Snapshotter, error) {
+func newSnapshotter(path string, interval time.Duration, wal wal.Waler, encCallBack func(*gob.Encoder) error) (*Snapshotter, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ch := make(chan struct{}, 1)
@@ -101,7 +102,7 @@ func (snp *Snapshotter) queueSnapShot() {
 }
 
 func (snp *Snapshotter) create() error {
-	offsets, err := snp.wal.prepareSnapshot()
+	offsets, err := snp.wal.PrepareSnapshot()
 	if err != nil {
 		return err
 	}
@@ -135,7 +136,7 @@ func (snp *Snapshotter) create() error {
 		return err
 	}
 
-	if err := snp.wal.clear(offsets); err != nil {
+	if err := snp.wal.Clear(offsets); err != nil {
 		return err
 	}
 

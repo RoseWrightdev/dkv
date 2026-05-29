@@ -7,6 +7,7 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/security"
+	"github.com/rosewrightdev/dkv/wal"
 )
 
 // StateWriter defines the interface for applying sets and deletes to the state.
@@ -18,14 +19,14 @@ type StateWriter interface {
 // StorageWriter handles applying mutations to the storage engine.
 type StorageWriter struct {
 	hm         *shardedMap
-	wal        Waler
+	wal        wal.Waler
 	clock      Clock
 	mesh       Mesher
 	meshConfig *MeshConfig
 }
 
 // newStorageWriter creates a StorageWriter instance to process and persist key-value mutations.
-func newStorageWriter(hm *shardedMap, wal Waler, clock Clock, mesh Mesher, meshConfig *MeshConfig) *StorageWriter {
+func newStorageWriter(hm *shardedMap, wal wal.Waler, clock Clock, mesh Mesher, meshConfig *MeshConfig) *StorageWriter {
 	return &StorageWriter{
 		hm:         hm,
 		wal:        wal,
@@ -54,7 +55,7 @@ func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
 		return nil // Stale update ignored under LWW rules
 	}
 
-	if err := sw.wal.publish(req.Key, hash, req); err != nil {
+	if err := sw.wal.Publish(req.Key, hash, req); err != nil {
 		return fmt.Errorf("failed to persist gossip set to WAL: %w", err)
 	}
 	return nil
@@ -78,7 +79,7 @@ func (sw *StorageWriter) ApplyDelete(req *pb.DeleteRequest) error {
 		return nil // Stale delete ignored under LWW rules
 	}
 
-	if err := sw.wal.publish(req.Key, hash, req); err != nil {
+	if err := sw.wal.Publish(req.Key, hash, req); err != nil {
 		return fmt.Errorf("failed to persist gossip delete to WAL: %w", err)
 	}
 	return nil

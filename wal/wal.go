@@ -1,4 +1,4 @@
-package dkv
+package wal
 
 import (
 	"bufio"
@@ -17,12 +17,12 @@ import (
 
 // Waler defines the interface for a durable write-ahead log.
 type Waler interface {
-	publish(key kv.Key, hash kv.HashKey, msg proto.Message) error
-	replay() (map[kv.Key]kv.Value, error)
-	clear(offsets []int64) error
-	prepareSnapshot() ([]int64, error)
-	start()
-	stop()
+	Publish(key kv.Key, hash kv.HashKey, msg proto.Message) error
+	Replay() (map[kv.Key]kv.Value, error)
+	Clear(offsets []int64) error
+	PrepareSnapshot() ([]int64, error)
+	Start()
+	Stop()
 }
 
 type walSegment struct {
@@ -63,7 +63,7 @@ type Wal struct {
 	count      int
 }
 
-func newWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segmentCount int) (*Wal, error) {
+func NewWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segmentCount int) (*Wal, error) {
 	if err := os.MkdirAll(dirPath, 0750); err != nil {
 		return nil, err
 	}
@@ -119,13 +119,13 @@ func newWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segme
 	return wal, nil
 }
 
-func (w *Wal) start() {
+func (w *Wal) Start() {
 	for _, seg := range w.segments {
 		go seg.backgroundSync()
 	}
 }
 
-func (w *Wal) stop() {
+func (w *Wal) Stop() {
 	for _, seg := range w.segments {
 		seg.mu.Lock()
 		seg.cancel()
@@ -144,7 +144,7 @@ func (w *Wal) getSegment(hash kv.HashKey) *walSegment {
 	return w.segments[int(idx)]
 }
 
-func (w *Wal) publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
+func (w *Wal) Publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	entry := w.entryPool.Get().(*pb.WalEntry)
 	defer w.entryPool.Put(entry)
 
@@ -200,7 +200,7 @@ func (w *Wal) publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	return nil
 }
 
-func (w *Wal) replay() (map[kv.Key]kv.Value, error) {
+func (w *Wal) Replay() (map[kv.Key]kv.Value, error) {
 	results := make(map[kv.Key]kv.Value)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -301,7 +301,7 @@ func (w *Wal) replaySegment(seg *walSegment, results map[kv.Key]kv.Value, result
 	return err
 }
 
-func (w *Wal) prepareSnapshot() ([]int64, error) {
+func (w *Wal) PrepareSnapshot() ([]int64, error) {
 	offsets := make([]int64, w.count)
 	for i, seg := range w.segments {
 		seg.mu.Lock()
@@ -320,7 +320,7 @@ func (w *Wal) prepareSnapshot() ([]int64, error) {
 	return offsets, nil
 }
 
-func (w *Wal) clear(offsets []int64) error {
+func (w *Wal) Clear(offsets []int64) error {
 	for i, seg := range w.segments {
 		seg.mu.Lock()
 

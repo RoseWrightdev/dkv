@@ -1,4 +1,4 @@
-package dkv
+package wal
 
 import (
 	"fmt"
@@ -19,12 +19,12 @@ func BenchmarkWAL_Publish(b *testing.B) {
 		_ = os.RemoveAll(tmpDir)
 	}()
 
-	wal, err := newWal(tmpDir, time.Hour, 1024*1024, 4)
+	wal, err := NewWal(tmpDir, time.Hour, 1024*1024, 4)
 	if err != nil {
 		b.Fatal(err)
 	}
-	wal.start()
-	defer wal.stop()
+	wal.Start()
+	defer wal.Stop()
 
 	req := pb.SetRequest{Key: "key", Value: []byte("val"), Timestamp: 100}
 
@@ -32,7 +32,7 @@ func BenchmarkWAL_Publish(b *testing.B) {
 	for i := 0; b.Loop(); i++ {
 		key := fmt.Sprintf("k-%d", i)
 		req.Key = key
-		_ = wal.publish(key, security.HashFunc(key), &req)
+		_ = wal.Publish(key, security.HashFunc(key), &req)
 	}
 }
 
@@ -45,26 +45,26 @@ func BenchmarkWAL_Replay(b *testing.B) {
 		_ = os.RemoveAll(tmpDir)
 	}()
 
-	wal, err := newWal(tmpDir, time.Hour, 1024*1024, 4)
+	wal, err := NewWal(tmpDir, time.Hour, 1024*1024, 4)
 	if err != nil {
 		b.Fatal(err)
 	}
-	wal.start()
+	wal.Start()
 
 	req := pb.SetRequest{Key: "key", Value: []byte("val"), Timestamp: 100}
 	for i := range 10000 {
 		key := fmt.Sprintf("k-%d", i)
 		req.Key = key
-		_ = wal.publish(key, security.HashFunc(key), &req)
+		_ = wal.Publish(key, security.HashFunc(key), &req)
 	}
-	wal.stop()
+	wal.Stop()
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for b.Loop() {
-		w, _ := newWal(tmpDir, time.Hour, 1024*1024, 4)
-		_, _ = w.replay()
-		w.stop()
+		w, _ := NewWal(tmpDir, time.Hour, 1024*1024, 4)
+		_, _ = w.Replay()
+		w.Stop()
 	}
 }
 
@@ -77,24 +77,24 @@ func BenchmarkWAL_Clear(b *testing.B) {
 		_ = os.RemoveAll(tmpDir)
 	}()
 
-	wal, err := newWal(tmpDir, time.Hour, 1024*1024, 4)
+	wal, err := NewWal(tmpDir, time.Hour, 1024*1024, 4)
 	if err != nil {
 		b.Fatal(err)
 	}
-	wal.start()
-	defer wal.stop()
+	wal.Start()
+	defer wal.Stop()
 
 	req := pb.SetRequest{Key: "key", Value: []byte("val"), Timestamp: 100}
 	for i := range 1000 {
 		key := fmt.Sprintf("k-%d", i)
 		req.Key = key
-		_ = wal.publish(key, security.HashFunc(key), &req)
+		_ = wal.Publish(key, security.HashFunc(key), &req)
 	}
-	offsets, _ := wal.prepareSnapshot()
+	offsets, _ := wal.PrepareSnapshot()
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for b.Loop() {
-		_ = wal.clear(offsets)
+		_ = wal.Clear(offsets)
 	}
 }
