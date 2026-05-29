@@ -3,6 +3,7 @@ dkv.test
 .idea
 .vscode
 data
+.tmp
 
 # Node
 node_modules/
