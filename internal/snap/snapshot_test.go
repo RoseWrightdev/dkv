@@ -27,10 +27,10 @@ type mockWal struct {
 
 func (mw *mockWal) Publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error { return nil }
 func (mw *mockWal) Replay() (map[kv.Key]kv.Value, error)                  { return nil, nil }
-func (mw *mockWal) Clear(_ []int64) error                           { mw.clearCalled = true; return nil }
-func (mw *mockWal) PrepareSnapshot() ([]int64, error)               { return nil, nil }
-func (mw *mockWal) Stop()                                           {}
-func (mw *mockWal) Start()                                          {}
+func (mw *mockWal) Clear(_ []int64) error                                 { mw.clearCalled = true; return nil }
+func (mw *mockWal) PrepareSnapshot() ([]int64, error)                     { return nil, nil }
+func (mw *mockWal) Stop()                                                 {}
+func (mw *mockWal) Start()                                                {}
 
 func TestNewSnapshotter(t *testing.T) {
 	defer cleanupSnp(t)

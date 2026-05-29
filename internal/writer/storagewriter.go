@@ -7,10 +7,10 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/internal/clock"
 	"github.com/rosewrightdev/dkv/internal/hashmap"
-	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/internal/mesh"
-	"github.com/rosewrightdev/dkv/security"
 	"github.com/rosewrightdev/dkv/internal/wal"
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 )
 
 // StateWriter defines the interface for applying sets and deletes to the state.

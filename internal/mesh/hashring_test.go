@@ -56,7 +56,7 @@ func TestHashRing_Removal(t *testing.T) {
 
 	// Add another node
 	ring.AddNode("node3")
-	
+
 	// Remove node1
 	ring.RemoveNode("node1")
 	nodes := ring.GetNodes()

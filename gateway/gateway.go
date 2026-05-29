@@ -7,8 +7,8 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -230,7 +230,7 @@ func (g *Gateway) applySetRemote(node kv.NodeID, key kv.Key, value []byte, ts in
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, err = client.Api.Push(ctx, pushReq)
+	_, err = client.API.Push(ctx, pushReq)
 	req.Reset()
 	return err
 }
@@ -270,7 +270,7 @@ func (g *Gateway) applyDeleteRemote(node kv.NodeID, key kv.Key, ts int64) error 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	_, err = client.Api.Push(ctx, pushReq)
+	_, err = client.API.Push(ctx, pushReq)
 	req.Reset()
 	return err
 }

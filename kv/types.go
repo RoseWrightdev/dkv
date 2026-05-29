@@ -17,4 +17,3 @@ type Value struct {
 
 // NodeID is a unique identifier for a node in the cluster.
 type NodeID string
-

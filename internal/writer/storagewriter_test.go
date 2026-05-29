@@ -6,8 +6,8 @@ import (
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/internal/hashmap"
-	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )
@@ -49,7 +49,7 @@ type mockMesher struct {
 	AddrMap map[kv.NodeID]mesh.PeerAddress
 }
 
-func (m *mockMesher) Broadcast(_ []byte) {}
+func (m *mockMesher) Broadcast(_ []byte)          {}
 func (m *mockMesher) Members() []mesh.PeerAddress { return nil }
 func (m *mockMesher) Owner(_ kv.Key) kv.NodeID {
 	if len(m.Owners) > 0 {

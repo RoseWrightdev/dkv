@@ -14,7 +14,7 @@ import (
 // Client represents a gRPC client to interact with the dkv service.
 type Client struct {
 	conn    *grpc.ClientConn
-	Api     pb.DkvServiceClient
+	API     pb.DkvServiceClient
 	timeout time.Duration
 }
 
@@ -27,7 +27,7 @@ func NewClient(addr string, timeout time.Duration, creds credentials.TransportCr
 
 	return &Client{
 		conn:    conn,
-		Api:     pb.NewDkvServiceClient(conn),
+		API:     pb.NewDkvServiceClient(conn),
 		timeout: timeout,
 	}, nil
 }
@@ -42,7 +42,7 @@ func NewInsecureClient(addr string, timeout time.Duration) (*Client, error) {
 
 	return &Client{
 		conn:    conn,
-		Api:     pb.NewDkvServiceClient(conn),
+		API:     pb.NewDkvServiceClient(conn),
 		timeout: timeout,
 	}, nil
 }
@@ -52,7 +52,7 @@ func (c *Client) Get(key string) ([]byte, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	resp, err := c.Api.Get(ctx, &pb.GetRequest{Key: key})
+	resp, err := c.API.Get(ctx, &pb.GetRequest{Key: key})
 	if err != nil {
 		return nil, false, err
 	}
@@ -65,7 +65,7 @@ func (c *Client) Set(key string, value []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	_, err := c.Api.Set(ctx, &pb.SetRequest{Key: key, Value: value})
+	_, err := c.API.Set(ctx, &pb.SetRequest{Key: key, Value: value})
 	return err
 }
 
@@ -74,7 +74,7 @@ func (c *Client) Delete(key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	_, err := c.Api.Delete(ctx, &pb.DeleteRequest{Key: key})
+	_, err := c.API.Delete(ctx, &pb.DeleteRequest{Key: key})
 	return err
 }
 

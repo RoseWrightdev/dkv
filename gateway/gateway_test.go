@@ -8,15 +8,13 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
-
-
 
 // MockStateWriter implements StateWriter
 type MockStateWriter struct {

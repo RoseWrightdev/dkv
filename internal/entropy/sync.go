@@ -12,9 +12,9 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/gateway"
 	"github.com/rosewrightdev/dkv/internal/hashmap"
-	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/internal/mesh"
 	"github.com/rosewrightdev/dkv/internal/writer"
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -292,7 +292,7 @@ func (s *Syncer) performSync() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	resp, err := client.Api.Pull(ctx, req)
+	resp, err := client.API.Pull(ctx, req)
 	s.cleanupPullRequest(req)
 
 	if err != nil {

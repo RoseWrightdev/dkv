@@ -21,7 +21,6 @@ func (m *trackingStateWriter) ApplySet(req *pb.SetRequest) error {
 	return m.setErr
 }
 
-
 func (m *trackingStateWriter) ApplyDelete(req *pb.DeleteRequest) error {
 	m.appliedDeletes = append(m.appliedDeletes, req)
 	return m.deleteErr

@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-
-
 type failingWriter struct{}
 
 func (failingWriter) Write(_ []byte) (n int, err error) {
