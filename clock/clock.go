@@ -1,4 +1,4 @@
-package dkv
+package clock
 
 import (
 	"math"
@@ -6,9 +6,8 @@ import (
 	"time"
 )
 
-// Clock defines an interface for providing distributed-safe timestamps.
-// Clock defines the interface for distributed timestamps.
-type Clock interface {
+// Clocker defines an interface for providing distributed-safe timestamps.
+type Clocker interface {
 	// Now returns a Hybrid Logical Clock (HLC) timestamp.
 	Now() int64
 	// Update adjusts the local clock based on a remote timestamp.
@@ -23,18 +22,18 @@ const (
 	logicalMask = (1 << logicalBits) - 1
 )
 
-// HLC implements a Hybrid Logical Clock.
-type HLC struct {
+// Clock implements a Hybrid Logical Clock.
+type Clock struct {
 	state atomic.Uint64
 }
 
-// NewHLC initializes a new Hybrid Logical Clock.
-func NewHLC() *HLC {
-	return &HLC{}
+// NewClock initializes a new Hybrid Logical Clock.
+func NewClock() *Clock {
+	return &Clock{}
 }
 
 // Now returns the current HLC timestamp and advances the local state.
-func (c *HLC) Now() int64 {
+func (c *Clock) Now() int64 {
 	// Sample physical time once before the CAS loop. Retries reuse this value
 	// so we avoid a time.Now() syscall on every failed CAS iteration.
 	now := uint64(max(time.Now().UnixMilli(), 0))
@@ -77,7 +76,7 @@ func (c *HLC) Now() int64 {
 
 // Update incorporates a remote timestamp to maintain causality.
 // Should be called on every incoming message containing a timestamp.
-func (c *HLC) Update(remote int64) {
+func (c *Clock) Update(remote int64) {
 	if remote < 0 {
 		return // Ignore invalid/negative remote timestamps
 	}

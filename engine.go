@@ -10,6 +10,7 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/clock"
 	"github.com/rosewrightdev/dkv/entropy"
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/gateway"
@@ -42,7 +43,7 @@ type Engine interface {
 
 type engine struct {
 	creds      credentials.TransportCredentials
-	clock      Clock
+	clock      clock.Clocker
 	wal        wal.Waler
 	mesh       mesh.Mesher
 	evt        evict.Evictor
@@ -60,7 +61,7 @@ type engine struct {
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
 type EngineConfig struct {
 	evt            evict.Evictor
-	clock          Clock
+	clock          clock.Clocker
 	creds          credentials.TransportCredentials
 	walPath        string
 	snpPath        string

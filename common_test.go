@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/clock"
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/mesh"
@@ -28,7 +29,7 @@ var mockConfig = EngineConfig{
 	walSegments:    4,
 	evt:            evict.NewLRU(evict.LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
 	gossipInterval: 10 * time.Second,
-	clock:          NewHLC(),
+	clock:          clock.NewClock(),
 	meshConfig:     mesh.MeshConfig{SingleNode: true},
 	creds:          insecure.NewCredentials(),
 }

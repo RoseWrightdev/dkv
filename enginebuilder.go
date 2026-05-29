@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/rosewrightdev/dkv/clock"
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/mesh"
@@ -19,7 +20,7 @@ import (
 // EngineBuilder provides a fluent API for constructing and configuring a dkv engine.
 type EngineBuilder struct {
 	evt            evict.Evictor
-	clock          Clock
+	clock          clock.Clocker
 	creds          credentials.TransportCredentials
 	meshBuilder    *mesh.MeshConfigBuilder
 	walPath        string
@@ -50,7 +51,7 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.walBufferSize = 64 * 1024
 	eb.walSegments = 16
 	eb.evt = evict.NewLRU(evict.LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
-	eb.clock = NewHLC()
+	eb.clock = clock.NewClock()
 	eb.gossipInterval = 10 * time.Second
 	eb.meshBuilder = mesh.NewMeshConfigBuilder()
 
@@ -119,7 +120,7 @@ func (eb *EngineBuilder) SetEvictor(evt evict.Evictor) *EngineBuilder {
 }
 
 // SetClock sets the clock implementation for generating timestamps.
-func (eb *EngineBuilder) SetClock(clock Clock) *EngineBuilder {
+func (eb *EngineBuilder) SetClock(clock clock.Clocker) *EngineBuilder {
 	eb.clock = clock
 	return eb
 }
@@ -236,7 +237,7 @@ func (eb *EngineBuilder) Build() (Engine, error) {
 	}
 
 	if eb.clock == nil {
-		return nil, fmt.Errorf("required eb.clock is unset; configure eb.clock with SetClock(clock Clock)")
+		return nil, fmt.Errorf("required eb.clock is unset; configure eb.clock with SetClock(clock clock.Clocker)")
 	}
 
 	meshConfig := eb.meshBuilder.Build()

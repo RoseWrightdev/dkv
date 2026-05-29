@@ -1,4 +1,4 @@
-package dkv
+package clock
 
 import (
 	"testing"
@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHLC_Monotonicity(t *testing.T) {
-	hlc := NewHLC()
+func TestClock_Monotonicity(t *testing.T) {
+	hlc := NewClock()
 	
 	ts1 := hlc.Now()
 	ts2 := hlc.Now()
@@ -28,8 +28,8 @@ func TestHLC_Monotonicity(t *testing.T) {
 	assert.GreaterOrEqual(t, ts4, ts3)
 }
 
-func TestHLC_Drift(t *testing.T) {
-	hlc := NewHLC()
+func TestClock_Drift(t *testing.T) {
+	hlc := NewClock()
 	now := time.Now().UnixMilli()
 	
 	// Future jump within drift limit (e.g., 2 seconds)
@@ -42,8 +42,8 @@ func TestHLC_Drift(t *testing.T) {
 	assert.InDelta(t, float64(futureHLC), float64(ts), float64(100<<logicalBits))
 }
 
-func TestHLC_PoisoningProtection(t *testing.T) {
-	hlc := NewHLC()
+func TestClock_PoisoningProtection(t *testing.T) {
+	hlc := NewClock()
 	initialTS := hlc.Now()
 
 	// 1. Extreme future drift (1 hour) - should be ignored
@@ -62,5 +62,3 @@ func TestHLC_PoisoningProtection(t *testing.T) {
 	assert.GreaterOrEqual(t, tsNeg, tsFuture)
 	assert.InDelta(t, float64(initialTS), float64(tsNeg), float64(500<<logicalBits))
 }
-
-

@@ -5,18 +5,13 @@ import (
 	"slices"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/clock"
 	"github.com/rosewrightdev/dkv/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/mesh"
 	"github.com/rosewrightdev/dkv/security"
 	"github.com/rosewrightdev/dkv/wal"
 )
-
-// Clock defines the interface for distributed timestamps.
-type Clock interface {
-	Now() int64
-	Update(remote int64)
-}
 
 // StateWriter defines the interface for applying sets and deletes to the state.
 type StateWriter interface {
@@ -28,13 +23,13 @@ type StateWriter interface {
 type StorageWriter struct {
 	hm         *hashmap.ShardedMap
 	wal        wal.Waler
-	clock      Clock
+	clock      clock.Clocker
 	mesh       mesh.Mesher
 	meshConfig *mesh.MeshConfig
 }
 
 // NewStorageWriter creates a StorageWriter instance to process and persist key-value mutations.
-func NewStorageWriter(hm *hashmap.ShardedMap, wal wal.Waler, clock Clock, mesh mesh.Mesher, meshConfig *mesh.MeshConfig) *StorageWriter {
+func NewStorageWriter(hm *hashmap.ShardedMap, wal wal.Waler, clock clock.Clocker, mesh mesh.Mesher, meshConfig *mesh.MeshConfig) *StorageWriter {
 	return &StorageWriter{
 		hm:         hm,
 		wal:        wal,

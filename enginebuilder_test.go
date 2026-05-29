@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/clock"
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
@@ -38,7 +39,7 @@ func TestEngineBuilder(t *testing.T) {
 		ShardCount: 16,
 	})
 	eb.SetEvictor(lru)
-	eb.SetClock(NewHLC()).SetInsecure()
+	eb.SetClock(clock.NewClock()).SetInsecure()
 	eb.SingleNode()
 	eb.SetInsecure()
 
@@ -59,28 +60,28 @@ func TestEngineBuilder(t *testing.T) {
 
 func TestEngineBuilder_Validation(t *testing.T) {
 	t.Run("MissingWalPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.walPath = ""
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.walPath is unset")
 	})
 
 	t.Run("MissingSnpPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.snpPath = ""
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.snpPath is unset")
 	})
 
 	t.Run("MissingWalInterval", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.walInterval = 0
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.walInterval is unset")
 	})
 
 	t.Run("MissingCredentials", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.creds = nil
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "transport credentials are required")
@@ -94,7 +95,7 @@ func TestEngineBuilder_Validation(t *testing.T) {
 	})
 
 	t.Run("MissingGossipInterval_InDistributedMode", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.meshBuilder.Distributed()
 		eb.gossipInterval = 0
 		_, err := eb.Build()
