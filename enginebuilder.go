@@ -10,11 +10,13 @@ import (
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/rosewrightdev/dkv/evict"
 )
 
 // EngineBuilder provides a fluent API for constructing and configuring a dkv engine.
 type EngineBuilder struct {
-	evt            Evictor
+	evt            evict.Evictor
 	clock          Clock
 	creds          credentials.TransportCredentials
 	meshBuilder    *MeshConfigBuilder
@@ -45,7 +47,7 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.snpInterval = 5 * time.Minute
 	eb.walBufferSize = 64 * 1024
 	eb.walSegments = 16
-	eb.evt = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
+	eb.evt = evict.NewLRU(evict.LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
 	eb.clock = NewHLC()
 	eb.gossipInterval = 10 * time.Second
 	eb.meshBuilder = NewMeshConfigBuilder()
@@ -109,7 +111,7 @@ func (eb *EngineBuilder) SetWalSegments(count int) *EngineBuilder {
 }
 
 // SetEvictor sets the eviction service instance.
-func (eb *EngineBuilder) SetEvictor(evt Evictor) *EngineBuilder {
+func (eb *EngineBuilder) SetEvictor(evt evict.Evictor) *EngineBuilder {
 	eb.evt = evt
 	return eb
 }

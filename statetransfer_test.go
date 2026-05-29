@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,7 +29,7 @@ func (m *mockStateTransferWriter) ApplySet(req *pb.SetRequest) error {
 		return m.setErr
 	}
 	if m.hm != nil {
-		m.hm.StoreLWW(req.Key, hashFunc(req.Key), Value{Data: req.Value, Timestamp: req.Timestamp})
+		m.hm.StoreLWW(req.Key, security.HashFunc(req.Key), kv.Value{Data: req.Value, Timestamp: req.Timestamp})
 	}
 	return nil
 }
@@ -37,7 +39,7 @@ func (m *mockStateTransferWriter) ApplyDelete(req *pb.DeleteRequest) error {
 		return m.deleteErr
 	}
 	if m.hm != nil {
-		m.hm.StoreLWW(req.Key, hashFunc(req.Key), Value{Timestamp: req.Timestamp, Tombstone: true})
+		m.hm.StoreLWW(req.Key, security.HashFunc(req.Key), kv.Value{Timestamp: req.Timestamp, Tombstone: true})
 	}
 	return nil
 }
@@ -52,8 +54,8 @@ func TestStateTransfer_All(t *testing.T) {
 
 	// 2. Test successful Export and Import
 	hmSrc := newShardedMap()
-	hmSrc.StoreLWW("user:1", hashFunc("user:1"), Value{Data: []byte("val1"), Timestamp: 100})
-	hmSrc.StoreLWW("user:2", hashFunc("user:2"), Value{Data: []byte("val2"), Timestamp: 101, Tombstone: true})
+	hmSrc.StoreLWW("user:1", security.HashFunc("user:1"), kv.Value{Data: []byte("val1"), Timestamp: 100})
+	hmSrc.StoreLWW("user:2", security.HashFunc("user:2"), kv.Value{Data: []byte("val2"), Timestamp: 101, Tombstone: true})
 
 	stSrc := newStateTransfer(p, hmSrc, &mockStateTransferWriter{})
 	data := stSrc.ExportState()
@@ -62,16 +64,16 @@ func TestStateTransfer_All(t *testing.T) {
 	hmDst := newShardedMap()
 	swDst := &mockStateTransferWriter{hm: hmDst}
 	stDst := newStateTransfer(p, hmDst, swDst)
-	
+
 	errDecode := stDst.decodeFromReader(bytes.NewReader(data))
 	assert.NoError(t, errDecode)
 
 	// Verify imported data
-	v1, ok1 := hmDst.Load("user:1", hashFunc("user:1"))
+	v1, ok1 := hmDst.Load("user:1", security.HashFunc("user:1"))
 	assert.True(t, ok1)
 	assert.Equal(t, []byte("val1"), v1.Data)
 
-	v2, ok2 := hmDst.Load("user:2", hashFunc("user:2"))
+	v2, ok2 := hmDst.Load("user:2", security.HashFunc("user:2"))
 	assert.True(t, ok2)
 	assert.True(t, v2.Tombstone)
 

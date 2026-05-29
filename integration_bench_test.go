@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv"
+	"github.com/rosewrightdev/dkv/kv"
 )
 
 func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
@@ -86,6 +87,6 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		// Node 2 proxies the read to Node 1
-		_, _ = e2.Get(dkv.Key(fmt.Sprintf("key-%d", i%100)))
+		_, _ = e2.Get(kv.Key(fmt.Sprintf("key-%d", i%100)))
 	}
 }

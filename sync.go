@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -208,14 +209,14 @@ func (s *Syncer) isRequesterResponsible(key string, requesterID NodeID) bool {
 	if s.meshConfig.SingleNode {
 		return true
 	}
-	owners := s.mesh.GetOwners(Key(key), s.meshConfig.ReplicationFactor)
+	owners := s.mesh.GetOwners(kv.Key(key), s.meshConfig.ReplicationFactor)
 	isResponsible := slices.Contains(owners, requesterID)
 	s.mesh.PutOwners(owners)
 	return isResponsible
 }
 
 // buildSetRequest leases a protobuf SetRequest from the sync pools and populates it.
-func (s *Syncer) buildSetRequest(key string, val Value) *pb.SetRequest {
+func (s *Syncer) buildSetRequest(key string, val kv.Value) *pb.SetRequest {
 	req := s.pools.setRequests.Get().(*pb.SetRequest)
 	req.Key = key
 	req.Value = val.Data
@@ -225,7 +226,7 @@ func (s *Syncer) buildSetRequest(key string, val Value) *pb.SetRequest {
 }
 
 // buildDeleteRequest leases a protobuf DeleteRequest from the sync pools and populates it.
-func (s *Syncer) buildDeleteRequest(key string, val Value) *pb.DeleteRequest {
+func (s *Syncer) buildDeleteRequest(key string, val kv.Value) *pb.DeleteRequest {
 	req := s.pools.deleteRequests.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = val.Timestamp

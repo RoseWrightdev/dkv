@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,14 +42,14 @@ func TestEngineOperations(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Get
-	got, ok := eng.Get(dkv.Key(key))
+	got, ok := eng.Get(kv.Key(key))
 	assert.True(t, ok)
 	assert.Equal(t, val, got)
 
 	// Delete
 	err = eng.Delete(key)
 	assert.NoError(t, err)
-	_, ok = eng.Get(dkv.Key(key))
+	_, ok = eng.Get(kv.Key(key))
 	assert.False(t, ok)
 }
 
@@ -204,7 +205,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	for i := range 20 {
 		key := fmt.Sprintf("rec-%d", i)
 		require.Eventually(t, func() bool {
-			_, ok := eng2.Get(dkv.Key(key))
+			_, ok := eng2.Get(kv.Key(key))
 			return ok
 		}, 10*time.Second, 100*time.Millisecond, "Node 2 should have recovered %s", key)
 	}
@@ -288,7 +289,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 			default:
 				for i := range 10 {
 					key := fmt.Sprintf("shutdown-key-%d", i)
-					_, _ = eng2.Get(dkv.Key(key))
+					_, _ = eng2.Get(kv.Key(key))
 				}
 			}
 		}

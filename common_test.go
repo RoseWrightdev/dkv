@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/evict"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials/insecure"
@@ -21,7 +23,7 @@ var mockConfig = EngineConfig{
 	snpInterval:    500 * time.Millisecond,
 	walBufferSize:  uint32(64 * 1024),
 	walSegments:    4,
-	evt:            NewLRU(LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
+	evt:            evict.NewLRU(evict.LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
 	gossipInterval: 10 * time.Second,
 	clock:          NewHLC(),
 	meshConfig:     MeshConfig{SingleNode: true},
@@ -50,7 +52,7 @@ func cleanupEngineMocks(t *testing.T) {
 func FindKeyForNode(e Engine, nodeID string) string {
 	for i := range 1000 {
 		k := fmt.Sprintf("test-key-%d", i)
-		if e.Owner(Key(k)) == NodeID(nodeID) {
+		if e.Owner(kv.Key(k)) == NodeID(nodeID) {
 			return k
 		}
 	}

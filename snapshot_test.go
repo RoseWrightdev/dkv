@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )
@@ -14,8 +15,8 @@ type mockWal struct {
 	clearCalled bool
 }
 
-func (mw *mockWal) publish(_ Key, _ hashKey, _ proto.Message) error { return nil }
-func (mw *mockWal) replay() (map[Key]Value, error)                  { return nil, nil }
+func (mw *mockWal) publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error { return nil }
+func (mw *mockWal) replay() (map[kv.Key]kv.Value, error)                  { return nil, nil }
 func (mw *mockWal) clear(_ []int64) error                           { mw.clearCalled = true; return nil }
 func (mw *mockWal) prepareSnapshot() ([]int64, error)               { return nil, nil }
 func (mw *mockWal) stop()                                           {}
@@ -37,7 +38,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
 	mw := &mockWal{}
-	mockData := map[Key]Value{
+	mockData := map[kv.Key]kv.Value{
 		"user:1": {Data: []byte("alice"), Timestamp: 100},
 		"user:2": {Data: []byte("bob"), Timestamp: 100},
 	}
@@ -61,13 +62,13 @@ func TestCreateNewSnapShot(t *testing.T) {
 	}()
 
 	dec := gob.NewDecoder(file)
-	decoded := make(map[Key]Value)
+	decoded := make(map[kv.Key]kv.Value)
 	for {
 		var entry snapshotEntry
 		if err := dec.Decode(&entry); err != nil {
 			break
 		}
-		decoded[entry.Key] = Value{Data: entry.Data, Timestamp: entry.Timestamp, Tombstone: entry.Tombstone}
+		decoded[entry.Key] = kv.Value{Data: entry.Data, Timestamp: entry.Timestamp, Tombstone: entry.Tombstone}
 	}
 	assert.Equal(t, mockData, decoded)
 
@@ -141,4 +142,3 @@ func TestSnapshot_ExtraEdgeCases(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, assert.AnError, err)
 }
-

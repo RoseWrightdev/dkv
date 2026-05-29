@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/security"
 )
 
 func BenchmarkWAL_Publish(b *testing.B) {
@@ -27,12 +28,11 @@ func BenchmarkWAL_Publish(b *testing.B) {
 
 	req := pb.SetRequest{Key: "key", Value: []byte("val"), Timestamp: 100}
 
-	
 	b.ReportAllocs()
 	for i := 0; b.Loop(); i++ {
 		key := fmt.Sprintf("k-%d", i)
 		req.Key = key
-		_ = wal.publish(key, hashFunc(key), &req)
+		_ = wal.publish(key, security.HashFunc(key), &req)
 	}
 }
 
@@ -55,7 +55,7 @@ func BenchmarkWAL_Replay(b *testing.B) {
 	for i := range 10000 {
 		key := fmt.Sprintf("k-%d", i)
 		req.Key = key
-		_ = wal.publish(key, hashFunc(key), &req)
+		_ = wal.publish(key, security.HashFunc(key), &req)
 	}
 	wal.stop()
 
@@ -88,7 +88,7 @@ func BenchmarkWAL_Clear(b *testing.B) {
 	for i := range 1000 {
 		key := fmt.Sprintf("k-%d", i)
 		req.Key = key
-		_ = wal.publish(key, hashFunc(key), &req)
+		_ = wal.publish(key, security.HashFunc(key), &req)
 	}
 	offsets, _ := wal.prepareSnapshot()
 

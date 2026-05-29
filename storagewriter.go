@@ -5,6 +5,8 @@ import (
 	"slices"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 )
 
 // StateWriter defines the interface for applying sets and deletes to the state.
@@ -36,12 +38,12 @@ func newStorageWriter(hm *shardedMap, wal Waler, clock Clock, mesh Mesher, meshC
 // ApplySet updates the in-memory store and publishes the update to the WAL after performing LWW conflict resolution and cluster ownership checks.
 func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
 	sw.clock.Update(req.Timestamp)
-	hash := hashFunc(req.Key)
+	hash := security.HashFunc(req.Key)
 	if !sw.isLocal(req.Key) {
 		return nil // Ignore keys we are not responsible for
 	}
 
-	val := Value{
+	val := kv.Value{
 		Data:      req.Value,
 		Timestamp: req.Timestamp,
 		NodeID:    req.NodeId,
@@ -61,12 +63,12 @@ func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
 // ApplyDelete marks a key as deleted (using a tombstone) in-memory and in the WAL after performing LWW conflict resolution and cluster ownership checks.
 func (sw *StorageWriter) ApplyDelete(req *pb.DeleteRequest) error {
 	sw.clock.Update(req.Timestamp)
-	hash := hashFunc(req.Key)
+	hash := security.HashFunc(req.Key)
 	if !sw.isLocal(req.Key) {
 		return nil // Ignore keys we are not responsible for
 	}
 
-	val := Value{
+	val := kv.Value{
 		Timestamp: req.Timestamp,
 		NodeID:    req.NodeId,
 		Tombstone: true,
@@ -93,7 +95,7 @@ func (sw *StorageWriter) isLocal(key string) bool {
 	}
 
 	// In a distributed cluster, we are responsible if we are one of the N owners
-	owners := sw.mesh.GetOwners(key, rf)
+	owners := sw.mesh.GetOwners(kv.Key(key), rf)
 	defer sw.mesh.PutOwners(owners)
 	return slices.Contains(owners, sw.meshConfig.NodeID)
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +34,7 @@ func TestReadProxying(t *testing.T) {
 	require.Eventually(t, func() bool {
 		for i := range 1000 {
 			k := fmt.Sprintf("key-%d", i)
-			if eng0.Owner(Key(k)) == NodeID("node-2") && eng2.Owner(Key(k)) == NodeID("node-2") {
+			if eng0.Owner(kv.Key(k)) == NodeID("node-2") && eng2.Owner(kv.Key(k)) == NodeID("node-2") {
 				key = k
 				return true
 			}
@@ -43,14 +44,14 @@ func TestReadProxying(t *testing.T) {
 	val := []byte("proxy-value")
 
 	// Write directly to Node 2
-	err := eng2.Set(Key(key), val)
+	err := eng2.Set(kv.Key(key), val)
 	require.NoError(t, err)
 
 	// Wait for gossip propagation to finish
 	time.Sleep(500 * time.Millisecond)
 
 	// Get key from Node 0, which triggers gateway read proxying to Node 2
-	v, ok := eng0.Get(Key(key))
+	v, ok := eng0.Get(kv.Key(key))
 	require.True(t, ok)
 	require.Equal(t, val, v)
 
@@ -58,7 +59,7 @@ func TestReadProxying(t *testing.T) {
 	eng2.Stop()
 	time.Sleep(200 * time.Millisecond)
 
-	_, ok = eng0.Get(Key(key))
+	_, ok = eng0.Get(kv.Key(key))
 	require.False(t, ok, "Node 0 should not have the data locally after owner is stopped")
 }
 
@@ -85,8 +86,8 @@ func TestWriteProxying(t *testing.T) {
 		for i := range 5000 {
 			k := fmt.Sprintf("proxy-write-key-%d", i)
 			// Find a key NOT owned by node-2 (so the client2 write must be proxied)
-			owner0 := eng0.Owner(Key(k))
-			owner1 := eng1.Owner(Key(k))
+			owner0 := eng0.Owner(kv.Key(k))
+			owner1 := eng1.Owner(kv.Key(k))
 			if owner0 == owner1 && owner0 != "node-2" && owner0 != "" {
 				key = k
 				return true
@@ -102,7 +103,7 @@ func TestWriteProxying(t *testing.T) {
 	require.NoError(t, err, "write through non-owner node must succeed via gateway proxying")
 
 	// Verify the owning node actually has the key.
-	ownerID := eng0.Owner(Key(key))
+	ownerID := eng0.Owner(kv.Key(key))
 	var ownerEng Engine
 	switch ownerID {
 	case "node-0":
@@ -113,7 +114,7 @@ func TestWriteProxying(t *testing.T) {
 	require.NotNil(t, ownerEng, "expected a known owner engine")
 
 	require.Eventually(t, func() bool {
-		got, ok := ownerEng.Get(Key(key))
+		got, ok := ownerEng.Get(kv.Key(key))
 		return ok && string(got) == string(val)
 	}, 5*time.Second, 50*time.Millisecond, "owner node should have the proxied write")
 }
@@ -141,8 +142,8 @@ func TestDeleteProxying(t *testing.T) {
 	require.Eventually(t, func() bool {
 		for i := range 5000 {
 			k := fmt.Sprintf("proxy-del-key-%d", i)
-			owner0 := eng0.Owner(Key(k))
-			owner1 := eng1.Owner(Key(k))
+			owner0 := eng0.Owner(kv.Key(k))
+			owner1 := eng1.Owner(kv.Key(k))
 			if owner0 == owner1 && owner0 != "node-2" && owner0 != "" {
 				key = k
 				if owner0 == "node-0" {
@@ -157,10 +158,10 @@ func TestDeleteProxying(t *testing.T) {
 	}, 10*time.Second, 100*time.Millisecond, "nodes should converge on ring ownership")
 
 	// Write directly to owner
-	require.NoError(t, ownerEng.Set(Key(key), []byte("to-be-deleted")))
+	require.NoError(t, ownerEng.Set(kv.Key(key), []byte("to-be-deleted")))
 
 	// Confirm it's readable
-	_, ok := ownerEng.Get(Key(key))
+	_, ok := ownerEng.Get(kv.Key(key))
 	require.True(t, ok)
 
 	// Delete through node-2 (non-owner) — must be proxied
@@ -168,7 +169,7 @@ func TestDeleteProxying(t *testing.T) {
 
 	// Owner should no longer have the key
 	require.Eventually(t, func() bool {
-		_, ok := ownerEng.Get(Key(key))
+		_, ok := ownerEng.Get(kv.Key(key))
 		return !ok
 	}, 5*time.Second, 50*time.Millisecond, "owner should reflect the proxied delete")
 }

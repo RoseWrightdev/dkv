@@ -9,6 +9,8 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,7 +84,7 @@ func TestSync(t *testing.T) {
 	time.Sleep(1500 * time.Millisecond)
 
 	// Verify sync
-	got, ok := e2.Get(Key(key))
+	got, ok := e2.Get(kv.Key(key))
 	assert.True(t, ok, "Node 2 should have reconciled the key")
 	assert.Equal(t, val, got)
 
@@ -92,7 +94,7 @@ func TestSync(t *testing.T) {
 
 	time.Sleep(1500 * time.Millisecond)
 
-	_, ok = e2.Get(Key(key))
+	_, ok = e2.Get(kv.Key(key))
 	assert.False(t, ok, "Node 2 should have reconciled the deletion via Syncer")
 }
 
@@ -232,7 +234,7 @@ func TestSyncer_ExtraEdgeCases(t *testing.T) {
 
 	// 7. buildDeleteRequest coverage!
 	// Populate map with a delete entry
-	hm.StoreLWW("user:deleted", hashFunc("user:deleted"), Value{Timestamp: 500, Tombstone: true})
+	hm.StoreLWW("user:deleted", security.HashFunc("user:deleted"), kv.Value{Timestamp: 500, Tombstone: true})
 	synDel := newSyncer(&SyncerConfig{
 		mesh:       &MockMesher{Owners: []NodeID{"node-1"}},
 		cc:         cc,
@@ -240,7 +242,7 @@ func TestSyncer_ExtraEdgeCases(t *testing.T) {
 		pools:      p,
 		meshConfig: &MeshConfig{NodeID: "node-1", ReplicationFactor: 1},
 	})
-	
+
 	// Prepare pull config
 	pc := &PullConfig{
 		shards:      make(map[ShardID]Digest),
@@ -255,4 +257,3 @@ func TestSyncer_ExtraEdgeCases(t *testing.T) {
 	assert.Equal(t, "user:deleted", dels[0].Key)
 	assert.Equal(t, int64(500), dels[0].Timestamp)
 }
-

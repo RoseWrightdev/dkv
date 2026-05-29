@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +26,7 @@ func TestPublish(t *testing.T) {
 	wal, err := newWal(mockConfig.walPath, mockConfig.walInterval, mockConfig.walBufferSize, 1)
 	assert.Nil(t, err)
 
-	err = wal.publish(req.Key, hashFunc(req.Key), &req)
+	err = wal.publish(req.Key, security.HashFunc(req.Key), &req)
 	assert.Nil(t, err)
 
 	replay, err := wal.replay()
@@ -46,7 +48,7 @@ func TestReplay(t *testing.T) {
 		exceptedValues[i] = val
 		exceptedKeys[i] = key
 		req := pb.SetRequest{Key: key, Value: val, Timestamp: int64(i)}
-		err = wal.publish(key, hashFunc(key), &req)
+		err = wal.publish(key, security.HashFunc(key), &req)
 		assert.Nil(t, err)
 	}
 	replay, err := wal.replay()
@@ -85,7 +87,7 @@ func TestWal_PrepareSnapshot(t *testing.T) {
 	for i := range 20 {
 		key := strconv.Itoa(i)
 		req := pb.SetRequest{Key: key, Value: []byte{byte(i)}, Timestamp: int64(i)}
-		assert.Nil(t, wal.publish(key, hashFunc(key), &req))
+		assert.Nil(t, wal.publish(key, security.HashFunc(key), &req))
 	}
 
 	offsets, err := wal.prepareSnapshot()
@@ -108,7 +110,7 @@ func TestWal_ClearWithOffsets(t *testing.T) {
 	for i := range 5 {
 		key := strconv.Itoa(i)
 		req := pb.SetRequest{Key: key, Value: []byte{byte(i)}, Timestamp: int64(i)}
-		assert.Nil(t, wal.publish(key, hashFunc(key), &req))
+		assert.Nil(t, wal.publish(key, security.HashFunc(key), &req))
 	}
 
 	// Capture snapshot offsets
@@ -119,7 +121,7 @@ func TestWal_ClearWithOffsets(t *testing.T) {
 	postKeys := []string{"post-a", "post-b", "post-c"}
 	for _, k := range postKeys {
 		req := pb.SetRequest{Key: k, Value: []byte("post-snapshot"), Timestamp: 999}
-		assert.Nil(t, wal.publish(k, hashFunc(k), &req))
+		assert.Nil(t, wal.publish(k, security.HashFunc(k), &req))
 	}
 
 	// clear with offsets: only data before snapshot should be removed;
@@ -130,13 +132,13 @@ func TestWal_ClearWithOffsets(t *testing.T) {
 	replay, err := wal.replay()
 	assert.Nil(t, err)
 	for _, k := range postKeys {
-		_, ok := replay[Key(k)]
+		_, ok := replay[kv.Key(k)]
 		assert.True(t, ok, "post-snapshot key %q should survive clear(offsets)", k)
 	}
 
 	// Pre-snapshot keys should be gone
 	for i := range 5 {
-		k := Key(strconv.Itoa(i))
+		k := kv.Key(strconv.Itoa(i))
 		_, ok := replay[k]
 		assert.False(t, ok, "pre-snapshot key %q should have been cleared", k)
 	}
@@ -151,7 +153,7 @@ func TestWal_ClearNilOffsets(t *testing.T) {
 	for i := range 10 {
 		key := strconv.Itoa(i)
 		req := pb.SetRequest{Key: key, Value: []byte{byte(i)}, Timestamp: int64(i)}
-		assert.Nil(t, wal.publish(key, hashFunc(key), &req))
+		assert.Nil(t, wal.publish(key, security.HashFunc(key), &req))
 	}
 
 	// clear(nil) should truncate all segments entirely
@@ -188,17 +190,17 @@ func TestWal_ExtraEdgeCases(t *testing.T) {
 			Set: &pb.SetRequest{Key: "direct-entry", Value: []byte("val"), Timestamp: 200},
 		},
 	}
-	err = wal.publish("direct-entry", hashFunc("direct-entry"), entryMsg)
+	err = wal.publish("direct-entry", security.HashFunc("direct-entry"), entryMsg)
 	assert.NoError(t, err)
 
 	// 3. publish unsupported type
-	err = wal.publish("key", hashFunc("key"), &pb.GetRequest{})
+	err = wal.publish("key", security.HashFunc("key"), &pb.GetRequest{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported message type")
 
 	// 4. publish pb.DeleteRequest and verify unwrap recycled pool wrappers
 	delMsg := &pb.DeleteRequest{Key: "direct-del", Timestamp: 250}
-	err = wal.publish("direct-del", hashFunc("direct-del"), delMsg)
+	err = wal.publish("direct-del", security.HashFunc("direct-del"), delMsg)
 	assert.NoError(t, err)
 
 	// Verify replay on sets and deletes
@@ -210,7 +212,7 @@ func TestWal_ExtraEdgeCases(t *testing.T) {
 	// 5. replaySegment unmarshal error by writing bad bytes to the log
 	wal.stop() // stop sync so we can manually edit file safely
 	segPath := mockConfig.walPath + "/seg_00.log"
-	
+
 	// Corrupt the file by writing a invalid header and payload
 	// #nosec G304
 	f, err := os.OpenFile(segPath, os.O_WRONLY|os.O_APPEND, 0600)
@@ -229,5 +231,3 @@ func TestWal_ExtraEdgeCases(t *testing.T) {
 	_, err = walReopen.replay()
 	assert.Error(t, err)
 }
-
-

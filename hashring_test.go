@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -103,7 +105,7 @@ func TestHashRing_AddNodes(t *testing.T) {
 		assert.ElementsMatch(t, nodesA, nodesB)
 
 		// Routing should be consistent for both rings
-		keys := []Key{"test-key-1", "test-key-2", "routing-key-abc", "another-routing-key"}
+		keys := []kv.Key{"test-key-1", "test-key-2", "routing-key-abc", "another-routing-key"}
 		for _, k := range keys {
 			assert.Equal(t, ringA.GetNode(k), ringB.GetNode(k),
 				"AddNodes should produce the same routing as sequential AddNode for key %s", k)
@@ -185,14 +187,14 @@ func TestHashRing_ExtraEdgeCases(t *testing.T) {
 	var wrapKey string
 	for i := range 10000 {
 		k := fmt.Sprintf("wrap-candidate-%d", i)
-		h := hashFuncSecure(k)
+		h := security.HashFuncSecure(k)
 		if h > maxHash {
 			wrapKey = k
 			break
 		}
 	}
 	assert.NotEmpty(t, wrapKey)
-	node := ring.GetNode(Key(wrapKey))
+	node := ring.GetNode(kv.Key(wrapKey))
 	assert.Equal(t, NodeID("node-dup"), node)
 }
 

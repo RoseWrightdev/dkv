@@ -1,9 +1,11 @@
 package dkv
 
-import "sync"
+import (
+	"sync"
 
-// Key represents a unique identifier for a value in the dkv store.
-type Key = string
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
+)
 
 // ShardID represents the identifier of a shard within the shardedMap.
 type ShardID = int32
@@ -21,18 +23,9 @@ const subBucketCount = 64
 
 const shardCount = 128
 
-// Value represents a single record in the database, including metadata for LWW.
-type Value struct {
-	NodeID    string
-	Data      []byte
-	Timestamp int64
-	Tombstone bool
-	itemHash  uint64
-}
-
 // shard is a single thread-safe bucket within the shardedMap.
 type shard struct {
-	buckets     [subBucketCount]map[Key]Value
+	buckets     [subBucketCount]map[kv.Key]kv.Value
 	subDigests  [subBucketCount]Digest
 	shardDigest Digest
 	mu          sync.RWMutex
@@ -46,38 +39,38 @@ func newShardedMap() *shardedMap {
 	for i := range shardCount {
 		s := &shard{}
 		for b := range subBucketCount {
-			s.buckets[b] = make(map[Key]Value)
+			s.buckets[b] = make(map[kv.Key]kv.Value)
 		}
 		sm[i] = s
 	}
 	return &sm
 }
 
-func (sm *shardedMap) getShardByHash(hash hashKey) *shard {
+func (sm *shardedMap) getShardByHash(hash kv.HashKey) *shard {
 	return sm[hash%shardCount]
 }
 
 // Load retrieves a value from the correct shard based on the provided hash.
-func (sm *shardedMap) Load(key Key, hash hashKey) (Value, bool) {
+func (sm *shardedMap) Load(key kv.Key, hash kv.HashKey) (kv.Value, bool) {
 	shard := sm.getShardByHash(hash)
 	subIndex := (hash >> 16) % subBucketCount
 	shard.mu.RLock()
 	val, ok := shard.buckets[subIndex][key]
 	shard.mu.RUnlock()
-	val.itemHash = 0 // Clear internal-only itemHash to preserve DeepEqual assertions in tests
+	val.ItemHash = 0 // Clear internal-only ItemHash to preserve DeepEqual assertions in tests
 	return val, ok
 }
 
-func getItemHash(hash hashKey, val Value) uint64 {
+func getItemHash(hash kv.HashKey, val kv.Value) uint64 {
 	// #nosec G115
 	h := hash ^ uint64(val.Timestamp)
 
 	if val.NodeID != "" {
-		h ^= hashFunc(val.NodeID)
+		h ^= security.HashFunc(val.NodeID)
 	}
 
 	if len(val.Data) > 0 {
-		h ^= hashBytes(val.Data)
+		h ^= security.HashBytes(val.Data)
 	}
 
 	if val.Tombstone {
@@ -88,7 +81,7 @@ func getItemHash(hash hashKey, val Value) uint64 {
 }
 
 // Store updates the value in the correct shard and maintains the rolling digest.
-func (sm *shardedMap) Store(key Key, hash hashKey, val Value) {
+func (sm *shardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
@@ -96,20 +89,20 @@ func (sm *shardedMap) Store(key Key, hash hashKey, val Value) {
 	// Update sub-bucket and shard digests incrementally
 	subIndex := (hash >> 16) % subBucketCount
 	if existing, ok := shard.buckets[subIndex][key]; ok {
-		oldItemHash := existing.itemHash
+		oldItemHash := existing.ItemHash
 		shard.subDigests[subIndex] ^= oldItemHash
 		shard.shardDigest ^= oldItemHash
 	}
 
-	val.itemHash = getItemHash(hash, val)
-	shard.subDigests[subIndex] ^= val.itemHash
-	shard.shardDigest ^= val.itemHash
+	val.ItemHash = getItemHash(hash, val)
+	shard.subDigests[subIndex] ^= val.ItemHash
+	shard.shardDigest ^= val.ItemHash
 	shard.buckets[subIndex][key] = val
 }
 
 // StoreLWW updates the value in the correct shard using LWW conflict resolution under a single write lock.
 // It returns true if the value was stored, and false if ignored as stale.
-func (sm *shardedMap) StoreLWW(key Key, hash hashKey, val Value) bool {
+func (sm *shardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
@@ -123,27 +116,27 @@ func (sm *shardedMap) StoreLWW(key Key, hash hashKey, val Value) bool {
 		if existing.Timestamp == val.Timestamp && existing.NodeID >= val.NodeID {
 			return false
 		}
-		oldItemHash := existing.itemHash
+		oldItemHash := existing.ItemHash
 		shard.subDigests[subIndex] ^= oldItemHash
 		shard.shardDigest ^= oldItemHash
 	}
 
-	val.itemHash = getItemHash(hash, val)
-	shard.subDigests[subIndex] ^= val.itemHash
-	shard.shardDigest ^= val.itemHash
+	val.ItemHash = getItemHash(hash, val)
+	shard.subDigests[subIndex] ^= val.ItemHash
+	shard.shardDigest ^= val.ItemHash
 	shard.buckets[subIndex][key] = val
 	return true
 }
 
 // Delete removes a key from its shard and updates the rolling digest.
-func (sm *shardedMap) Delete(key Key, hash hashKey) {
+func (sm *shardedMap) Delete(key kv.Key, hash kv.HashKey) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 
 	subIndex := (hash >> 16) % subBucketCount
 	if existing, ok := shard.buckets[subIndex][key]; ok {
-		itemHash := existing.itemHash
+		itemHash := existing.ItemHash
 		shard.subDigests[subIndex] ^= itemHash
 		shard.shardDigest ^= itemHash
 		delete(shard.buckets[subIndex], key)

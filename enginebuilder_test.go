@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/evict"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,7 +31,7 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SetWalSegments(mockConfig.walSegments)
 	assert.Equal(t, mockConfig.walSegments, eb.walSegments)
 
-	lru := NewLRU(LRUConfig{
+	lru := evict.NewLRU(evict.LRUConfig{
 		Capacity:   500,
 		TTL:        time.Minute,
 		ShardCount: 16,
@@ -47,10 +48,10 @@ func TestEngineBuilder(t *testing.T) {
 	e := eng.(*engine)
 	assert.Equal(t, e.snp.interval, mockConfig.snpInterval)
 
-	actualLRU, ok := e.evt.(*LeastRecentlyUsed)
+	actualLRU, ok := e.evt.(*evict.LeastRecentlyUsed)
 	assert.True(t, ok)
-	assert.Equal(t, time.Minute, actualLRU.shards[0].ttl)
-	assert.Equal(t, uint32(500/16), actualLRU.shards[0].capacity)
+	assert.Equal(t, time.Minute, actualLRU.GetShardTTL(0))
+	assert.Equal(t, uint32(500/16), actualLRU.GetShardCapacity(0))
 
 	cleanupEngineMocks(t)
 }

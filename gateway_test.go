@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -43,14 +44,14 @@ func (m *MockMesher) Members() []PeerAddress {
 	return nil
 }
 
-func (m *MockMesher) Owner(_ Key) NodeID {
+func (m *MockMesher) Owner(_ kv.Key) NodeID {
 	if len(m.Owners) > 0 {
 		return m.Owners[0]
 	}
 	return ""
 }
 
-func (m *MockMesher) GetOwners(_ Key, _ int) []NodeID {
+func (m *MockMesher) GetOwners(_ kv.Key, _ int) []NodeID {
 	return m.Owners
 }
 

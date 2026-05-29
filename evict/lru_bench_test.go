@@ -1,4 +1,4 @@
-package dkv
+package evict
 
 import (
 	"fmt"
@@ -12,8 +12,8 @@ func BenchmarkLRU_Seen(b *testing.B) {
 		TTL:        time.Hour,
 		ShardCount: 16,
 	})
-	lru.start()
-	defer lru.stop()
+	lru.Start()
+	defer lru.Stop()
 
 	b.ResetTimer()
 	b.ReportAllocs()

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -13,7 +14,7 @@ type mockEngine struct {
 	mock.Mock
 }
 
-func (m *mockEngine) Get(key Key) ([]byte, bool) {
+func (m *mockEngine) Get(key kv.Key) ([]byte, bool) {
 	args := m.Called(key)
 	if v := args.Get(0); v != nil {
 		return v.([]byte), args.Bool(1)
@@ -21,17 +22,17 @@ func (m *mockEngine) Get(key Key) ([]byte, bool) {
 	return nil, args.Bool(1)
 }
 
-func (m *mockEngine) Set(key Key, value []byte) error {
+func (m *mockEngine) Set(key kv.Key, value []byte) error {
 	args := m.Called(key, value)
 	return args.Error(0)
 }
 
-func (m *mockEngine) Delete(key Key) error {
+func (m *mockEngine) Delete(key kv.Key) error {
 	args := m.Called(key)
 	return args.Error(0)
 }
 
-func (m *mockEngine) Owner(key Key) NodeID {
+func (m *mockEngine) Owner(key kv.Key) NodeID {
 	args := m.Called(key)
 	return NodeID(args.String(0))
 }
@@ -172,29 +173,29 @@ func TestServer_ExtraEdgeCases(t *testing.T) {
 	}
 
 	// 1. Get handler
-	me.On("Get", Key("k-get")).Return([]byte("v-get"), true).Once()
+	me.On("Get", kv.Key("k-get")).Return([]byte("v-get"), true).Once()
 	respGet, err := srv.Get(context.Background(), &pb.GetRequest{Key: "k-get"})
 	assert.NoError(t, err)
 	assert.True(t, respGet.Exists)
 	assert.Equal(t, []byte("v-get"), respGet.Value)
 
 	// 2. Set error
-	me.On("Set", Key("k-set"), []byte("v-set")).Return(assert.AnError).Once()
+	me.On("Set", kv.Key("k-set"), []byte("v-set")).Return(assert.AnError).Once()
 	_, err = srv.Set(context.Background(), &pb.SetRequest{Key: "k-set", Value: []byte("v-set")})
 	assert.Error(t, err)
 
 	// Set success
-	me.On("Set", Key("k-set"), []byte("v-set")).Return(nil).Once()
+	me.On("Set", kv.Key("k-set"), []byte("v-set")).Return(nil).Once()
 	_, err = srv.Set(context.Background(), &pb.SetRequest{Key: "k-set", Value: []byte("v-set")})
 	assert.NoError(t, err)
 
 	// 3. Delete error
-	me.On("Delete", Key("k-del")).Return(assert.AnError).Once()
+	me.On("Delete", kv.Key("k-del")).Return(assert.AnError).Once()
 	_, err = srv.Delete(context.Background(), &pb.DeleteRequest{Key: "k-del"})
 	assert.Error(t, err)
 
 	// Delete success
-	me.On("Delete", Key("k-del")).Return(nil).Once()
+	me.On("Delete", kv.Key("k-del")).Return(nil).Once()
 	_, err = srv.Delete(context.Background(), &pb.DeleteRequest{Key: "k-del"})
 	assert.NoError(t, err)
 

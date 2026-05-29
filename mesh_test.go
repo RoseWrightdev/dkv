@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -173,8 +174,8 @@ func TestNopMesh(t *testing.T) {
 	n := &NopMesh{}
 	n.Broadcast([]byte("noop"))
 	assert.Nil(t, n.Members())
-	assert.Equal(t, NodeID(""), n.Owner(Key("key")))
-	assert.Nil(t, n.GetOwners(Key("key"), 3))
+	assert.Equal(t, NodeID(""), n.Owner(kv.Key("key")))
+	assert.Nil(t, n.GetOwners(kv.Key("key"), 3))
 	n.PutOwners(nil)
 	assert.Equal(t, PeerAddress(""), n.AddressForNode(NodeID("node")))
 	assert.NoError(t, n.start())

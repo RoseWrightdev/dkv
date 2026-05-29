@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"github.com/rosewrightdev/dkv/kv"
 )
 
 // Snapshotter manages the background persistence of the engine state to disk.
@@ -22,7 +23,7 @@ type Snapshotter struct {
 }
 
 type snapshotEntry struct {
-	Key       Key
+	Key       kv.Key
 	Data      []byte
 	Timestamp int64
 	Tombstone bool

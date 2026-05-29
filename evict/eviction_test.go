@@ -1,9 +1,12 @@
-package dkv
+package evict
 
 import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -13,16 +16,16 @@ func TestTTLExpiration(t *testing.T) {
 	lru := NewLRU(LRUConfig{Capacity: 100, TTL: 100 * time.Millisecond, ShardCount: 16})
 
 	var evictCount int32
-	lru.SetEvictCallback(func(_ Key, _ EvictReason) error {
+	lru.SetEvictCallback(func(_ kv.Key, _ EvictReason) error {
 		atomic.AddInt32(&evictCount, 1)
 		return nil
 	})
 
-	lru.start()
-	defer lru.stop()
+	lru.Start()
+	defer lru.Stop()
 
-	lru.seen("expired-key", hashFunc("expired-key"))
-	shard := lru.getShardByHash(hashFunc("expired-key"))
+	lru.seen("expired-key", security.HashFunc("expired-key"))
+	shard := lru.getShardByHash(security.HashFunc("expired-key"))
 
 	// Wait for TTL to pass + some buffer for the reaper
 	time.Sleep(250 * time.Millisecond)
@@ -31,7 +34,7 @@ func TestTTLExpiration(t *testing.T) {
 	assert.Equal(t, int32(1), count, "Key should have been evicted by TTL reaper")
 
 	shard.mu.Lock()
-	hKey := hashFunc("expired-key")
+	hKey := security.HashFunc("expired-key")
 	_, exists := shard.cache[hKey]
 	shard.mu.Unlock()
 	assert.False(t, exists, "Key should be removed from cache")
@@ -42,21 +45,21 @@ func TestSlidingExpiration(t *testing.T) {
 	lru := NewLRU(LRUConfig{Capacity: 100, TTL: ttl, ShardCount: 16})
 
 	var evictCount int32
-	lru.SetEvictCallback(func(_ Key, _ EvictReason) error {
+	lru.SetEvictCallback(func(_ kv.Key, _ EvictReason) error {
 		atomic.AddInt32(&evictCount, 1)
 		return nil
 	})
 
-	lru.start()
-	defer lru.stop()
+	lru.Start()
+	defer lru.Stop()
 
-	lru.seen("sliding-key", hashFunc("sliding-key"))
+	lru.seen("sliding-key", security.HashFunc("sliding-key"))
 
 	// Wait half the TTL
 	time.Sleep(120 * time.Millisecond)
 
 	// Access again to reset TTL
-	lru.seen("sliding-key", hashFunc("sliding-key"))
+	lru.seen("sliding-key", security.HashFunc("sliding-key"))
 
 	// Wait another 120ms (total 240ms since start)
 	time.Sleep(120 * time.Millisecond)

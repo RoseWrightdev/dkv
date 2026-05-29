@@ -11,13 +11,14 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/protobuf/proto"
 )
 
 // Waler defines the interface for a durable write-ahead log.
 type Waler interface {
-	publish(key Key, hash hashKey, msg proto.Message) error
-	replay() (map[Key]Value, error)
+	publish(key kv.Key, hash kv.HashKey, msg proto.Message) error
+	replay() (map[kv.Key]kv.Value, error)
 	clear(offsets []int64) error
 	prepareSnapshot() ([]int64, error)
 	start()
@@ -135,7 +136,7 @@ func (w *Wal) stop() {
 	}
 }
 
-func (w *Wal) getSegment(hash hashKey) *walSegment {
+func (w *Wal) getSegment(hash kv.HashKey) *walSegment {
 	// #nosec G115
 	countU := uint64(w.count)
 	idx := hash % countU
@@ -143,7 +144,7 @@ func (w *Wal) getSegment(hash hashKey) *walSegment {
 	return w.segments[int(idx)]
 }
 
-func (w *Wal) publish(_ Key, hash hashKey, msg proto.Message) error {
+func (w *Wal) publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	entry := w.entryPool.Get().(*pb.WalEntry)
 	defer w.entryPool.Put(entry)
 
@@ -199,8 +200,8 @@ func (w *Wal) publish(_ Key, hash hashKey, msg proto.Message) error {
 	return nil
 }
 
-func (w *Wal) replay() (map[Key]Value, error) {
-	results := make(map[Key]Value)
+func (w *Wal) replay() (map[kv.Key]kv.Value, error) {
+	results := make(map[kv.Key]kv.Value)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var firstErr error
@@ -221,7 +222,7 @@ func (w *Wal) replay() (map[Key]Value, error) {
 }
 
 // todo: refactor, too long and nested
-func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *sync.Mutex) error {
+func (w *Wal) replaySegment(seg *walSegment, results map[kv.Key]kv.Value, resultsMu *sync.Mutex) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 
@@ -271,23 +272,23 @@ func (w *Wal) replaySegment(seg *walSegment, results map[Key]Value, resultsMu *s
 		}
 
 		resultsMu.Lock()
-		switch kv := entry.Entry.(type) {
+		switch op := entry.Entry.(type) {
 		case *pb.WalEntry_Set:
-			k := Key(kv.Set.Key)
+			k := kv.Key(op.Set.Key)
 			existing, exists := results[k]
-			if !exists || kv.Set.Timestamp > existing.Timestamp {
-				results[k] = Value{
-					Data:      kv.Set.Value,
-					Timestamp: kv.Set.Timestamp,
+			if !exists || op.Set.Timestamp > existing.Timestamp {
+				results[k] = kv.Value{
+					Data:      op.Set.Value,
+					Timestamp: op.Set.Timestamp,
 					Tombstone: false,
 				}
 			}
 		case *pb.WalEntry_Delete:
-			k := Key(kv.Delete.Key)
+			k := kv.Key(op.Delete.Key)
 			existing, exists := results[k]
-			if !exists || kv.Delete.Timestamp > existing.Timestamp {
-				results[k] = Value{
-					Timestamp: kv.Delete.Timestamp,
+			if !exists || op.Delete.Timestamp > existing.Timestamp {
+				results[k] = kv.Value{
+					Timestamp: op.Delete.Timestamp,
 					Tombstone: true,
 				}
 			}

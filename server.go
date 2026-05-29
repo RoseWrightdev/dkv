@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc"
 )
 
@@ -40,7 +41,7 @@ func newServerPools() *serverPools {
 }
 
 func (s *server) Get(_ context.Context, in *pb.GetRequest) (*pb.GetResponse, error) {
-	val, ok := s.eng.Get(Key(in.GetKey()))
+	val, ok := s.eng.Get(kv.Key(in.GetKey()))
 	resp := &pb.GetResponse{
 		Value:  val,
 		Exists: ok,

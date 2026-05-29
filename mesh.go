@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/rosewrightdev/dkv/kv"
 )
 
 // PeerAddress represents the network address (IP:Port) of a dkv node.
@@ -17,8 +18,8 @@ type PeerAddress string
 type Mesher interface {
 	Broadcast(msg []byte)
 	Members() []PeerAddress
-	Owner(key Key) NodeID
-	GetOwners(key Key, n int) []NodeID
+	Owner(key kv.Key) NodeID
+	GetOwners(key kv.Key, n int) []NodeID
 	PutOwners(owners []NodeID)
 	AddressForNode(nodeID NodeID) PeerAddress
 	start() error
@@ -138,12 +139,12 @@ func (m *Mesh) AddressForNode(nodeID NodeID) PeerAddress {
 }
 
 // Owner returns the NodeID of the peer responsible for the given key.
-func (m *Mesh) Owner(key Key) NodeID {
+func (m *Mesh) Owner(key kv.Key) NodeID {
 	return m.ring.GetNode(key)
 }
 
 // GetOwners returns the N closest NodeIDs on the hash ring responsible for replicating the given key.
-func (m *Mesh) GetOwners(key Key, n int) []NodeID {
+func (m *Mesh) GetOwners(key kv.Key, n int) []NodeID {
 	return m.ring.GetOwners(key, n)
 }
 
@@ -238,10 +239,10 @@ func (n *NopMesh) Broadcast([]byte) {
 func (n *NopMesh) Members() []PeerAddress { return nil }
 
 // Owner returns an empty NodeID as there are no owners in a NopMesh.
-func (n *NopMesh) Owner(Key) NodeID { return "" }
+func (n *NopMesh) Owner(kv.Key) NodeID { return "" }
 
 // GetOwners returns nil as there are no owners in a NopMesh.
-func (n *NopMesh) GetOwners(Key, int) []NodeID { return nil }
+func (n *NopMesh) GetOwners(kv.Key, int) []NodeID { return nil }
 
 // PutOwners does nothing in a NopMesh.
 func (n *NopMesh) PutOwners([]NodeID) {

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,7 +20,7 @@ func TestEngineOperations(t *testing.T) {
 
 	err = eng.Set("key", bytes)
 	assert.Nil(t, err)
-	val, ok := eng.Get(Key("key"))
+	val, ok := eng.Get(kv.Key("key"))
 	assert.Equal(t, val, bytes)
 	assert.True(t, ok)
 
@@ -27,7 +28,7 @@ func TestEngineOperations(t *testing.T) {
 	bytes = append(bytes, byte(1))
 	err = eng.Set("key", bytes)
 	assert.Nil(t, err)
-	val, ok = eng.Get(Key("key"))
+	val, ok = eng.Get(kv.Key("key"))
 	assert.True(t, ok)
 	assert.Equal(t, val, bytes)
 
@@ -61,11 +62,11 @@ func TestEnginePersistence(t *testing.T) {
 	eng2.Start()
 	defer eng2.Stop()
 
-	v, ok := eng2.Get(Key(key1))
+	v, ok := eng2.Get(kv.Key(key1))
 	assert.True(t, ok)
 	assert.Equal(t, val1, v)
 
-	v, ok = eng2.Get(Key(key3))
+	v, ok = eng2.Get(kv.Key(key3))
 	assert.True(t, ok)
 	assert.Equal(t, val3, v)
 }
@@ -85,8 +86,8 @@ func TestEngine_DeletePersistence(t *testing.T) {
 	eng2.Start()
 	defer eng2.Stop()
 
-	_, ok := eng2.Get(Key(key))
-	assert.False(t, ok, "Key should still be deleted after recovery")
+	_, ok := eng2.Get(kv.Key(key))
+	assert.False(t, ok, "kv.Key should still be deleted after recovery")
 }
 
 func TestEngine_LWW(t *testing.T) {
@@ -107,7 +108,7 @@ func TestEngine_LWW(t *testing.T) {
 	ts2 := int64(2000)
 	eng.clock.Update(ts2)
 	assert.NoError(t, eng.Set(key, val2))
-	got, _ := eng.Get(Key(key))
+	got, _ := eng.Get(kv.Key(key))
 	assert.Equal(t, val2, got)
 
 	// Set with older timestamp (should be ignored)
@@ -119,7 +120,7 @@ func TestEngine_LWW(t *testing.T) {
 		Timestamp: ts3,
 	})
 	assert.NoError(t, err)
-	got, _ = eng.Get(Key(key))
+	got, _ = eng.Get(kv.Key(key))
 	assert.Equal(t, val2, got, "Older timestamp should not overwrite newer data")
 }
 
@@ -141,8 +142,8 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 	eng.clock.Update(ts2)
 	assert.NoError(t, eng.Delete(key))
 
-	_, ok := eng.Get(Key(key))
-	assert.False(t, ok, "Key should be deleted")
+	_, ok := eng.Get(kv.Key(key))
+	assert.False(t, ok, "kv.Key should be deleted")
 
 	// Late-arriving Set with older timestamp
 	ts3 := int64(1500)
@@ -152,7 +153,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 		Timestamp: ts3,
 	})
 	assert.NoError(t, err)
-	_, ok = eng.Get(Key(key))
+	_, ok = eng.Get(kv.Key(key))
 	assert.False(t, ok, "Old set should not resurrect a newer tombstone")
 }
 
@@ -218,7 +219,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 	err = eng2.pushWithSyncer(sets, deletes, *syncer2)
 	assert.NoError(t, err)
 
-	got, ok := eng2.Get(Key(key1))
+	got, ok := eng2.Get(kv.Key(key1))
 	assert.True(t, ok)
 	assert.Equal(t, val1, got)
 }
@@ -244,7 +245,7 @@ func TestEngine_Concurrency(t *testing.T) {
 			for i := range iterations {
 				key := fmt.Sprintf("k-%d-%d", id, i)
 				_ = eng.Set(key, []byte("v"))
-				_, _ = eng.Get(Key(key))
+				_, _ = eng.Get(kv.Key(key))
 			}
 		}(g)
 	}

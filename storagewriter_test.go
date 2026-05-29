@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )
@@ -14,7 +15,7 @@ type mockStorageWal struct {
 	pubErr error
 }
 
-func (m *mockStorageWal) publish(_ Key, _ hashKey, _ proto.Message) error {
+func (m *mockStorageWal) publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error {
 	return m.pubErr
 }
 
@@ -101,7 +102,7 @@ func TestStorageWriter_All(t *testing.T) {
 	mesh.Owners = []NodeID{"other-node"}
 	assert.NoError(t, sw.ApplySet(reqSet2))
 	mesh.Owners = []NodeID{"node-1"} // restore
-	wal.pubErr = nil // restore
+	wal.pubErr = nil                 // restore
 
 	// 3. ApplyDelete success and WAL error
 	reqDel := &pb.DeleteRequest{

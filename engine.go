@@ -10,15 +10,18 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/evict"
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 	"google.golang.org/grpc/credentials"
 )
 
 // Engine defines the core storage and replication engine interface of the dkv node.
 type Engine interface {
-	Get(key Key) ([]byte, bool)
-	Set(key Key, value []byte) error
-	Delete(key Key) error
-	Owner(key Key) NodeID
+	Get(key kv.Key) ([]byte, bool)
+	Set(key kv.Key, value []byte) error
+	Delete(key kv.Key) error
+	Owner(key kv.Key) NodeID
 	NodeID() NodeID
 	Start()
 	Stop()
@@ -33,7 +36,7 @@ type engine struct {
 	clock      Clock
 	wal        Waler
 	mesh       Mesher
-	evt        Evictor
+	evt        evict.Evictor
 	gw         *Gateway
 	syncer     *Syncer
 	pools      *pools
@@ -47,7 +50,7 @@ type engine struct {
 
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
 type EngineConfig struct {
-	evt            Evictor
+	evt            evict.Evictor
 	clock          Clock
 	creds          credentials.TransportCredentials
 	walPath        string
@@ -133,7 +136,7 @@ func (eng *engine) Start() {
 	eng.startOnce.Do(func() {
 		eng.snp.start()
 		eng.wal.start()
-		eng.evt.start()
+		eng.evt.Start()
 		if err := eng.mesh.start(); err != nil {
 			panic(fmt.Sprintf("failed to start cluster service: %v", err))
 		}
@@ -151,7 +154,7 @@ func (eng *engine) Stop() {
 		}
 		eng.snp.stop()
 		eng.wal.stop()
-		eng.evt.stop()
+		eng.evt.Stop()
 		if err := eng.mesh.stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
 		}
@@ -160,11 +163,11 @@ func (eng *engine) Stop() {
 }
 
 // Get retrieves the value associated with a key from the sharded map.
-func (eng *engine) Get(key Key) ([]byte, bool) {
-	hash := hashKey(hashFunc(key))
+func (eng *engine) Get(key kv.Key) ([]byte, bool) {
+	hash := kv.HashKey(security.HashFunc(key))
 	iv, ok := eng.hm.Load(key, hash)
 	if ok && !iv.Tombstone {
-		eng.evt.publish(key, hash)
+		eng.evt.Publish(key, hash)
 		return iv.Data, true
 	} else if ok && iv.Tombstone {
 		// We have a local tombstone. Do not proxy the read as the key is known to be deleted.
@@ -180,14 +183,14 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 }
 
 // Set persists a key-value pair to the WAL and updates the sharded map.
-func (eng *engine) Set(key Key, value []byte) error {
-	hash := hashFunc(key)
-	eng.evt.publish(key, hash)
+func (eng *engine) Set(key kv.Key, value []byte) error {
+	hash := security.HashFunc(key)
+	eng.evt.Publish(key, hash)
 
 	ts := eng.clock.Now()
 
 	if eng.meshConfig.SingleNode {
-		// Hot path: bypass ApplySet to avoid redundant clock.Update, double hashFunc, and
+		// Hot path: bypass ApplySet to avoid redundant clock.Update, double HashFunc, and
 		// the always-true isLocal() ring check — restoring the pre-refactor baseline perf.
 		req := eng.pools.setRequests.Get().(*pb.SetRequest)
 		req.Key = key
@@ -195,7 +198,7 @@ func (eng *engine) Set(key Key, value []byte) error {
 		req.Timestamp = ts
 		req.NodeId = string(eng.meshConfig.NodeID)
 
-		eng.hm.Store(key, hash, Value{
+		eng.hm.Store(key, hash, kv.Value{
 			Data:      value,
 			Timestamp: ts,
 			NodeID:    string(eng.meshConfig.NodeID),
@@ -211,9 +214,9 @@ func (eng *engine) Set(key Key, value []byte) error {
 }
 
 // Delete marks a key as deleted by publishing a tombstone to the WAL.
-func (eng *engine) Delete(key Key) error {
-	hash := hashFunc(key)
-	eng.evt.publishDelete(key, hash)
+func (eng *engine) Delete(key kv.Key) error {
+	hash := security.HashFunc(key)
+	eng.evt.PublishDelete(key, hash)
 
 	ts := eng.clock.Now()
 
@@ -224,7 +227,7 @@ func (eng *engine) Delete(key Key) error {
 		req.Timestamp = ts
 		req.NodeId = string(eng.meshConfig.NodeID)
 
-		eng.hm.Store(key, hash, Value{
+		eng.hm.Store(key, hash, kv.Value{
 			Timestamp: ts,
 			NodeID:    string(eng.meshConfig.NodeID),
 			Tombstone: true,
@@ -238,10 +241,10 @@ func (eng *engine) Delete(key Key) error {
 	return eng.gw.Delete(key, ts)
 }
 
-func (eng *engine) Evict(key Key, reason EvictReason) error {
-	hash := hashFunc(key)
+func (eng *engine) Evict(key kv.Key, reason evict.EvictReason) error {
+	hash := security.HashFunc(key)
 
-	if reason == EvictReasonCapacity {
+	if reason == evict.EvictReasonCapacity {
 		eng.hm.Delete(key, hash)
 		return nil
 	}
@@ -255,7 +258,7 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 		req.Timestamp = ts
 		req.NodeId = string(eng.meshConfig.NodeID)
 
-		eng.hm.Store(key, hash, Value{
+		eng.hm.Store(key, hash, kv.Value{
 			Timestamp: ts,
 			NodeID:    string(eng.meshConfig.NodeID),
 			Tombstone: true,
@@ -293,7 +296,7 @@ func (eng *engine) recover(snpPath string) error {
 				}
 				return err
 			}
-			eng.hm.Store(entry.Key, hashFunc(entry.Key), Value{
+			eng.hm.Store(entry.Key, security.HashFunc(entry.Key), kv.Value{
 				Data:      entry.Data,
 				Timestamp: entry.Timestamp,
 				Tombstone: entry.Tombstone,
@@ -311,7 +314,7 @@ func (eng *engine) recover(snpPath string) error {
 		return err
 	}
 	for k, v := range updates {
-		h := hashFunc(k)
+		h := security.HashFunc(k)
 		eng.hm.Store(k, h, v)
 	}
 	if len(updates) > 0 {
@@ -339,7 +342,7 @@ func (eng *engine) pushWithSyncer(sets []*pb.SetRequest, deletes []*pb.DeleteReq
 	return syncer.push(sets, deletes)
 }
 
-func (eng *engine) Owner(key Key) NodeID {
+func (eng *engine) Owner(key kv.Key) NodeID {
 	if eng.meshConfig.SingleNode {
 		return eng.meshConfig.NodeID
 	}

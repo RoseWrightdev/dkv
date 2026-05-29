@@ -3,6 +3,9 @@ package dkv
 import (
 	"fmt"
 	"testing"
+
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 )
 
 func BenchmarkStateTransfer_ExportState(b *testing.B) {
@@ -14,7 +17,7 @@ func BenchmarkStateTransfer_ExportState(b *testing.B) {
 	// Populate map
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("key-%d", i)
-		hm.StoreLWW(key, hashFunc(key), Value{
+		hm.StoreLWW(key, security.HashFunc(key), kv.Value{
 			Data:      []byte("value"),
 			Timestamp: 100,
 			NodeID:    "node-1",
@@ -38,7 +41,7 @@ func BenchmarkStateTransfer_ImportState(b *testing.B) {
 	hm2 := newShardedMap()
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("key-%d", i)
-		hm2.StoreLWW(key, hashFunc(key), Value{
+		hm2.StoreLWW(key, security.HashFunc(key), kv.Value{
 			Data:      []byte("value"),
 			Timestamp: 100,
 			NodeID:    "node-1",

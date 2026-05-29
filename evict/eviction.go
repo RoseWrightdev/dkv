@@ -1,13 +1,13 @@
-package dkv
+package evict
 
 import (
 	"context"
 	"math/rand/v2"
 	"sync"
 	"time"
-)
 
-type hashKey = uint64
+	"github.com/rosewrightdev/dkv/kv"
+)
 
 // EvictReason defines the category/reason for cache eviction (e.g. TTL or Capacity).
 type EvictReason int
@@ -21,11 +21,11 @@ const (
 
 // Evictor defines the interface for cache invalidation.
 type Evictor interface {
-	publish(key Key, hash hashKey)
-	publishDelete(key Key, hash hashKey)
-	start()
-	stop()
-	SetEvictCallback(func(Key, EvictReason) error)
+	Publish(key kv.Key, hash kv.HashKey)
+	PublishDelete(key kv.Key, hash kv.HashKey)
+	Start()
+	Stop()
+	SetEvictCallback(func(kv.Key, EvictReason) error)
 }
 
 type entry struct {
@@ -33,12 +33,12 @@ type entry struct {
 	prev   *entry
 	next   *entry
 	key    string
-	hash   hashKey
+	hash   kv.HashKey
 }
 
 type lruMsg struct {
 	key  string
-	hash hashKey
+	hash kv.HashKey
 }
 
 type evictMsg struct {
@@ -50,12 +50,12 @@ type lruShard struct {
 	ctx      context.Context
 	tail     *entry
 	ch       chan lruMsg
-	delCh    chan hashKey
+	delCh    chan kv.HashKey
 	evictCh  chan evictMsg
 	head     *entry
 	cancel   context.CancelFunc
-	cache    map[hashKey]*entry
-	onEvict  func(Key, EvictReason) error
+	cache    map[kv.HashKey]*entry
+	onEvict  func(kv.Key, EvictReason) error
 	pool     *sync.Pool
 	wg       sync.WaitGroup
 	ttl      time.Duration
@@ -108,7 +108,7 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 			delCh:    make(chan uint64, max(shardCap/2, 8192)),
 			evictCh:  make(chan evictMsg, max(shardCap/4, 4096)),
 			capacity: shardCap,
-			cache:    make(map[hashKey]*entry),
+			cache:    make(map[kv.HashKey]*entry),
 			ttl:      config.TTL,
 			pool:     pool,
 		}
@@ -120,29 +120,29 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 	}
 }
 
-func (lru *LeastRecentlyUsed) start() {
+func (lru *LeastRecentlyUsed) Start() {
 	for _, s := range lru.shards {
-		s.start()
+		s.Start()
 	}
 }
 
-func (s *lruShard) start() {
+func (s *lruShard) Start() {
 	s.wg.Add(1)
 	go s.run()
 }
 
-func (lru *LeastRecentlyUsed) stop() {
+func (lru *LeastRecentlyUsed) Stop() {
 	for _, s := range lru.shards {
-		s.stop()
+		s.Stop()
 	}
 }
 
-func (s *lruShard) stop() {
+func (s *lruShard) Stop() {
 	s.cancel()
 	s.wg.Wait()
 }
 
-func (lru *LeastRecentlyUsed) publish(key Key, hash hashKey) {
+func (lru *LeastRecentlyUsed) Publish(key kv.Key, hash kv.HashKey) {
 	// Fast-path filter: immediately discard 50% of telemetry events
 	// before executing any memory accesses, sharding, or queue checks.
 	// #nosec G404
@@ -207,11 +207,11 @@ func shouldSample(qLen, qCap int) bool {
 	return mask == 0 || rand.Uint32()&mask == 0
 }
 
-func (lru *LeastRecentlyUsed) seen(key Key, hash hashKey) {
+func (lru *LeastRecentlyUsed) seen(key kv.Key, hash kv.HashKey) {
 	lru.getShardByHash(hash).seen(key, hash)
 }
 
-func (lru *LeastRecentlyUsed) publishDelete(_ Key, hash hashKey) {
+func (lru *LeastRecentlyUsed) PublishDelete(_ kv.Key, hash kv.HashKey) {
 	shard := lru.getShardByHash(hash)
 	select {
 	case shard.delCh <- hash:
@@ -219,7 +219,7 @@ func (lru *LeastRecentlyUsed) publishDelete(_ Key, hash hashKey) {
 	}
 }
 
-func (lru *LeastRecentlyUsed) getShardByHash(hash hashKey) *lruShard {
+func (lru *LeastRecentlyUsed) getShardByHash(hash kv.HashKey) *lruShard {
 	// #nosec G115
 	countU := uint64(lru.count)
 	idx := hash % countU
@@ -250,7 +250,7 @@ func (s *lruShard) run() {
 	}
 }
 
-func (s *lruShard) seen(key string, hkey hashKey) {
+func (s *lruShard) seen(key string, hkey kv.HashKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -320,7 +320,7 @@ func (s *lruShard) evictExpired() {
 	}
 }
 
-func (s *lruShard) delete(hKey hashKey) {
+func (s *lruShard) delete(hKey kv.HashKey) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -360,8 +360,19 @@ func (s *lruShard) pushFront(e *entry) {
 }
 
 // SetEvictCallback sets the function to be called when an entry is evicted.
-func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(Key, EvictReason) error) {
+func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(kv.Key, EvictReason) error) {
 	for _, s := range lru.shards {
 		s.onEvict = fn
 	}
 }
+
+// GetShardTTL returns the TTL of the shard at the given index.
+func (lru *LeastRecentlyUsed) GetShardTTL(idx int) time.Duration {
+	return lru.shards[idx].ttl
+}
+
+// GetShardCapacity returns the capacity of the shard at the given index.
+func (lru *LeastRecentlyUsed) GetShardCapacity(idx int) uint32 {
+	return lru.shards[idx].capacity
+}
+

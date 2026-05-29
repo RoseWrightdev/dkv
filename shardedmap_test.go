@@ -5,14 +5,16 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestShardedMap_Basic(t *testing.T) {
 	sm := newShardedMap()
 
-	key, hash := "test", hashFunc("test")
-	val := Value{Data: []byte("val"), Timestamp: 123}
+	key, hash := "test", security.HashFunc("test")
+	val := kv.Value{Data: []byte("val"), Timestamp: 123}
 
 	sm.Store(key, hash, val)
 
@@ -30,8 +32,8 @@ func TestShardedMap_Digests(t *testing.T) {
 	sm := newShardedMap()
 
 	// Ensure we put things in different shards by manually picking hashes
-	sm.Store("a", 0, Value{Timestamp: 1})
-	sm.Store("b", 1, Value{Timestamp: 1})
+	sm.Store("a", 0, kv.Value{Timestamp: 1})
+	sm.Store("b", 1, kv.Value{Timestamp: 1})
 
 	digests := make(map[ShardID]ShardDigest)
 	for i := range shardCount {
@@ -65,8 +67,8 @@ func TestShardedMap_Concurrency(t *testing.T) {
 			defer wg.Done()
 			for k := range keys {
 				key := fmt.Sprintf("k-%d", k)
-				h := hashFunc(key)
-				sm.Store(key, h, Value{Timestamp: int64(id)})
+				h := security.HashFunc(key)
+				sm.Store(key, h, kv.Value{Timestamp: int64(id)})
 			}
 		}(i)
 	}
@@ -75,7 +77,7 @@ func TestShardedMap_Concurrency(t *testing.T) {
 
 	// Check random key
 	key := "k-50"
-	h := hashFunc(key)
+	h := security.HashFunc(key)
 	v, ok := sm.Load(key, h)
 	assert.True(t, ok)
 	assert.GreaterOrEqual(t, v.Timestamp, int64(0))

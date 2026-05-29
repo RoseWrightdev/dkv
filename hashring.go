@@ -5,6 +5,9 @@ import (
 	"slices"
 	"sort"
 	"sync"
+
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 )
 
 const (
@@ -59,7 +62,7 @@ func (r *HashRing) AddNode(nodeID NodeID) {
 
 	var newVnodes [defaultVnodes]vnode
 	for i := range defaultVnodes {
-		hash := hashFuncSecure(fmt.Sprintf("%s-%d", nodeID, i))
+		hash := security.HashFuncSecure(fmt.Sprintf("%s-%d", nodeID, i))
 		newVnodes[i] = vnode{hash: hash, nodeIdx: nodeIdx}
 	}
 
@@ -141,7 +144,7 @@ func (r *HashRing) AddNodes(nodeIDs []NodeID) {
 		// #nosec G115
 		nodeIdx := uint32(startIdx + i)
 		for j := range defaultVnodes {
-			hash := hashFuncSecure(fmt.Sprintf("%s-%d", id, j))
+			hash := security.HashFuncSecure(fmt.Sprintf("%s-%d", id, j))
 			newVnodes[vIdx] = vnode{hash: hash, nodeIdx: nodeIdx}
 			vIdx++
 		}
@@ -239,7 +242,7 @@ func (r *HashRing) RemoveNode(nodeID NodeID) {
 }
 
 // GetNode returns the ID of the node responsible for the given key.
-func (r *HashRing) GetNode(key Key) NodeID {
+func (r *HashRing) GetNode(key kv.Key) NodeID {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -247,7 +250,7 @@ func (r *HashRing) GetNode(key Key) NodeID {
 		return ""
 	}
 
-	hash := hashFuncSecure(key)
+	hash := security.HashFuncSecure(key)
 
 	// Perform an O(log K) binary search to locate the clockwise neighbor
 	idx := sort.Search(len(r.vnodes), func(i int) bool {
@@ -263,7 +266,7 @@ func (r *HashRing) GetNode(key Key) NodeID {
 }
 
 // GetOwners returns the N nodes responsible for a key in clockwise order.
-func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
+func (r *HashRing) GetOwners(key kv.Key, replicationFactor int) []NodeID {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -271,7 +274,7 @@ func (r *HashRing) GetOwners(key Key, replicationFactor int) []NodeID {
 		return nil
 	}
 
-	hash := hashFuncSecure(key)
+	hash := security.HashFuncSecure(key)
 
 	// Locate the starting index clockwise from the key's hash with binary search
 	idx := sort.Search(len(r.vnodes), func(i int) bool {

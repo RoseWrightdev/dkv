@@ -7,6 +7,7 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -32,7 +33,7 @@ func newGateway(mesh Mesher, meshConfig *MeshConfig, pools *pools, creds credent
 
 // Get queries the consistent hash ring for owner nodes and routes
 // the read request to the first reachable peer.
-func (g *Gateway) Get(key Key) ([]byte, bool) {
+func (g *Gateway) Get(key kv.Key) ([]byte, bool) {
 	rf := g.getReplicationFactor()
 	owners := g.mesh.GetOwners(key, rf)
 	defer g.mesh.PutOwners(owners)
@@ -49,7 +50,7 @@ func (g *Gateway) Get(key Key) ([]byte, bool) {
 }
 
 // Set queries the hash ring for owners and executes parallel writes to replicas.
-func (g *Gateway) Set(key Key, value []byte, ts int64) error {
+func (g *Gateway) Set(key kv.Key, value []byte, ts int64) error {
 	rf := g.getReplicationFactor()
 	owners := g.mesh.GetOwners(key, rf)
 	defer g.mesh.PutOwners(owners)
@@ -95,7 +96,7 @@ func (g *Gateway) Set(key Key, value []byte, ts int64) error {
 }
 
 // Delete queries the hash ring for owners and executes parallel deletes to replicas.
-func (g *Gateway) Delete(key Key, ts int64) error {
+func (g *Gateway) Delete(key kv.Key, ts int64) error {
 	rf := g.getReplicationFactor()
 	owners := g.mesh.GetOwners(key, rf)
 	defer g.mesh.PutOwners(owners)
@@ -155,7 +156,7 @@ func (g *Gateway) getReplicationFactor() int {
 	return rf
 }
 
-func (g *Gateway) proxyGetRemote(node NodeID, key Key) ([]byte, bool, error) {
+func (g *Gateway) proxyGetRemote(node NodeID, key kv.Key) ([]byte, bool, error) {
 	addr := g.mesh.AddressForNode(node)
 	if addr == "" {
 		return nil, false, fmt.Errorf("address not found for node %s", node)
@@ -168,7 +169,7 @@ func (g *Gateway) proxyGetRemote(node NodeID, key Key) ([]byte, bool, error) {
 	return val, ok, err
 }
 
-func (g *Gateway) applySetLocal(key Key, value []byte, ts int64) error {
+func (g *Gateway) applySetLocal(key kv.Key, value []byte, ts int64) error {
 	req := g.pools.setRequests.Get().(*pb.SetRequest)
 	defer g.pools.setRequests.Put(req)
 	req.Key = key
@@ -181,7 +182,7 @@ func (g *Gateway) applySetLocal(key Key, value []byte, ts int64) error {
 	return err
 }
 
-func (g *Gateway) applySetRemote(node NodeID, key Key, value []byte, ts int64) error {
+func (g *Gateway) applySetRemote(node NodeID, key kv.Key, value []byte, ts int64) error {
 	addr := g.mesh.AddressForNode(node)
 	if addr == "" {
 		return fmt.Errorf("remote replica %s address not found", node)
@@ -210,7 +211,7 @@ func (g *Gateway) applySetRemote(node NodeID, key Key, value []byte, ts int64) e
 	return err
 }
 
-func (g *Gateway) applyDeleteLocal(key Key, ts int64) error {
+func (g *Gateway) applyDeleteLocal(key kv.Key, ts int64) error {
 	req := g.pools.deleteRequests.Get().(*pb.DeleteRequest)
 	defer g.pools.deleteRequests.Put(req)
 	req.Key = key
@@ -222,7 +223,7 @@ func (g *Gateway) applyDeleteLocal(key Key, ts int64) error {
 	return err
 }
 
-func (g *Gateway) applyDeleteRemote(node NodeID, key Key, ts int64) error {
+func (g *Gateway) applyDeleteRemote(node NodeID, key kv.Key, ts int64) error {
 	addr := g.mesh.AddressForNode(node)
 	if addr == "" {
 		return fmt.Errorf("remote replica %s address not found", node)
