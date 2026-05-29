@@ -1,4 +1,4 @@
-package dkv
+package server
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/rosewrightdev/dkv"
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/entropy"
 	"github.com/rosewrightdev/dkv/hashmap"
@@ -16,7 +17,7 @@ import (
 
 type server struct {
 	pb.UnimplementedDkvServiceServer
-	eng   Engine
+	eng   dkv.Engine
 	pools *serverPools
 }
 
@@ -119,11 +120,11 @@ func (s *server) Push(_ context.Context, in *pb.PushRequest) (*pb.PushResponse, 
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
-	eng      Engine
+	eng      dkv.Engine
 }
 
 // NewServer creates a new Grpc server instance around a dkv Engine.
-func NewServer(eng Engine) *Grpc {
+func NewServer(eng dkv.Engine) *Grpc {
 	s := grpc.NewServer()
 	h := &server{
 		eng:   eng,

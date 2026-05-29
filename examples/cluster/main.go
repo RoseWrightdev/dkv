@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/rosewrightdev/dkv"
+	"github.com/rosewrightdev/dkv/server"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -22,7 +22,7 @@ func main() {
 
 	fmt.Printf("Starting %d-node dkv cluster...\n", numNodes)
 
-	cluster, err := dkv.NewCluster(numNodes, dataDir, insecure.NewCredentials())
+	cluster, err := server.NewCluster(numNodes, dataDir, insecure.NewCredentials())
 	if err != nil {
 		panic(fmt.Errorf("failed to start cluster: %w", err))
 	}

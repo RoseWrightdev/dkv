@@ -1,12 +1,49 @@
-package dkv
+package server
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv"
 	"github.com/rosewrightdev/dkv/gateway"
 )
+
+func setupBenchmarkEngine(b *testing.B, distributed bool) (dkv.Engine, func()) {
+	tmpDir, err := os.MkdirTemp("", "dkv-bench-*")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	builder := dkv.NewEngineBuilder().
+		Default().
+		SetWalPath(tmpDir).
+		SetSnpPath(tmpDir + "/snp.bin").
+		SetWalInterval(time.Hour).
+		SetSnpInterval(time.Hour).
+		SetWalBufferSize(1024 * 1024).
+		SetWalSegments(4).
+		SetInsecure()
+
+	if !distributed {
+		builder.SingleNode()
+	} else {
+		builder.SetGossipInterval(10 * time.Second)
+	}
+
+	eng, err := builder.Build()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	eng.Start()
+	cleanup := func() {
+		eng.Stop()
+		_ = os.RemoveAll(tmpDir)
+	}
+	return eng, cleanup
+}
 
 func BenchmarkServer_Get_gRPC(b *testing.B) {
 	eng, cleanup := setupBenchmarkEngine(b, false)

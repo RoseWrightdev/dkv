@@ -12,6 +12,7 @@ import (
 
 	"github.com/rosewrightdev/dkv"
 	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/server"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -133,7 +134,7 @@ func main() {
 	}
 
 	eng.Start()
-	s := dkv.NewServer(eng)
+	s := server.NewServer(eng)
 
 	go func() {
 		slog.Info("Starting DKV server", "addr", eng.Addr())

@@ -1,10 +1,11 @@
-package dkv
+package server
 
 import (
 	"fmt"
 	"path/filepath"
 	"sync/atomic"
 
+	"github.com/rosewrightdev/dkv"
 	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc/credentials"
 )
@@ -26,10 +27,9 @@ func getNextBasePort(nodeCount int) int {
 	}
 }
 
-
 // Cluster represents a group of dkv engines and servers.
 type Cluster struct {
-	Engines []Engine
+	Engines []dkv.Engine
 	Servers []*Grpc
 }
 
@@ -60,11 +60,10 @@ func newCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 	var seedAddr string
 	basePort := getNextBasePort(nodeCount)
 
-
 	for i := range nodeCount {
 		name := fmt.Sprintf("node-%d", i+1)
 
-		eb := NewEngineBuilder().
+		eb := dkv.NewEngineBuilder().
 			Default()
 
 		if fastTest {
@@ -109,7 +108,7 @@ func (c *Cluster) Start() error {
 	for i, engine := range c.Engines {
 		server := c.Servers[i]
 
-		go func(e Engine, s *Grpc) {
+		go func(e dkv.Engine, s *Grpc) {
 			e.Start()
 			err := s.Run()
 			if err != nil {
@@ -141,8 +140,7 @@ func (c *Cluster) stopEngine(id kv.NodeID) {
 func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds credentials.TransportCredentials, fastTest bool) error {
 	basePort := getNextBasePort(1)
 
-
-	eb := NewEngineBuilder().
+	eb := dkv.NewEngineBuilder().
 		Default()
 
 	if fastTest {

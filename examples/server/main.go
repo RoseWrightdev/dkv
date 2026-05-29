@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/rosewrightdev/dkv"
+	"github.com/rosewrightdev/dkv/server"
 )
 
 func main() {
@@ -23,7 +24,7 @@ func main() {
 	defer eng.Stop()
 
 	// Run the gRPC Server using the address/port configured from the engine
-	s := dkv.NewServer(eng)
+	s := server.NewServer(eng)
 	fmt.Printf("Starting DKV server on %s...\n", eng.Addr())
 	if err := s.Run(); err != nil {
 		panic(err)

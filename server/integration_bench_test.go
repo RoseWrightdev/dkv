@@ -1,4 +1,4 @@
-package dkv_test
+package server
 
 import (
 	"fmt"
@@ -44,7 +44,7 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 	e1.Start()
 	defer e1.Stop()
 
-	s1 := dkv.NewServer(e1)
+	s1 := NewServer(e1)
 	go func() { _ = s1.Run() }()
 	defer s1.Stop()
 
@@ -71,7 +71,7 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 	e2.Start()
 	defer e2.Stop()
 
-	s2 := dkv.NewServer(e2)
+	s2 := NewServer(e2)
 	go func() { _ = s2.Run() }()
 	defer s2.Stop()
 

@@ -1,4 +1,4 @@
-package dkv_test
+package server
 
 import (
 	"fmt"
@@ -105,7 +105,7 @@ func TestClusterScale(t *testing.T) {
 		require.NoError(t, err, "Failed to create engine for %s", name)
 		engines = append(engines, eng)
 
-		server := dkv.NewServer(eng)
+		server := NewServer(eng)
 		go func() { _ = server.Run() }()
 
 		client, err := gateway.NewInsecureClient(fmt.Sprintf("127.0.0.1:%d", grpcPort), time.Second)
@@ -243,7 +243,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 	require.NoError(t, err)
 	eng1.Start()
 
-	server1 := dkv.NewServer(eng1)
+	server1 := NewServer(eng1)
 	go func() { _ = server1.Run() }()
 
 	// Setup Node 2
@@ -267,7 +267,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 	require.NoError(t, err)
 	eng2.Start()
 
-	server2 := dkv.NewServer(eng2)
+	server2 := NewServer(eng2)
 	go func() { _ = server2.Run() }()
 
 	// Wait for nodes to discover each other
