@@ -1,4 +1,4 @@
-package dkv
+package snap
 
 import (
 	"encoding/gob"
@@ -10,6 +10,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )
+
+var (
+	mockSnpPath     = "test_snapshot.bin"
+	mockSnpInterval = 500 * time.Millisecond
+)
+
+func cleanupSnp(t *testing.T) {
+	_ = os.Remove(mockSnpPath)
+	_ = os.Remove(mockSnpPath + ".tmp")
+}
 
 type mockWal struct {
 	clearCalled bool
@@ -23,19 +33,19 @@ func (mw *mockWal) Stop()                                           {}
 func (mw *mockWal) Start()                                          {}
 
 func TestNewSnapshotter(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupSnp(t)
 
 	mw := &mockWal{}
 	callBack := func(_ *gob.Encoder) error { return nil }
 
-	snp, err := newSnapshotter(mockConfig.snpPath, mockConfig.snpInterval, mw, callBack)
+	snp, err := NewSnapshotter(mockSnpPath, mockSnpInterval, mw, callBack)
 	assert.NoError(t, err)
 	assert.NotNil(t, snp)
-	assert.Equal(t, mockConfig.snpPath, snp.path)
+	assert.Equal(t, mockSnpPath, snp.path)
 }
 
 func TestCreateNewSnapShot(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupSnp(t)
 
 	mw := &mockWal{}
 	mockData := map[kv.Key]kv.Value{
@@ -44,18 +54,18 @@ func TestCreateNewSnapShot(t *testing.T) {
 	}
 	callBack := func(enc *gob.Encoder) error {
 		for k, v := range mockData {
-			if err := enc.Encode(snapshotEntry{Key: k, Data: v.Data, Timestamp: v.Timestamp, Tombstone: v.Tombstone}); err != nil {
+			if err := enc.Encode(SnapshotEntry{Key: k, Data: v.Data, Timestamp: v.Timestamp, Tombstone: v.Tombstone}); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	snp, _ := newSnapshotter(mockConfig.snpPath, mockConfig.snpInterval, mw, callBack)
+	snp, _ := NewSnapshotter(mockSnpPath, mockSnpInterval, mw, callBack)
 
-	err := snp.create()
+	err := snp.Create()
 	assert.NoError(t, err)
 
-	file, err := os.Open(mockConfig.snpPath)
+	file, err := os.Open(mockSnpPath)
 	assert.NoError(t, err)
 	defer func() {
 		_ = file.Close()
@@ -64,7 +74,7 @@ func TestCreateNewSnapShot(t *testing.T) {
 	dec := gob.NewDecoder(file)
 	decoded := make(map[kv.Key]kv.Value)
 	for {
-		var entry snapshotEntry
+		var entry SnapshotEntry
 		if err := dec.Decode(&entry); err != nil {
 			break
 		}
@@ -76,21 +86,21 @@ func TestCreateNewSnapShot(t *testing.T) {
 }
 
 func TestPeriodicSnapshots(t *testing.T) {
-	defer cleanupEngineMocks(t)
+	defer cleanupSnp(t)
 
 	mw := &mockWal{}
 	callBack := func(_ *gob.Encoder) error { return nil }
 
 	interval := 50 * time.Millisecond
-	snp, err := newSnapshotter(mockConfig.snpPath, interval, mw, callBack)
+	snp, err := NewSnapshotter(mockSnpPath, interval, mw, callBack)
 	assert.NoError(t, err)
 
-	snp.start()
-	defer snp.stop()
+	snp.Start()
+	defer snp.Stop()
 
 	time.Sleep(150 * time.Millisecond)
 
-	_, err = os.Stat(mockConfig.snpPath)
+	_, err = os.Stat(mockSnpPath)
 	assert.NoError(t, err, "Snapshot file should have been created by background task")
 }
 
@@ -109,7 +119,7 @@ func (ew *errorWal) PrepareSnapshot() ([]int64, error) {
 func TestSnapshot_ExtraEdgeCases(t *testing.T) {
 	// 1. queueSnapShot skip / default path
 	mw := &mockWal{}
-	snp, err := newSnapshotter("testpath", time.Hour, mw, func(_ *gob.Encoder) error { return nil })
+	snp, err := NewSnapshotter("testpath", time.Hour, mw, func(_ *gob.Encoder) error { return nil })
 	assert.NoError(t, err)
 
 	// fill the queue
@@ -121,24 +131,24 @@ func TestSnapshot_ExtraEdgeCases(t *testing.T) {
 
 	// 2. prepareSnapshot error
 	ew := &errorWal{prepErr: assert.AnError}
-	snpErr, err := newSnapshotter("testpath", time.Hour, ew, func(_ *gob.Encoder) error { return nil })
+	snpErr, err := NewSnapshotter("testpath", time.Hour, ew, func(_ *gob.Encoder) error { return nil })
 	assert.NoError(t, err)
-	err = snpErr.create()
+	err = snpErr.Create()
 	assert.Error(t, err)
 	assert.Equal(t, assert.AnError, err)
 
 	// 3. os.Create error (using invalid path)
-	snpCreateErr, err := newSnapshotter("/nonexistent-path-1234/file.snp", time.Hour, mw, func(_ *gob.Encoder) error { return nil })
+	snpCreateErr, err := NewSnapshotter("/nonexistent-path-1234/file.snp", time.Hour, mw, func(_ *gob.Encoder) error { return nil })
 	assert.NoError(t, err)
-	err = snpCreateErr.create()
+	err = snpCreateErr.Create()
 	assert.Error(t, err)
 
 	// 4. encCallBack error
-	snpEncErr, err := newSnapshotter(mockConfig.snpPath, time.Hour, mw, func(_ *gob.Encoder) error {
+	snpEncErr, err := NewSnapshotter(mockSnpPath, time.Hour, mw, func(_ *gob.Encoder) error {
 		return assert.AnError
 	})
 	assert.NoError(t, err)
-	err = snpEncErr.create()
+	err = snpEncErr.Create()
 	assert.Error(t, err)
 	assert.Equal(t, assert.AnError, err)
 }

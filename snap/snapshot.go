@@ -1,4 +1,4 @@
-package dkv
+package snap
 
 import (
 	"context"
@@ -20,17 +20,17 @@ type Snapshotter struct {
 	encCallBack func(*gob.Encoder) error
 	path        string
 	wg          sync.WaitGroup
-	interval    time.Duration
+	Interval    time.Duration
 }
 
-type snapshotEntry struct {
+type SnapshotEntry struct {
 	Key       kv.Key
 	Data      []byte
 	Timestamp int64
 	Tombstone bool
 }
 
-func newSnapshotter(path string, interval time.Duration, wal wal.Waler, encCallBack func(*gob.Encoder) error) (*Snapshotter, error) {
+func NewSnapshotter(path string, interval time.Duration, wal wal.Waler, encCallBack func(*gob.Encoder) error) (*Snapshotter, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	ch := make(chan struct{}, 1)
@@ -39,7 +39,7 @@ func newSnapshotter(path string, interval time.Duration, wal wal.Waler, encCallB
 		cancel:      cancel,
 		ch:          ch,
 		path:        path,
-		interval:    interval,
+		Interval:    interval,
 		wal:         wal,
 		encCallBack: encCallBack,
 	}
@@ -47,22 +47,22 @@ func newSnapshotter(path string, interval time.Duration, wal wal.Waler, encCallB
 	return &snp, nil
 }
 
-// start begins the periodic snapshotting loop.
-func (snp *Snapshotter) start() {
+// Start begins the periodic snapshotting loop.
+func (snp *Snapshotter) Start() {
 	snp.wg.Add(2)
 	go snp.producer(snp.ctx)
 	go snp.consumer(snp.ctx)
 }
 
-// stop gracefully shuts down the snapshotting service.
-func (snp *Snapshotter) stop() {
+// Stop gracefully shuts down the snapshotting service.
+func (snp *Snapshotter) Stop() {
 	snp.cancel()
 	snp.wg.Wait()
 }
 
 func (snp *Snapshotter) producer(ctx context.Context) {
 	defer snp.wg.Done()
-	ticker := time.NewTicker(snp.interval)
+	ticker := time.NewTicker(snp.Interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -84,7 +84,7 @@ func (snp *Snapshotter) consumer(ctx context.Context) {
 			if !ok {
 				return
 			}
-			if err := snp.create(); err != nil {
+			if err := snp.Create(); err != nil {
 				slog.Error("Failed to create snapshot", "error", err)
 			} else {
 				slog.Info("Database snapshot created.")
@@ -101,7 +101,7 @@ func (snp *Snapshotter) queueSnapShot() {
 	}
 }
 
-func (snp *Snapshotter) create() error {
+func (snp *Snapshotter) Create() error {
 	offsets, err := snp.wal.PrepareSnapshot()
 	if err != nil {
 		return err

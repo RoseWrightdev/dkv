@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/snap"
 )
 
 // StateExchanger defines the interface for exporting and importing cluster state.
@@ -61,7 +62,7 @@ func (st *StateTransfer) streamToEncoder(enc *gob.Encoder) error {
 		shard.mu.RLock()
 		for b := range subBucketCount {
 			for k, v := range shard.buckets[b] {
-				entry := st.pools.snapshotEntries.Get().(*snapshotEntry)
+				entry := st.pools.snapshotEntries.Get().(*snap.SnapshotEntry)
 				entry.Key = k
 				entry.Data = v.Data
 				entry.Timestamp = v.Timestamp
@@ -93,7 +94,7 @@ func (st *StateTransfer) decodeFromReader(r io.Reader) error {
 	dec := gob.NewDecoder(r)
 	count := 0
 	for {
-		entry := st.pools.snapshotEntries.Get().(*snapshotEntry)
+		entry := st.pools.snapshotEntries.Get().(*snap.SnapshotEntry)
 		if err := dec.Decode(entry); err != nil {
 			entry.Key = ""
 			entry.Data = nil

@@ -13,6 +13,7 @@ import (
 	"github.com/rosewrightdev/dkv/evict"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/security"
+	"github.com/rosewrightdev/dkv/snap"
 	"github.com/rosewrightdev/dkv/wal"
 	"google.golang.org/grpc/credentials"
 )
@@ -42,7 +43,7 @@ type engine struct {
 	syncer     *Syncer
 	pools      *pools
 	hm         *shardedMap
-	snp        *Snapshotter
+	snp        *snap.Snapshotter
 	sw         *StorageWriter
 	meshConfig MeshConfig
 	startOnce  sync.Once
@@ -88,7 +89,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 
 	stateTransfer := newStateTransfer(eng.pools, eng.hm, writer)
 
-	snp, err := newSnapshotter(config.snpPath, config.snpInterval, w, stateTransfer.streamToEncoder)
+	snp, err := snap.NewSnapshotter(config.snpPath, config.snpInterval, w, stateTransfer.streamToEncoder)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +136,7 @@ func newEngine(config EngineConfig) (Engine, error) {
 // Start initializes background services.
 func (eng *engine) Start() {
 	eng.startOnce.Do(func() {
-		eng.snp.start()
+		eng.snp.Start()
 		eng.wal.Start()
 		eng.evt.Start()
 		if err := eng.mesh.start(); err != nil {
@@ -153,7 +154,7 @@ func (eng *engine) Stop() {
 		if eng.syncer != nil {
 			eng.syncer.stop()
 		}
-		eng.snp.stop()
+		eng.snp.Stop()
 		eng.wal.Stop()
 		eng.evt.Stop()
 		if err := eng.mesh.stop(); err != nil {
@@ -287,7 +288,7 @@ func (eng *engine) recover(snpPath string) error {
 		dec := gob.NewDecoder(file)
 		count := 0
 		for {
-			entry := eng.pools.snapshotEntries.Get().(*snapshotEntry)
+			entry := eng.pools.snapshotEntries.Get().(*snap.SnapshotEntry)
 			if err := dec.Decode(entry); err != nil {
 				entry.Key = ""
 				entry.Data = nil

@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/snap"
 )
 
 type pools struct {
@@ -28,7 +29,7 @@ func newPools() *pools {
 			New: func() any { return &pb.DeleteRequest{} },
 		},
 		snapshotEntries: sync.Pool{
-			New: func() any { return &snapshotEntry{} },
+			New: func() any { return &snap.SnapshotEntry{} },
 		},
 		walEntries: sync.Pool{
 			New: func() any { return &pb.WalEntry{} },

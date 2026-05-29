@@ -46,7 +46,7 @@ func TestEngineBuilder(t *testing.T) {
 	defer eng.Stop()
 
 	e := eng.(*engine)
-	assert.Equal(t, e.snp.interval, mockConfig.snpInterval)
+	assert.Equal(t, e.snp.Interval, mockConfig.snpInterval)
 
 	actualLRU, ok := e.evt.(*evict.LeastRecentlyUsed)
 	assert.True(t, ok)
