@@ -75,7 +75,7 @@ sequenceDiagram
 
     %% Write
     Client->>Engine: Set(key, value)
-    Engine->>Engine: hashFunc(key) + clock.Now()
+    Engine->>Engine: HashFunc(key) + clock.Now()
     Engine->>Gateway: Set(key, value, ts)
     Gateway->>Gateway: HashRing.GetOwners(key, RF)
     par to each owner

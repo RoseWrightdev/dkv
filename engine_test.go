@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/internal/entropy"
+	"github.com/rosewrightdev/dkv/internal/hashmap"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -19,7 +22,7 @@ func TestEngineOperations(t *testing.T) {
 
 	err = eng.Set("key", bytes)
 	assert.Nil(t, err)
-	val, ok := eng.Get(Key("key"))
+	val, ok := eng.Get(kv.Key("key"))
 	assert.Equal(t, val, bytes)
 	assert.True(t, ok)
 
@@ -27,7 +30,7 @@ func TestEngineOperations(t *testing.T) {
 	bytes = append(bytes, byte(1))
 	err = eng.Set("key", bytes)
 	assert.Nil(t, err)
-	val, ok = eng.Get(Key("key"))
+	val, ok = eng.Get(kv.Key("key"))
 	assert.True(t, ok)
 	assert.Equal(t, val, bytes)
 
@@ -48,7 +51,7 @@ func TestEnginePersistence(t *testing.T) {
 	assert.Nil(t, eng.Set(key1, val1))
 	assert.Nil(t, eng.Set(key2, val2))
 
-	err = eng.(*engine).snp.create()
+	err = eng.(*engine).snp.Create()
 	assert.Nil(t, err)
 
 	key3, val3 := "persist3", []byte("value3")
@@ -61,11 +64,11 @@ func TestEnginePersistence(t *testing.T) {
 	eng2.Start()
 	defer eng2.Stop()
 
-	v, ok := eng2.Get(Key(key1))
+	v, ok := eng2.Get(kv.Key(key1))
 	assert.True(t, ok)
 	assert.Equal(t, val1, v)
 
-	v, ok = eng2.Get(Key(key3))
+	v, ok = eng2.Get(kv.Key(key3))
 	assert.True(t, ok)
 	assert.Equal(t, val3, v)
 }
@@ -85,8 +88,8 @@ func TestEngine_DeletePersistence(t *testing.T) {
 	eng2.Start()
 	defer eng2.Stop()
 
-	_, ok := eng2.Get(Key(key))
-	assert.False(t, ok, "Key should still be deleted after recovery")
+	_, ok := eng2.Get(kv.Key(key))
+	assert.False(t, ok, "kv.Key should still be deleted after recovery")
 }
 
 func TestEngine_LWW(t *testing.T) {
@@ -107,7 +110,7 @@ func TestEngine_LWW(t *testing.T) {
 	ts2 := int64(2000)
 	eng.clock.Update(ts2)
 	assert.NoError(t, eng.Set(key, val2))
-	got, _ := eng.Get(Key(key))
+	got, _ := eng.Get(kv.Key(key))
 	assert.Equal(t, val2, got)
 
 	// Set with older timestamp (should be ignored)
@@ -119,7 +122,7 @@ func TestEngine_LWW(t *testing.T) {
 		Timestamp: ts3,
 	})
 	assert.NoError(t, err)
-	got, _ = eng.Get(Key(key))
+	got, _ = eng.Get(kv.Key(key))
 	assert.Equal(t, val2, got, "Older timestamp should not overwrite newer data")
 }
 
@@ -141,8 +144,8 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 	eng.clock.Update(ts2)
 	assert.NoError(t, eng.Delete(key))
 
-	_, ok := eng.Get(Key(key))
-	assert.False(t, ok, "Key should be deleted")
+	_, ok := eng.Get(kv.Key(key))
+	assert.False(t, ok, "kv.Key should be deleted")
 
 	// Late-arriving Set with older timestamp
 	ts3 := int64(1500)
@@ -152,7 +155,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 		Timestamp: ts3,
 	})
 	assert.NoError(t, err)
-	_, ok = eng.Get(Key(key))
+	_, ok = eng.Get(kv.Key(key))
 	assert.False(t, ok, "Old set should not resurrect a newer tombstone")
 }
 
@@ -174,51 +177,51 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 	// 2. eng2 is empty, it pulls from eng1
 	root2 := eng2.hm.RootDigest()
-	shards2 := make(map[ShardID]Digest)
-	buckets2 := make(map[ShardID]ShardDigest)
+	shards2 := make(map[hashmap.ShardID]hashmap.Digest)
+	buckets2 := make(map[hashmap.ShardID]hashmap.ShardDigest)
 	eng2.hm.FillShardDigests(shards2)
 	eng2.hm.FillDigests(buckets2)
 
-	syncer1 := newSyncer(&SyncerConfig{
-		nodeID:     eng1.meshConfig.NodeID,
-		writer:     eng1.sw,
-		mesh:       eng1.mesh,
-		meshConfig: &eng1.meshConfig,
-		hm:         eng1.hm,
-		pools:      eng1.pools,
-		interval:   mockConfig.gossipInterval,
-		creds:      mockConfig.creds,
-		cc:         eng1.gw.cc,
+	syncer1 := entropy.NewSyncer(&entropy.SyncerConfig{
+		NodeID:     eng1.meshConfig.NodeID,
+		Writer:     eng1.sw,
+		Mesh:       eng1.mesh,
+		MeshConfig: &eng1.meshConfig,
+		Hm:         eng1.hm,
+		Interval:   mockConfig.gossipInterval,
+		Creds:      mockConfig.creds,
+		Cc:         eng1.gw.GetClientCache(),
 	})
+	eng1.syncer = syncer1
 
-	sets, deletes, err := eng1.pullWithSyncer(&PullConfig{
-		requesterID: "node2",
-		root:        root2,
-		shards:      shards2,
-		buckets:     buckets2,
-	}, *syncer1)
+	sets, deletes, err := eng1.SyncPull(&entropy.PullConfig{
+		RequesterID: "node2",
+		Root:        root2,
+		Shards:      shards2,
+		Buckets:     buckets2,
+	})
 	assert.NoError(t, err)
 	assert.Len(t, sets, 1)
 	assert.Len(t, deletes, 0)
 	assert.Equal(t, key1, sets[0].Key)
 
 	// 3. eng2 pushes the updates
-	syncer2 := newSyncer(&SyncerConfig{
-		nodeID:     eng2.meshConfig.NodeID,
-		writer:     eng2.sw,
-		mesh:       eng2.mesh,
-		meshConfig: &eng2.meshConfig,
-		hm:         eng2.hm,
-		pools:      eng2.pools,
-		interval:   mockConfig.gossipInterval,
-		creds:      mockConfig.creds,
-		cc:         eng2.gw.cc,
+	syncer2 := entropy.NewSyncer(&entropy.SyncerConfig{
+		NodeID:     eng2.meshConfig.NodeID,
+		Writer:     eng2.sw,
+		Mesh:       eng2.mesh,
+		MeshConfig: &eng2.meshConfig,
+		Hm:         eng2.hm,
+		Interval:   mockConfig.gossipInterval,
+		Creds:      mockConfig.creds,
+		Cc:         eng2.gw.GetClientCache(),
 	})
+	eng2.syncer = syncer2
 
-	err = eng2.pushWithSyncer(sets, deletes, *syncer2)
+	err = eng2.SyncPush(sets, deletes)
 	assert.NoError(t, err)
 
-	got, ok := eng2.Get(Key(key1))
+	got, ok := eng2.Get(kv.Key(key1))
 	assert.True(t, ok)
 	assert.Equal(t, val1, got)
 }
@@ -244,7 +247,7 @@ func TestEngine_Concurrency(t *testing.T) {
 			for i := range iterations {
 				key := fmt.Sprintf("k-%d-%d", id, i)
 				_ = eng.Set(key, []byte("v"))
-				_, _ = eng.Get(Key(key))
+				_, _ = eng.Get(kv.Key(key))
 			}
 		}(g)
 	}

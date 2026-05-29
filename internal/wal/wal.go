@@ -1,0 +1,386 @@
+package wal
+
+import (
+	"bufio"
+	"context"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"os"
+	"sync"
+	"time"
+
+	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
+	"google.golang.org/protobuf/proto"
+)
+
+// Waler defines the interface for a durable write-ahead log.
+type Waler interface {
+	Publish(key kv.Key, hash kv.HashKey, msg proto.Message) error
+	Replay() (map[kv.Key]kv.Value, error)
+	Clear(offsets []int64) error
+	PrepareSnapshot() ([]int64, error)
+	Start()
+	Stop()
+}
+
+type walSegment struct {
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wrt          *bufio.Writer
+	file         *os.File
+	path         string
+	syncInterval time.Duration
+	mu           sync.Mutex
+}
+
+func (s *walSegment) backgroundSync() {
+	ticker := time.NewTicker(s.syncInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.mu.Lock()
+			if s.wrt.Buffered() > 0 {
+				_ = s.wrt.Flush()
+				_ = s.file.Sync()
+			}
+			s.mu.Unlock()
+		case <-s.ctx.Done():
+			return
+		}
+	}
+}
+
+// Wal implements the durable Write-Ahead Log (WAL) partitioned into segment files.
+type Wal struct {
+	headerPool sync.Pool
+	entryPool  sync.Pool
+	bufferPool sync.Pool
+	segments   []*walSegment
+	count      int
+}
+
+func NewWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segmentCount int) (*Wal, error) {
+	if err := os.MkdirAll(dirPath, 0750); err != nil {
+		return nil, err
+	}
+
+	wal := &Wal{
+		segments: make([]*walSegment, segmentCount),
+		count:    segmentCount,
+		headerPool: sync.Pool{
+			New: func() any {
+				b := make([]byte, 4)
+				return &b
+			},
+		},
+		entryPool: sync.Pool{
+			New: func() any {
+				return &pb.WalEntry{}
+			},
+		},
+		bufferPool: sync.Pool{
+			New: func() any {
+				b := make([]byte, 0, 2048)
+				return &b
+			},
+		},
+	}
+
+	for i := range segmentCount {
+		path := fmt.Sprintf("%s/seg_%02d.log", dirPath, i)
+		// #nosec G304
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err := file.Seek(0, io.SeekEnd); err != nil {
+			_ = file.Close()
+			return nil, err
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		seg := &walSegment{
+			ctx:          ctx,
+			cancel:       cancel,
+			mu:           sync.Mutex{},
+			syncInterval: syncInterval,
+			wrt:          bufio.NewWriterSize(file, int(bufferSize)),
+			file:         file,
+			path:         path,
+		}
+		wal.segments[i] = seg
+	}
+
+	return wal, nil
+}
+
+func (w *Wal) Start() {
+	for _, seg := range w.segments {
+		go seg.backgroundSync()
+	}
+}
+
+func (w *Wal) Stop() {
+	for _, seg := range w.segments {
+		seg.mu.Lock()
+		seg.cancel()
+		_ = seg.wrt.Flush()
+		_ = seg.file.Sync()
+		_ = seg.file.Close()
+		seg.mu.Unlock()
+	}
+}
+
+func (w *Wal) getSegment(hash kv.HashKey) *walSegment {
+	// #nosec G115
+	countU := uint64(w.count)
+	idx := hash % countU
+	// #nosec G115
+	return w.segments[int(idx)]
+}
+
+func (w *Wal) Publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
+	entry := w.entryPool.Get().(*pb.WalEntry)
+	defer w.entryPool.Put(entry)
+
+	switch m := msg.(type) {
+	case *pb.WalEntry:
+		entry.Entry = m.Entry
+	case *pb.SetRequest:
+		if wrapper, ok := entry.Entry.(*pb.WalEntry_Set); ok {
+			wrapper.Set = m
+		} else {
+			entry.Entry = &pb.WalEntry_Set{Set: m}
+		}
+	case *pb.DeleteRequest:
+		if wrapper, ok := entry.Entry.(*pb.WalEntry_Delete); ok {
+			wrapper.Delete = m
+		} else {
+			entry.Entry = &pb.WalEntry_Delete{Delete: m}
+		}
+	default:
+		return fmt.Errorf("unsupported message type: %T", msg)
+	}
+
+	bufPtr := w.bufferPool.Get().(*[]byte)
+	buf := (*bufPtr)[:0]
+	data, err := proto.MarshalOptions{}.MarshalAppend(buf, entry)
+	if err != nil {
+		w.bufferPool.Put(bufPtr)
+		return err
+	}
+	*bufPtr = data
+	defer w.bufferPool.Put(bufPtr)
+
+	headerPtr := w.headerPool.Get().(*[]byte)
+	header := *headerPtr
+	defer w.headerPool.Put(headerPtr)
+	dataLen := len(data)
+	// #nosec G115
+	dataLenU := uint32(dataLen)
+	binary.BigEndian.PutUint32(header, dataLenU)
+
+	seg := w.getSegment(hash)
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+
+	if _, err := seg.wrt.Write(header); err != nil {
+		return err
+	}
+
+	if _, err := seg.wrt.Write(data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *Wal) Replay() (map[kv.Key]kv.Value, error) {
+	results := make(map[kv.Key]kv.Value)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	var firstErr error
+	var errOnce sync.Once
+
+	for i := range w.count {
+		wg.Add(1)
+		go func(seg *walSegment) {
+			defer wg.Done()
+			if err := w.replaySegment(seg, results, &mu); err != nil {
+				errOnce.Do(func() { firstErr = err })
+			}
+		}(w.segments[i])
+	}
+
+	wg.Wait()
+	return results, firstErr
+}
+
+// todo: refactor, too long and nested
+func (w *Wal) replaySegment(seg *walSegment, results map[kv.Key]kv.Value, resultsMu *sync.Mutex) error {
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+
+	err := seg.wrt.Flush()
+	if err != nil {
+		return err
+	}
+	if _, err := seg.file.Seek(0, 0); err != nil {
+		return err
+	}
+
+	reader := bufio.NewReader(seg.file)
+	headerPtr := w.headerPool.Get().(*[]byte)
+	header := *headerPtr
+	defer w.headerPool.Put(headerPtr)
+
+	payloadPtr := w.bufferPool.Get().(*[]byte)
+	payload := *payloadPtr
+	defer func() {
+		*payloadPtr = payload
+		w.bufferPool.Put(payloadPtr)
+	}()
+
+	for {
+		if _, err := io.ReadFull(reader, header); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+
+		size := int(binary.BigEndian.Uint32(header))
+		if cap(payload) < size {
+			payload = make([]byte, size)
+		}
+		payload = payload[:size]
+
+		if _, err := io.ReadFull(reader, payload); err != nil {
+			return err
+		}
+
+		entry := w.entryPool.Get().(*pb.WalEntry)
+		entry.Reset()
+		if err := proto.Unmarshal(payload, entry); err != nil {
+			w.entryPool.Put(entry)
+			return err
+		}
+
+		resultsMu.Lock()
+		switch op := entry.Entry.(type) {
+		case *pb.WalEntry_Set:
+			k := kv.Key(op.Set.Key)
+			existing, exists := results[k]
+			if !exists || op.Set.Timestamp > existing.Timestamp {
+				results[k] = kv.Value{
+					Data:      op.Set.Value,
+					Timestamp: op.Set.Timestamp,
+					Tombstone: false,
+				}
+			}
+		case *pb.WalEntry_Delete:
+			k := kv.Key(op.Delete.Key)
+			existing, exists := results[k]
+			if !exists || op.Delete.Timestamp > existing.Timestamp {
+				results[k] = kv.Value{
+					Timestamp: op.Delete.Timestamp,
+					Tombstone: true,
+				}
+			}
+		}
+		resultsMu.Unlock()
+		w.entryPool.Put(entry)
+	}
+
+	_, err = seg.file.Seek(0, io.SeekEnd)
+	return err
+}
+
+func (w *Wal) PrepareSnapshot() ([]int64, error) {
+	offsets := make([]int64, w.count)
+	for i, seg := range w.segments {
+		seg.mu.Lock()
+		if err := seg.wrt.Flush(); err != nil {
+			seg.mu.Unlock()
+			return nil, err
+		}
+		pos, err := seg.file.Seek(0, io.SeekEnd)
+		if err != nil {
+			seg.mu.Unlock()
+			return nil, err
+		}
+		offsets[i] = pos
+		seg.mu.Unlock()
+	}
+	return offsets, nil
+}
+
+func (w *Wal) Clear(offsets []int64) error {
+	for i, seg := range w.segments {
+		seg.mu.Lock()
+
+		var offset int64
+		if offsets != nil && i < len(offsets) {
+			offset = offsets[i]
+		}
+
+		if err := seg.wrt.Flush(); err != nil {
+			seg.mu.Unlock()
+			return err
+		}
+
+		currSize, err := seg.file.Seek(0, io.SeekEnd)
+		if err != nil {
+			seg.mu.Unlock()
+			return err
+		}
+
+		if offset <= 0 || currSize <= offset {
+			if err := seg.file.Truncate(0); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			if _, err := seg.file.Seek(0, 0); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			seg.wrt.Reset(seg.file)
+		} else {
+			if _, err := seg.file.Seek(offset, io.SeekStart); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			data := make([]byte, currSize-offset)
+			if _, err := io.ReadFull(seg.file, data); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+
+			if err := seg.file.Truncate(0); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			if _, err := seg.file.Seek(0, io.SeekStart); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			if _, err := seg.file.Write(data); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			if _, err := seg.file.Seek(0, io.SeekEnd); err != nil {
+				seg.mu.Unlock()
+				return err
+			}
+			seg.wrt.Reset(seg.file)
+		}
+
+		seg.mu.Unlock()
+	}
+	return nil
+}

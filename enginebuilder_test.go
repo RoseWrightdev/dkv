@@ -4,6 +4,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rosewrightdev/dkv/evict"
+	"github.com/rosewrightdev/dkv/internal/clock"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,13 +33,13 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SetWalSegments(mockConfig.walSegments)
 	assert.Equal(t, mockConfig.walSegments, eb.walSegments)
 
-	lru := NewLRU(LRUConfig{
+	lru := evict.NewLRU(evict.LRUConfig{
 		Capacity:   500,
 		TTL:        time.Minute,
 		ShardCount: 16,
 	})
 	eb.SetEvictor(lru)
-	eb.SetClock(NewHLC()).SetInsecure()
+	eb.SetClock(clock.NewClock()).SetInsecure()
 	eb.SingleNode()
 	eb.SetInsecure()
 
@@ -45,40 +48,40 @@ func TestEngineBuilder(t *testing.T) {
 	defer eng.Stop()
 
 	e := eng.(*engine)
-	assert.Equal(t, e.snp.interval, mockConfig.snpInterval)
+	assert.Equal(t, e.snp.Interval, mockConfig.snpInterval)
 
-	actualLRU, ok := e.evt.(*LeastRecentlyUsed)
+	actualLRU, ok := e.evt.(*evict.LeastRecentlyUsed)
 	assert.True(t, ok)
-	assert.Equal(t, time.Minute, actualLRU.shards[0].ttl)
-	assert.Equal(t, uint32(500/16), actualLRU.shards[0].capacity)
+	assert.Equal(t, time.Minute, actualLRU.GetShardTTL(0))
+	assert.Equal(t, uint32(500/16), actualLRU.GetShardCapacity(0))
 
 	cleanupEngineMocks(t)
 }
 
 func TestEngineBuilder_Validation(t *testing.T) {
 	t.Run("MissingWalPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.walPath = ""
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.walPath is unset")
 	})
 
 	t.Run("MissingSnpPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.snpPath = ""
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.snpPath is unset")
 	})
 
 	t.Run("MissingWalInterval", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.walInterval = 0
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.walInterval is unset")
 	})
 
 	t.Run("MissingCredentials", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.creds = nil
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "transport credentials are required")
@@ -92,8 +95,8 @@ func TestEngineBuilder_Validation(t *testing.T) {
 	})
 
 	t.Run("MissingGossipInterval_InDistributedMode", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(NewHLC()).SetInsecure()
-		eb.meshBuilder.config.SingleNode = false
+		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
+		eb.meshBuilder.Distributed()
 		eb.gossipInterval = 0
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.gossipInterval is unset")
@@ -102,7 +105,7 @@ func TestEngineBuilder_Validation(t *testing.T) {
 
 func TestEngineBuilder_ProxyMethods(t *testing.T) {
 	eb := NewEngineBuilder()
-	eb.SetNodeID(NodeID("test-node")).
+	eb.SetNodeID(kv.NodeID("test-node")).
 		SetBindAddr("127.0.0.1").
 		SetBindPort(1234).
 		SetAdvertiseAddr("1.2.3.4").
@@ -110,7 +113,7 @@ func TestEngineBuilder_ProxyMethods(t *testing.T) {
 		SetGrpcPort(8080)
 
 	cfg := eb.meshBuilder.Build()
-	assert.Equal(t, NodeID("test-node"), cfg.NodeID)
+	assert.Equal(t, kv.NodeID("test-node"), cfg.NodeID)
 	assert.Equal(t, "127.0.0.1", cfg.BindAddr)
 	assert.Equal(t, 1234, cfg.BindPort)
 	assert.Equal(t, "1.2.3.4", cfg.AdvertiseAddr)

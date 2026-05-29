@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/rosewrightdev/dkv"
+	"github.com/rosewrightdev/dkv/gateway"
 )
 
 func printUsage() {
@@ -76,7 +76,7 @@ func run() int {
 
 	cmd := cmdArgs[0]
 
-	client, err := dkv.NewInsecureClient(addr, 2*time.Second)
+	client, err := gateway.NewInsecureClient(addr, 2*time.Second)
 	if err != nil {
 		log.Printf("Failed to create client: %v", err)
 		return 1

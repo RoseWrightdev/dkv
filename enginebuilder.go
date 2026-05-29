@@ -10,14 +10,19 @@ import (
 
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"github.com/rosewrightdev/dkv/evict"
+	"github.com/rosewrightdev/dkv/internal/clock"
+	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/kv"
 )
 
 // EngineBuilder provides a fluent API for constructing and configuring a dkv engine.
 type EngineBuilder struct {
-	evt            Evictor
-	clock          Clock
+	evt            evict.Evictor
+	clock          clock.Clocker
 	creds          credentials.TransportCredentials
-	meshBuilder    *MeshConfigBuilder
+	meshBuilder    *mesh.MeshConfigBuilder
 	walPath        string
 	snpPath        string
 	walInterval    time.Duration
@@ -30,7 +35,7 @@ type EngineBuilder struct {
 // NewEngineBuilder initializes a new EngineBuilder instance with default sub-builders.
 func NewEngineBuilder() *EngineBuilder {
 	return &EngineBuilder{
-		meshBuilder: NewMeshConfigBuilder(),
+		meshBuilder: mesh.NewMeshConfigBuilder(),
 	}
 }
 
@@ -45,17 +50,17 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.snpInterval = 5 * time.Minute
 	eb.walBufferSize = 64 * 1024
 	eb.walSegments = 16
-	eb.evt = NewLRU(LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
-	eb.clock = NewHLC()
+	eb.evt = evict.NewLRU(evict.LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
+	eb.clock = clock.NewClock()
 	eb.gossipInterval = 10 * time.Second
-	eb.meshBuilder = NewMeshConfigBuilder()
+	eb.meshBuilder = mesh.NewMeshConfigBuilder()
 
 	// Autoselect NodeID to a SHA-256 hash
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	hash := sha256.Sum256(b)
 	nodeID := hex.EncodeToString(hash[:])
-	eb.meshBuilder.SetNodeID(NodeID(nodeID))
+	eb.meshBuilder.SetNodeID(kv.NodeID(nodeID))
 
 	// Find dynamic next available ports
 	bindAddr := "127.0.0.1"
@@ -109,19 +114,19 @@ func (eb *EngineBuilder) SetWalSegments(count int) *EngineBuilder {
 }
 
 // SetEvictor sets the eviction service instance.
-func (eb *EngineBuilder) SetEvictor(evt Evictor) *EngineBuilder {
+func (eb *EngineBuilder) SetEvictor(evt evict.Evictor) *EngineBuilder {
 	eb.evt = evt
 	return eb
 }
 
 // SetClock sets the clock implementation for generating timestamps.
-func (eb *EngineBuilder) SetClock(clock Clock) *EngineBuilder {
+func (eb *EngineBuilder) SetClock(clock clock.Clocker) *EngineBuilder {
 	eb.clock = clock
 	return eb
 }
 
 // SetCluster sets the cluster configuration builder.
-func (eb *EngineBuilder) SetCluster(cb *MeshConfigBuilder) *EngineBuilder {
+func (eb *EngineBuilder) SetCluster(cb *mesh.MeshConfigBuilder) *EngineBuilder {
 	eb.meshBuilder = cb
 	return eb
 }
@@ -130,7 +135,7 @@ func (eb *EngineBuilder) SetCluster(cb *MeshConfigBuilder) *EngineBuilder {
 // These allow for a flatter API while maintaining modularity under the hood.
 
 // SetNodeID sets the unique node ID for cluster identity.
-func (eb *EngineBuilder) SetNodeID(id NodeID) *EngineBuilder {
+func (eb *EngineBuilder) SetNodeID(id kv.NodeID) *EngineBuilder {
 	eb.meshBuilder.SetNodeID(id)
 	return eb
 }
@@ -232,12 +237,12 @@ func (eb *EngineBuilder) Build() (Engine, error) {
 	}
 
 	if eb.clock == nil {
-		return nil, fmt.Errorf("required eb.clock is unset; configure eb.clock with SetClock(clock Clock)")
+		return nil, fmt.Errorf("required eb.clock is unset; configure eb.clock with SetClock(clock clock.Clocker)")
 	}
 
-	MeshConfig := eb.meshBuilder.Build()
+	meshConfig := eb.meshBuilder.Build()
 
-	if !MeshConfig.SingleNode {
+	if !meshConfig.SingleNode {
 		// GrpcPort 0 is allowed for dynamic allocation (e.g., in tests)
 		if isUnit(eb.gossipInterval) {
 			return nil, fmt.Errorf("required eb.gossipInterval is unset for distributed mode; configure it via SetGossipInterval")
@@ -253,7 +258,7 @@ func (eb *EngineBuilder) Build() (Engine, error) {
 		walSegments:    eb.walSegments,
 		evt:            eb.evt,
 		clock:          eb.clock,
-		meshConfig:     MeshConfig,
+		meshConfig:     meshConfig,
 		gossipInterval: eb.gossipInterval,
 		creds:          eb.creds,
 	}

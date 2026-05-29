@@ -10,19 +10,32 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/evict"
+	"github.com/rosewrightdev/dkv/gateway"
+	"github.com/rosewrightdev/dkv/internal/clock"
+	"github.com/rosewrightdev/dkv/internal/entropy"
+	"github.com/rosewrightdev/dkv/internal/gossip"
+	"github.com/rosewrightdev/dkv/internal/hashmap"
+	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/internal/snap"
+	"github.com/rosewrightdev/dkv/internal/trans"
+	"github.com/rosewrightdev/dkv/internal/wal"
+	"github.com/rosewrightdev/dkv/internal/writer"
+	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/dkv/security"
 	"google.golang.org/grpc/credentials"
 )
 
 // Engine defines the core storage and replication engine interface of the dkv node.
 type Engine interface {
-	Get(key Key) ([]byte, bool)
-	Set(key Key, value []byte) error
-	Delete(key Key) error
-	Owner(key Key) NodeID
-	NodeID() NodeID
+	Get(key kv.Key) ([]byte, bool)
+	Set(key kv.Key, value []byte) error
+	Delete(key kv.Key) error
+	Owner(key kv.Key) kv.NodeID
+	NodeID() kv.NodeID
 	Start()
 	Stop()
-	SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
+	SyncPull(pullConfig *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error)
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 	Addr() string
 	GossipAddr() string
@@ -30,29 +43,29 @@ type Engine interface {
 
 type engine struct {
 	creds      credentials.TransportCredentials
-	clock      Clock
-	wal        Waler
-	mesh       Mesher
-	evt        Evictor
-	gw         *Gateway
-	syncer     *Syncer
+	clock      clock.Clocker
+	wal        wal.Waler
+	mesh       mesh.Mesher
+	evt        evict.Evictor
+	gw         *gateway.Gateway
+	syncer     *entropy.Syncer
 	pools      *pools
-	hm         *shardedMap
-	snp        *Snapshotter
-	sw         *StorageWriter
-	meshConfig MeshConfig
+	hm         *hashmap.ShardedMap
+	snp        *snap.Snapshotter
+	sw         *writer.StorageWriter
+	meshConfig mesh.MeshConfig
 	startOnce  sync.Once
 	stopOnce   sync.Once
 }
 
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
 type EngineConfig struct {
-	evt            Evictor
-	clock          Clock
+	evt            evict.Evictor
+	clock          clock.Clocker
 	creds          credentials.TransportCredentials
 	walPath        string
 	snpPath        string
-	meshConfig     MeshConfig
+	meshConfig     mesh.MeshConfig
 	walInterval    time.Duration
 	snpInterval    time.Duration
 	walSegments    int
@@ -61,14 +74,14 @@ type EngineConfig struct {
 }
 
 func newEngine(config EngineConfig) (Engine, error) {
-	wal, err := newWal(config.walPath, config.walInterval, config.walBufferSize, config.walSegments)
+	w, err := wal.NewWal(config.walPath, config.walInterval, config.walBufferSize, config.walSegments)
 	if err != nil {
 		return nil, err
 	}
 
 	eng := &engine{
-		hm:         newShardedMap(),
-		wal:        wal,
+		hm:         hashmap.NewShardedMap(),
+		wal:        w,
 		clock:      config.clock,
 		meshConfig: config.meshConfig,
 		creds:      config.creds,
@@ -79,12 +92,12 @@ func newEngine(config EngineConfig) (Engine, error) {
 		slog.Error("Failed to recover database state", "error", err)
 	}
 
-	writer := newStorageWriter(eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
-	eng.sw = writer
+	swWriter := writer.NewStorageWriter(eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
+	eng.sw = swWriter
 
-	stateTransfer := newStateTransfer(eng.pools, eng.hm, writer)
+	stateTransfer := trans.NewStateTransfer(eng.hm, swWriter)
 
-	snp, err := newSnapshotter(config.snpPath, config.snpInterval, wal, stateTransfer.streamToEncoder)
+	snp, err := snap.NewSnapshotter(config.snpPath, config.snpInterval, w, stateTransfer.StreamToEncoder)
 	if err != nil {
 		return nil, err
 	}
@@ -92,53 +105,72 @@ func newEngine(config EngineConfig) (Engine, error) {
 	eng.evt = config.evt
 	eng.evt.SetEvictCallback(eng.Evict)
 
-	gossip := newGossip(eng.pools, writer)
+	gossipService := gossip.NewGossip(swWriter)
 
-	eng.mesh = &NopMesh{}
+	eng.mesh = &mesh.NopMesh{}
 	if !config.meshConfig.SingleNode {
-		mesh, err := newMesh(
-			gossip,
+		meshObj, err := mesh.NewMesh(
+			gossipService,
 			stateTransfer,
 			config.meshConfig,
 		)
 		if err != nil {
 			return nil, err
 		}
-		eng.mesh = mesh
+		eng.mesh = meshObj
 	}
-	writer.mesh = eng.mesh
+	swWriter.SetMesh(eng.mesh)
 
-	eng.gw = newGateway(eng.mesh, &eng.meshConfig, eng.pools, config.creds)
-	eng.gw.sw = writer
+	eng.gw = gateway.NewGateway(eng.mesh, &eng.meshConfig, config.creds)
+	eng.gw.SetStateWriter(swWriter)
 
 	if !config.meshConfig.SingleNode {
-		eng.syncer = newSyncer(&SyncerConfig{
-			nodeID:     config.meshConfig.NodeID,
-			writer:     eng.sw,
-			mesh:       eng.mesh,
-			meshConfig: &eng.meshConfig,
-			hm:         eng.hm,
-			pools:      eng.pools,
-			interval:   config.gossipInterval,
-			creds:      config.creds,
-			cc:         eng.gw.cc,
+		eng.syncer = entropy.NewSyncer(&entropy.SyncerConfig{
+			NodeID:     config.meshConfig.NodeID,
+			Writer:     eng.sw,
+			Mesh:       eng.mesh,
+			MeshConfig: &eng.meshConfig,
+			Hm:         eng.hm,
+			Interval:   config.gossipInterval,
+			Creds:      config.creds,
+			Cc:         eng.gw.GetClientCache(),
 		})
 	}
 
 	return eng, nil
 }
 
+type pools struct {
+	setRequests     sync.Pool
+	deleteRequests  sync.Pool
+	snapshotEntries sync.Pool
+}
+
+func newPools() *pools {
+	return &pools{
+		setRequests: sync.Pool{
+			New: func() any { return &pb.SetRequest{} },
+		},
+		deleteRequests: sync.Pool{
+			New: func() any { return &pb.DeleteRequest{} },
+		},
+		snapshotEntries: sync.Pool{
+			New: func() any { return &snap.SnapshotEntry{} },
+		},
+	}
+}
+
 // Start initializes background services.
 func (eng *engine) Start() {
 	eng.startOnce.Do(func() {
-		eng.snp.start()
-		eng.wal.start()
-		eng.evt.start()
-		if err := eng.mesh.start(); err != nil {
+		eng.snp.Start()
+		eng.wal.Start()
+		eng.evt.Start()
+		if err := eng.mesh.Start(); err != nil {
 			panic(fmt.Sprintf("failed to start cluster service: %v", err))
 		}
 		if eng.syncer != nil {
-			eng.syncer.start()
+			eng.syncer.Start()
 		}
 	})
 }
@@ -147,12 +179,12 @@ func (eng *engine) Start() {
 func (eng *engine) Stop() {
 	eng.stopOnce.Do(func() {
 		if eng.syncer != nil {
-			eng.syncer.stop()
+			eng.syncer.Stop()
 		}
-		eng.snp.stop()
-		eng.wal.stop()
-		eng.evt.stop()
-		if err := eng.mesh.stop(); err != nil {
+		eng.snp.Stop()
+		eng.wal.Stop()
+		eng.evt.Stop()
+		if err := eng.mesh.Stop(); err != nil {
 			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
 		}
 		eng.gw.Close()
@@ -160,11 +192,11 @@ func (eng *engine) Stop() {
 }
 
 // Get retrieves the value associated with a key from the sharded map.
-func (eng *engine) Get(key Key) ([]byte, bool) {
-	hash := hashKey(hashFunc(key))
+func (eng *engine) Get(key kv.Key) ([]byte, bool) {
+	hash := kv.HashKey(security.HashFunc(key))
 	iv, ok := eng.hm.Load(key, hash)
 	if ok && !iv.Tombstone {
-		eng.evt.publish(key, hash)
+		eng.evt.Publish(key, hash)
 		return iv.Data, true
 	} else if ok && iv.Tombstone {
 		// We have a local tombstone. Do not proxy the read as the key is known to be deleted.
@@ -180,14 +212,14 @@ func (eng *engine) Get(key Key) ([]byte, bool) {
 }
 
 // Set persists a key-value pair to the WAL and updates the sharded map.
-func (eng *engine) Set(key Key, value []byte) error {
-	hash := hashFunc(key)
-	eng.evt.publish(key, hash)
+func (eng *engine) Set(key kv.Key, value []byte) error {
+	hash := security.HashFunc(key)
+	eng.evt.Publish(key, hash)
 
 	ts := eng.clock.Now()
 
 	if eng.meshConfig.SingleNode {
-		// Hot path: bypass ApplySet to avoid redundant clock.Update, double hashFunc, and
+		// Hot path: bypass ApplySet to avoid redundant clock.Update, double HashFunc, and
 		// the always-true isLocal() ring check — restoring the pre-refactor baseline perf.
 		req := eng.pools.setRequests.Get().(*pb.SetRequest)
 		req.Key = key
@@ -195,13 +227,13 @@ func (eng *engine) Set(key Key, value []byte) error {
 		req.Timestamp = ts
 		req.NodeId = string(eng.meshConfig.NodeID)
 
-		eng.hm.Store(key, hash, Value{
+		eng.hm.Store(key, hash, kv.Value{
 			Data:      value,
 			Timestamp: ts,
 			NodeID:    string(eng.meshConfig.NodeID),
 			Tombstone: false,
 		})
-		err := eng.wal.publish(key, hash, req)
+		err := eng.wal.Publish(key, hash, req)
 		req.Reset()
 		eng.pools.setRequests.Put(req)
 		return err
@@ -211,9 +243,9 @@ func (eng *engine) Set(key Key, value []byte) error {
 }
 
 // Delete marks a key as deleted by publishing a tombstone to the WAL.
-func (eng *engine) Delete(key Key) error {
-	hash := hashFunc(key)
-	eng.evt.publishDelete(key, hash)
+func (eng *engine) Delete(key kv.Key) error {
+	hash := security.HashFunc(key)
+	eng.evt.PublishDelete(key, hash)
 
 	ts := eng.clock.Now()
 
@@ -224,12 +256,12 @@ func (eng *engine) Delete(key Key) error {
 		req.Timestamp = ts
 		req.NodeId = string(eng.meshConfig.NodeID)
 
-		eng.hm.Store(key, hash, Value{
+		eng.hm.Store(key, hash, kv.Value{
 			Timestamp: ts,
 			NodeID:    string(eng.meshConfig.NodeID),
 			Tombstone: true,
 		})
-		err := eng.wal.publish(key, hash, req)
+		err := eng.wal.Publish(key, hash, req)
 		req.Reset()
 		eng.pools.deleteRequests.Put(req)
 		return err
@@ -238,10 +270,10 @@ func (eng *engine) Delete(key Key) error {
 	return eng.gw.Delete(key, ts)
 }
 
-func (eng *engine) Evict(key Key, reason EvictReason) error {
-	hash := hashFunc(key)
+func (eng *engine) Evict(key kv.Key, reason evict.EvictReason) error {
+	hash := security.HashFunc(key)
 
-	if reason == EvictReasonCapacity {
+	if reason == evict.EvictReasonCapacity {
 		eng.hm.Delete(key, hash)
 		return nil
 	}
@@ -255,12 +287,12 @@ func (eng *engine) Evict(key Key, reason EvictReason) error {
 		req.Timestamp = ts
 		req.NodeId = string(eng.meshConfig.NodeID)
 
-		eng.hm.Store(key, hash, Value{
+		eng.hm.Store(key, hash, kv.Value{
 			Timestamp: ts,
 			NodeID:    string(eng.meshConfig.NodeID),
 			Tombstone: true,
 		})
-		err := eng.wal.publish(key, hash, req)
+		err := eng.wal.Publish(key, hash, req)
 		req.Reset()
 		eng.pools.deleteRequests.Put(req)
 		return err
@@ -283,7 +315,7 @@ func (eng *engine) recover(snpPath string) error {
 		dec := gob.NewDecoder(file)
 		count := 0
 		for {
-			entry := eng.pools.snapshotEntries.Get().(*snapshotEntry)
+			entry := eng.pools.snapshotEntries.Get().(*snap.SnapshotEntry)
 			if err := dec.Decode(entry); err != nil {
 				entry.Key = ""
 				entry.Data = nil
@@ -293,7 +325,7 @@ func (eng *engine) recover(snpPath string) error {
 				}
 				return err
 			}
-			eng.hm.Store(entry.Key, hashFunc(entry.Key), Value{
+			eng.hm.Store(entry.Key, security.HashFunc(entry.Key), kv.Value{
 				Data:      entry.Data,
 				Timestamp: entry.Timestamp,
 				Tombstone: entry.Tombstone,
@@ -306,12 +338,12 @@ func (eng *engine) recover(snpPath string) error {
 		slog.Info("Loaded state from snapshot", "path", snpPath, "keys", count)
 	}
 
-	updates, err := eng.wal.replay()
+	updates, err := eng.wal.Replay()
 	if err != nil {
 		return err
 	}
 	for k, v := range updates {
-		h := hashFunc(k)
+		h := security.HashFunc(k)
 		eng.hm.Store(k, h, v)
 	}
 	if len(updates) > 0 {
@@ -321,32 +353,22 @@ func (eng *engine) recover(snpPath string) error {
 	return nil
 }
 
-func (eng *engine) SyncPull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	return eng.syncer.pull(pullConfig)
-}
-
-// used for testing
-func (eng *engine) pullWithSyncer(pullConfig *PullConfig, syncer Syncer) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	return syncer.pull(pullConfig)
+func (eng *engine) SyncPull(pullConfig *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	return eng.syncer.Pull(pullConfig)
 }
 
 func (eng *engine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
-	return eng.syncer.push(sets, deletes)
+	return eng.syncer.Push(sets, deletes)
 }
 
-// used for testing
-func (eng *engine) pushWithSyncer(sets []*pb.SetRequest, deletes []*pb.DeleteRequest, syncer Syncer) error {
-	return syncer.push(sets, deletes)
-}
-
-func (eng *engine) Owner(key Key) NodeID {
+func (eng *engine) Owner(key kv.Key) kv.NodeID {
 	if eng.meshConfig.SingleNode {
 		return eng.meshConfig.NodeID
 	}
 	return eng.mesh.Owner(key)
 }
 
-func (eng *engine) NodeID() NodeID {
+func (eng *engine) NodeID() kv.NodeID {
 	return eng.meshConfig.NodeID
 }
 
