@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/memberlist"
+	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/kv"
+	"google.golang.org/protobuf/proto"
 )
 
 // PeerAddress represents the network address (IP:Port) of a dkv node.
@@ -35,6 +38,7 @@ type Mesher interface {
 	AddressForNode(nodeID kv.NodeID) PeerAddress
 	Start() error
 	Stop() error
+	UpdateLocalWeight(weight int)
 }
 
 // MeshConfig holds configuration for decentralized node discovery and membership.
@@ -52,13 +56,15 @@ type MeshConfig struct {
 
 // Mesh provides the implementation for L7 Routing and P2P communication between nodes.
 type Mesh struct {
-	memberList *memberlist.Memberlist
-	broadcasts *memberlist.TransmitLimitedQueue
-	gossip     Gossiper
-	exchanger  StateExchanger
-	ring       *HashRing
-	config     MeshConfig
-	stopping   atomic.Bool
+	memberList  *memberlist.Memberlist
+	broadcasts  *memberlist.TransmitLimitedQueue
+	gossip      Gossiper
+	exchanger   StateExchanger
+	ring        *HashRing
+	config      MeshConfig
+	stopping    atomic.Bool
+	nodeAddrs   sync.Map
+	localWeight atomic.Int32
 }
 
 // NewMesh initializes a new Mesh instance.
@@ -70,6 +76,7 @@ func NewMesh(gossip Gossiper, exchanger StateExchanger, config MeshConfig) (*Mes
 		config:    config,
 		ring:      ring,
 	}
+	m.localWeight.Store(defaultVnodes)
 
 	mlConfig := memberlist.DefaultLocalConfig()
 	if config.FastTest {
@@ -127,7 +134,12 @@ func (m *Mesh) Members() []PeerAddress {
 	addrs := make([]PeerAddress, 0, len(members))
 	for _, member := range members {
 		if len(member.Meta) > 0 {
-			addrs = append(addrs, PeerAddress(fmt.Sprintf("%s:%s", member.Addr.String(), string(member.Meta))))
+			var meta pb.NodeMetadata
+			if err := proto.Unmarshal(member.Meta, &meta); err == nil {
+				if meta.GrpcPort > 0 {
+					addrs = append(addrs, PeerAddress(fmt.Sprintf("%s:%d", member.Addr.String(), meta.GrpcPort)))
+				}
+			}
 		}
 	}
 	return addrs
@@ -138,15 +150,11 @@ func (m *Mesh) AddressForNode(nodeID kv.NodeID) PeerAddress {
 	if m.stopping.Load() || m.memberList == nil {
 		return ""
 	}
-	for _, member := range m.memberList.Members() {
-		if member.Name == string(nodeID) {
-			if len(member.Meta) > 0 {
-				return PeerAddress(fmt.Sprintf("%s:%s", member.Addr.String(), string(member.Meta)))
-			}
-			break
-		}
+	val, ok := m.nodeAddrs.Load(nodeID)
+	if !ok {
+		return ""
 	}
-	return ""
+	return val.(PeerAddress)
 }
 
 // Owner returns the NodeID of the peer responsible for the given key.
@@ -164,24 +172,68 @@ func (m *Mesh) PutOwners(owners []kv.NodeID) {
 	m.ring.PutOwners(owners)
 }
 
+// UpdateLocalWeight updates the weight of the local node and triggers cluster-wide gossip.
+func (m *Mesh) UpdateLocalWeight(weight int) {
+	// #nosec G115
+	m.localWeight.Store(int32(weight))
+	if m.memberList != nil {
+		_ = m.memberList.UpdateNode(time.Second)
+	}
+}
+
 // NotifyJoin is called by memberlist when a new node joins.
 func (m *Mesh) NotifyJoin(node *memberlist.Node) {
+	if node == nil {
+		return
+	}
 	slog.Info("Node joined cluster", "node", node.Name, "addr", node.Addr.String())
-	m.ring.AddNode(kv.NodeID(node.Name))
+
+	weight := defaultVnodes
+	if len(node.Meta) > 0 {
+		var meta pb.NodeMetadata
+		if err := proto.Unmarshal(node.Meta, &meta); err == nil {
+			if meta.GrpcPort > 0 {
+				m.nodeAddrs.Store(kv.NodeID(node.Name), PeerAddress(fmt.Sprintf("%s:%d", node.Addr.String(), meta.GrpcPort)))
+			}
+			weight = int(meta.Weight)
+		} else {
+			slog.Error("Failed to unmarshal join metadata", "error", err)
+		}
+	}
+	m.ring.AddNodeWithWeight(kv.NodeID(node.Name), weight)
 }
 
 // NotifyLeave is called by memberlist when a node leaves.
 func (m *Mesh) NotifyLeave(node *memberlist.Node) {
+	if node == nil {
+		return
+	}
 	slog.Info("Node left cluster", "node", node.Name)
 	m.ring.RemoveNode(kv.NodeID(node.Name))
+	m.nodeAddrs.Delete(kv.NodeID(node.Name))
 }
 
 // NotifyUpdate is called by memberlist when a node's metadata changes.
-func (m *Mesh) NotifyUpdate(_ *memberlist.Node) {
-	// Ring distribution depends only on node name, so update is a no-op.
-	_ = m
+func (m *Mesh) NotifyUpdate(node *memberlist.Node) {
+	if node == nil {
+		return
+	}
+	weight := defaultVnodes
+	if len(node.Meta) > 0 {
+		var meta pb.NodeMetadata
+		if err := proto.Unmarshal(node.Meta, &meta); err == nil {
+			if meta.GrpcPort > 0 {
+				m.nodeAddrs.Store(kv.NodeID(node.Name), PeerAddress(fmt.Sprintf("%s:%d", node.Addr.String(), meta.GrpcPort)))
+			}
+			weight = int(meta.Weight)
+		} else {
+			slog.Error("Failed to unmarshal update metadata", "error", err)
+		}
+	}
+	m.ring.UpdateNodeWeight(kv.NodeID(node.Name), weight)
 }
 
+// Start joins the node discovery cluster using configured seed nodes.
 func (m *Mesh) Start() error {
 	if len(m.config.SeedNodes) > 0 {
 		count, err := m.memberList.Join(m.config.SeedNodes)
@@ -193,6 +245,7 @@ func (m *Mesh) Start() error {
 	return nil
 }
 
+// Stop gracefully stops the gossip node membership service.
 func (m *Mesh) Stop() error {
 	m.stopping.Store(true)
 	if m.memberList == nil {
@@ -210,9 +263,19 @@ func (m *Mesh) Stop() error {
 
 // memberlist.Delegate implementation
 
-// NodeMeta returns the metadata of the node, which includes the gRPC port.
+// NodeMeta returns the metadata of the node, which includes the gRPC port and dynamic weight.
 func (m *Mesh) NodeMeta(_ int) []byte {
-	return fmt.Appendf(nil, "%d", m.config.GrpcPort)
+	// #nosec G115
+	meta := &pb.NodeMetadata{
+		GrpcPort: int32(m.config.GrpcPort),
+		Weight:   m.localWeight.Load(),
+	}
+	b, err := proto.Marshal(meta)
+	if err != nil {
+		slog.Error("Failed to marshal node metadata", "error", err)
+		return nil
+	}
+	return b
 }
 
 // NotifyMsg is called when a user-space message is received.
@@ -260,10 +323,17 @@ func (n *NopMesh) PutOwners([]kv.NodeID) {
 	_ = n
 }
 
-// AddressForNode returns an empty string as there are no nodes in a NopMesh.
+// AddressForNode returns an empty PeerAddress in NopMesh.
 func (n *NopMesh) AddressForNode(kv.NodeID) PeerAddress { return "" }
+
+// Start does nothing in a NopMesh.
 func (n *NopMesh) Start() error                         { return nil }
+
+// Stop does nothing in a NopMesh.
 func (n *NopMesh) Stop() error                          { return nil }
+
+// UpdateLocalWeight does nothing in a NopMesh.
+func (n *NopMesh) UpdateLocalWeight(_ int)              {}
 
 type broadcast struct {
 	msg []byte

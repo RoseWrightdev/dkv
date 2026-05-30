@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv/gateway"
+	"github.com/rosewrightdev/dkv/internal/mesh"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -408,4 +409,44 @@ func TestClusterDataRebalancing(t *testing.T) {
 		_ = e
 	}
 	t.Logf("Found 2 dynamically added engines in cluster.Engines slice")
+}
+
+func TestDynamicLoadBalancingShedding(t *testing.T) {
+	cluster, err := newCluster(3, "", insecure.NewCredentials(), true)
+	require.NoError(t, err)
+
+	err = cluster.Start()
+	require.NoError(t, err)
+	defer cluster.HardStop()
+
+	// Wait for gossip to settle
+	time.Sleep(1 * time.Second)
+
+	mesh1 := cluster.Engines[0].Mesh()
+	var _ mesh.Mesher // keep mesh import happy
+
+	// Find a key owned by node-1
+	var targetKey kv.Key
+	for i := range 1000 {
+		k := kv.Key(fmt.Sprintf("load-shed-key-%d", i))
+		if cluster.Engines[0].Owner(k) == "node-1" {
+			targetKey = k
+			break
+		}
+	}
+	require.NotEmpty(t, targetKey)
+
+	// Verify it resolves to node-1 initially
+	assert.Equal(t, kv.NodeID("node-1"), cluster.Engines[0].Owner(targetKey))
+
+	// Dynamically shed traffic from node-1 by reducing its weight to 0
+	mesh1.UpdateLocalWeight(0)
+
+	// Wait for gossip update to propagate
+	time.Sleep(1 * time.Second)
+
+	// The key should have been rebalanced to a different node in the cluster
+	newOwner := cluster.Engines[0].Owner(targetKey)
+	assert.NotEqual(t, kv.NodeID("node-1"), newOwner, "Key should have been rebalanced away from node-1")
+	assert.Contains(t, []kv.NodeID{"node-2", "node-3"}, newOwner)
 }

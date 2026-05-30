@@ -70,3 +70,8 @@ message DeleteRequest {
 }
 
 message DeleteResponse {}
+
+message NodeMetadata {
+  int32 grpc_port = 1;
+  int32 weight = 2;
+}

@@ -5,9 +5,11 @@ import (
 	"testing"
 	"time"
 
+	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 type mockGossip struct{}
@@ -138,8 +140,12 @@ func TestMesh_DelegateCallbacks(t *testing.T) {
 	}()
 
 	// 1. NodeMeta
-	meta := m.NodeMeta(0)
-	assert.Equal(t, []byte("8005"), meta)
+	metaBytes := m.NodeMeta(0)
+	var meta pb.NodeMetadata
+	err = proto.Unmarshal(metaBytes, &meta)
+	require.NoError(t, err)
+	assert.Equal(t, int32(8005), meta.GrpcPort)
+	assert.Equal(t, int32(128), meta.Weight)
 
 	// 2. NotifyMsg
 	m.NotifyMsg([]byte("gossip-payload"))

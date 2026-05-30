@@ -19,10 +19,11 @@ type HashRing struct {
 	nodes    map[kv.NodeID]uint32
 	nodeList []kv.NodeID
 	vnodes   []vnode
+	weights  map[kv.NodeID]int
 	mu       sync.RWMutex
 }
 
-// Splitting a physical node into 128 virtual positions avoids statistical hotspotting
+// Splitting a physical node into virtual positions avoids statistical hotspotting
 // and ensures a uniform keyspace distribution across the cluster.
 type vnode struct {
 	hash    uint64
@@ -39,16 +40,24 @@ var vnodeSlicePool = sync.Pool{
 // NewHashRing initializes an empty consistent hashing ring.
 func NewHashRing() *HashRing {
 	return &HashRing{
-		nodes: make(map[kv.NodeID]uint32),
+		nodes:   make(map[kv.NodeID]uint32),
+		weights: make(map[kv.NodeID]int),
 	}
 }
 
 // AddNode inserts a node into the ring with a predefined number of virtual nodes.
 func (r *HashRing) AddNode(nodeID kv.NodeID) {
+	r.AddNodeWithWeight(nodeID, defaultVnodes)
+}
+
+// AddNodeWithWeight inserts a node into the ring with a specific dynamic weight.
+func (r *HashRing) AddNodeWithWeight(nodeID kv.NodeID, weight int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if _, exists := r.nodes[nodeID]; exists {
+		r.weights[nodeID] = weight
+		r.rebuildVnodes()
 		return
 	}
 
@@ -56,14 +65,63 @@ func (r *HashRing) AddNode(nodeID kv.NodeID) {
 	nodeIdx := uint32(len(r.nodeList))
 	r.nodes[nodeID] = nodeIdx
 	r.nodeList = append(r.nodeList, nodeID)
+	r.weights[nodeID] = weight
 
-	var newVnodes [defaultVnodes]vnode
-	for i := range defaultVnodes {
-		hash := security.HashFuncSecure(fmt.Sprintf("%s-%d", nodeID, i))
-		newVnodes[i] = vnode{hash: hash, nodeIdx: nodeIdx}
+	r.rebuildVnodes()
+}
+
+// UpdateNodeWeight updates the dynamic weight (number of virtual nodes) for a node.
+func (r *HashRing) UpdateNodeWeight(nodeID kv.NodeID, weight int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, exists := r.nodes[nodeID]; !exists {
+		return
+	}
+	r.weights[nodeID] = weight
+	r.rebuildVnodes()
+}
+
+func (r *HashRing) rebuildVnodes() {
+	totalVnodes := 0
+	for _, id := range r.nodeList {
+		w, ok := r.weights[id]
+		if !ok || w < 0 {
+			w = defaultVnodes
+		}
+		totalVnodes += w
 	}
 
-	slices.SortFunc(newVnodes[:], func(a, b vnode) int {
+	var newVnodes []vnode
+	var sPtr *[]vnode
+	if v := vnodeSlicePool.Get(); v != nil {
+		sPtr = v.(*[]vnode)
+		if cap(*sPtr) >= totalVnodes {
+			newVnodes = (*sPtr)[:totalVnodes]
+		} else {
+			vnodeSlicePool.Put(sPtr)
+			sPtr = nil
+			newVnodes = make([]vnode, totalVnodes)
+		}
+	} else {
+		newVnodes = make([]vnode, totalVnodes)
+	}
+
+	vIdx := 0
+	for _, id := range r.nodeList {
+		w, ok := r.weights[id]
+		if !ok || w < 0 {
+			w = defaultVnodes
+		}
+		nodeIdx := r.nodes[id]
+		for j := range w {
+			hash := security.HashFuncSecure(fmt.Sprintf("%s-%d", id, j))
+			newVnodes[vIdx] = vnode{hash: hash, nodeIdx: nodeIdx}
+			vIdx++
+		}
+	}
+
+	slices.SortFunc(newVnodes, func(a, b vnode) int {
 		if a.hash < b.hash {
 			return -1
 		} else if a.hash > b.hash {
@@ -72,41 +130,18 @@ func (r *HashRing) AddNode(nodeID kv.NodeID) {
 		return 0
 	})
 
-	needed := len(r.vnodes) + defaultVnodes
-	var merged []vnode
-	if v := vnodeSlicePool.Get(); v != nil {
-		sPtr := v.(*[]vnode)
-		if cap(*sPtr) >= needed {
-			merged = (*sPtr)[:needed]
-		} else {
-			vnodeSlicePool.Put(sPtr)
-			merged = make([]vnode, needed)
-		}
-	} else {
-		merged = make([]vnode, needed)
-	}
-
-	i, j := 0, 0
-	k := 0
-	for i < len(r.vnodes) && j < defaultVnodes {
-		if r.vnodes[i].hash < newVnodes[j].hash {
-			merged[k] = r.vnodes[i]
-			i++
-		} else {
-			merged[k] = newVnodes[j]
-			j++
-		}
-		k++
-	}
-	copy(merged[k:], r.vnodes[i:])
-	k += len(r.vnodes) - i
-	copy(merged[k:], newVnodes[j:])
-
 	oldVnodes := r.vnodes
-	r.vnodes = merged
+	r.vnodes = newVnodes
 	if cap(oldVnodes) > 0 {
 		oldVnodes = oldVnodes[:0]
-		vnodeSlicePool.Put(&oldVnodes)
+		if sPtr != nil {
+			*sPtr = oldVnodes
+			vnodeSlicePool.Put(sPtr)
+		} else {
+			heapPtr := new([]vnode)
+			*heapPtr = oldVnodes
+			vnodeSlicePool.Put(heapPtr)
+		}
 	}
 }
 
@@ -131,72 +166,10 @@ func (r *HashRing) AddNodes(nodeIDs []kv.NodeID) {
 		// #nosec G115
 		r.nodes[id] = uint32(startIdx + i)
 		r.nodeList = append(r.nodeList, id)
+		r.weights[id] = defaultVnodes
 	}
 
-	totalNewVnodes := len(newNodes) * defaultVnodes
-	newVnodes := make([]vnode, totalNewVnodes)
-
-	vIdx := 0
-	for i, id := range newNodes {
-		// #nosec G115
-		nodeIdx := uint32(startIdx + i)
-		for j := range defaultVnodes {
-			hash := security.HashFuncSecure(fmt.Sprintf("%s-%d", id, j))
-			newVnodes[vIdx] = vnode{hash: hash, nodeIdx: nodeIdx}
-			vIdx++
-		}
-	}
-
-	slices.SortFunc(newVnodes, func(a, b vnode) int {
-		if a.hash < b.hash {
-			return -1
-		} else if a.hash > b.hash {
-			return 1
-		}
-		return 0
-	})
-
-	if len(r.vnodes) == 0 {
-		r.vnodes = newVnodes
-		return
-	}
-
-	needed := len(r.vnodes) + len(newVnodes)
-	var merged []vnode
-	if v := vnodeSlicePool.Get(); v != nil {
-		sPtr := v.(*[]vnode)
-		if cap(*sPtr) >= needed {
-			merged = (*sPtr)[:needed]
-		} else {
-			vnodeSlicePool.Put(sPtr)
-			merged = make([]vnode, needed)
-		}
-	} else {
-		merged = make([]vnode, needed)
-	}
-
-	i, j := 0, 0
-	k := 0
-	for i < len(r.vnodes) && j < len(newVnodes) {
-		if r.vnodes[i].hash < newVnodes[j].hash {
-			merged[k] = r.vnodes[i]
-			i++
-		} else {
-			merged[k] = newVnodes[j]
-			j++
-		}
-		k++
-	}
-	copy(merged[k:], r.vnodes[i:])
-	k += len(r.vnodes) - i
-	copy(merged[k:], newVnodes[j:])
-
-	oldVnodes := r.vnodes
-	r.vnodes = merged
-	if cap(oldVnodes) > 0 {
-		oldVnodes = oldVnodes[:0]
-		vnodeSlicePool.Put(&oldVnodes)
-	}
+	r.rebuildVnodes()
 }
 
 // RemoveNode removes a node and its virtual nodes from the ring.
@@ -204,38 +177,28 @@ func (r *HashRing) RemoveNode(nodeID kv.NodeID) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	nodeIdx, exists := r.nodes[nodeID]
+	_, exists := r.nodes[nodeID]
 	if !exists {
 		return
 	}
 
-	neededCap := max(len(r.vnodes)-defaultVnodes, 0)
-	var newVnodes []vnode
-	if v := vnodeSlicePool.Get(); v != nil {
-		sPtr := v.(*[]vnode)
-		if cap(*sPtr) >= neededCap {
-			newVnodes = (*sPtr)[:0]
-		} else {
-			vnodeSlicePool.Put(sPtr)
-			newVnodes = make([]vnode, 0, neededCap)
-		}
-	} else {
-		newVnodes = make([]vnode, 0, neededCap)
-	}
+	newNodeList := make([]kv.NodeID, 0, len(r.nodeList)-1)
+	newNodes := make(map[kv.NodeID]uint32)
 
-	for _, v := range r.vnodes {
-		if v.nodeIdx != nodeIdx {
-			newVnodes = append(newVnodes, v)
+	idx := uint32(0)
+	for _, id := range r.nodeList {
+		if id != nodeID {
+			newNodeList = append(newNodeList, id)
+			newNodes[id] = idx
+			idx++
 		}
 	}
 
-	oldVnodes := r.vnodes
-	r.vnodes = newVnodes
-	if cap(oldVnodes) > 0 {
-		oldVnodes = oldVnodes[:0]
-		vnodeSlicePool.Put(&oldVnodes)
-	}
-	delete(r.nodes, nodeID)
+	r.nodeList = newNodeList
+	r.nodes = newNodes
+	delete(r.weights, nodeID)
+
+	r.rebuildVnodes()
 }
 
 // GetNode returns the ID of the node responsible for the given key.
