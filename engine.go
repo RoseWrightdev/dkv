@@ -1,3 +1,4 @@
+// Package dkv provides a highly-concurrent, partitioned key-value database engine.
 package dkv
 
 import (
@@ -55,7 +56,7 @@ type engine struct {
 	hm         *hashmap.ShardedMap
 	snp        *snap.Snapshotter
 	sw         *writer.StorageWriter
-	meshConfig mesh.MeshConfig
+	meshConfig mesh.Config
 	startOnce  sync.Once
 	stopOnce   sync.Once
 	monitor    *stats.Monitor
@@ -68,7 +69,7 @@ type EngineConfig struct {
 	creds          credentials.TransportCredentials
 	walPath        string
 	snpPath        string
-	meshConfig     mesh.MeshConfig
+	meshConfig     mesh.Config
 	walInterval    time.Duration
 	snpInterval    time.Duration
 	walSegments    int
@@ -290,10 +291,10 @@ func (eng *engine) Delete(key kv.Key) error {
 	return eng.gw.Delete(key, ts)
 }
 
-func (eng *engine) Evict(key kv.Key, reason evict.EvictReason) error {
+func (eng *engine) Evict(key kv.Key, reason evict.Reason) error {
 	hash := security.HashFunc(key)
 
-	if reason == evict.EvictReasonCapacity {
+	if reason == evict.ReasonCapacity {
 		eng.hm.Delete(key, hash)
 		return nil
 	}

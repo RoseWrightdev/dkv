@@ -16,7 +16,7 @@ var (
 	mockSnpInterval = 500 * time.Millisecond
 )
 
-func cleanupSnp(t *testing.T) {
+func cleanupSnp(_ *testing.T) {
 	_ = os.Remove(mockSnpPath)
 	_ = os.Remove(mockSnpPath + ".tmp")
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSync_PreparePullRequestDataRace(t *testing.T) {
+func TestSync_PreparePullRequestDataRace(_ *testing.T) {
 	hm := hashmap.NewShardedMap()
 	cc := gateway.NewClientCache(nil)
 
@@ -23,7 +23,7 @@ func TestSync_PreparePullRequestDataRace(t *testing.T) {
 		NodeID:     "node-1",
 		Writer:     &mockStateTransferWriter{hm: hm},
 		Mesh:       &mesh.NopMesh{},
-		MeshConfig: &mesh.MeshConfig{NodeID: "node-1", SingleNode: true},
+		MeshConfig: &mesh.Config{NodeID: "node-1", SingleNode: true},
 		Hm:         hm,
 		Interval:   10 * time.Second,
 		Creds:      nil,
@@ -155,7 +155,7 @@ func TestSyncer_ExtraEdgeCases(t *testing.T) {
 	synPerf := NewSyncer(&SyncerConfig{
 		Mesh:       &MockMesher{},
 		Cc:         cc,
-		MeshConfig: &mesh.MeshConfig{},
+		MeshConfig: &mesh.Config{},
 	})
 	synPerf.performSync() // should return early without panicking
 
@@ -166,7 +166,7 @@ func TestSyncer_ExtraEdgeCases(t *testing.T) {
 		Mesh:       &MockMesher{Owners: []kv.NodeID{"node-1"}},
 		Cc:         cc,
 		Hm:         hm,
-		MeshConfig: &mesh.MeshConfig{NodeID: "node-1", ReplicationFactor: 1},
+		MeshConfig: &mesh.Config{NodeID: "node-1", ReplicationFactor: 1},
 	})
 
 	// Prepare pull config

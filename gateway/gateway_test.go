@@ -111,16 +111,16 @@ func TestGateway_AllBranches(t *testing.T) {
 	addr := lis.Addr().String()
 
 	// 1. Test Gateway getReplicationFactor edge cases
-	mcZero := &mesh.MeshConfig{NodeID: "local-node", ReplicationFactor: 0}
+	mcZero := &mesh.Config{NodeID: "local-node", ReplicationFactor: 0}
 	gwZero := NewGateway(&mesh.NopMesh{}, mcZero, insecure.NewCredentials())
 	assert.Equal(t, 1, gwZero.getReplicationFactor())
 
-	mcNeg := &mesh.MeshConfig{NodeID: "local-node", ReplicationFactor: -5}
+	mcNeg := &mesh.Config{NodeID: "local-node", ReplicationFactor: -5}
 	gwNeg := NewGateway(&mesh.NopMesh{}, mcNeg, insecure.NewCredentials())
 	assert.Equal(t, 1, gwNeg.getReplicationFactor())
 
 	// 2. Gateway setup with custom mocks
-	mc := &mesh.MeshConfig{
+	mc := &mesh.Config{
 		NodeID:            "local-node",
 		ReplicationFactor: 3,
 	}

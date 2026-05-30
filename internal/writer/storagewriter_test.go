@@ -76,7 +76,7 @@ func TestStorageWriter_All(t *testing.T) {
 	meshObj := &mockMesher{
 		Owners: []kv.NodeID{"node-1"},
 	}
-	mc := &mesh.MeshConfig{
+	mc := &mesh.Config{
 		NodeID:            "node-1",
 		ReplicationFactor: 1,
 	}

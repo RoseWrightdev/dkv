@@ -1,3 +1,4 @@
+// Package clock provides a Hybrid Logical Clock implementation.
 package clock
 
 import (

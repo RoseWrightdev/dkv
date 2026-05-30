@@ -1,3 +1,4 @@
+// Package writer implements conflict-free storage mutations and writes to the local database.
 package writer
 
 import (
@@ -25,11 +26,11 @@ type StorageWriter struct {
 	wal        wal.Waler
 	clock      clock.Clocker
 	mesh       mesh.Mesher
-	meshConfig *mesh.MeshConfig
+	meshConfig *mesh.Config
 }
 
 // NewStorageWriter creates a StorageWriter instance to process and persist key-value mutations.
-func NewStorageWriter(hm *hashmap.ShardedMap, wal wal.Waler, clock clock.Clocker, mesh mesh.Mesher, meshConfig *mesh.MeshConfig) *StorageWriter {
+func NewStorageWriter(hm *hashmap.ShardedMap, wal wal.Waler, clock clock.Clocker, mesh mesh.Mesher, meshConfig *mesh.Config) *StorageWriter {
 	return &StorageWriter{
 		hm:         hm,
 		wal:        wal,

@@ -21,7 +21,7 @@ func (mg *mockGossip) ImportState(_ []byte) {}
 
 func TestClusterMembership(t *testing.T) {
 	// Start first node
-	c1 := MeshConfig{
+	c1 := Config{
 		NodeID:   "node1",
 		BindPort: 7001,
 		GrpcPort: 8001,
@@ -34,7 +34,7 @@ func TestClusterMembership(t *testing.T) {
 	}()
 
 	// Start second node and join first
-	c2 := MeshConfig{
+	c2 := Config{
 		NodeID:    "node2",
 		BindPort:  7002,
 		SeedNodes: []string{"127.0.0.1:7001"},
@@ -71,7 +71,7 @@ func TestClusterMembership(t *testing.T) {
 }
 
 func TestMesher_ConcurrentStop(t *testing.T) {
-	c1 := MeshConfig{
+	c1 := Config{
 		NodeID:   "node1",
 		BindPort: 7003,
 		GrpcPort: 8003,
@@ -125,7 +125,7 @@ func (tg *trackingGossiper) OnGossip(b []byte) {
 }
 
 func TestMesh_DelegateCallbacks(t *testing.T) {
-	cfg := MeshConfig{
+	cfg := Config{
 		NodeID:   "test-delegate-node",
 		BindPort: 7005,
 		GrpcPort: 8005,
@@ -189,7 +189,7 @@ func TestNopMesh(t *testing.T) {
 
 func TestMesh_ExtraEdgeCases(t *testing.T) {
 	// 1. NewMesh with invalid config to force failure
-	cfg := MeshConfig{
+	cfg := Config{
 		BindAddr: "invalid-ip-address!!!",
 		BindPort: -100,
 	}
@@ -203,7 +203,7 @@ func TestMesh_ExtraEdgeCases(t *testing.T) {
 	assert.NoError(t, mNil.Stop())
 
 	// 3. start join failure
-	cfgJoin := MeshConfig{
+	cfgJoin := Config{
 		NodeID:    "test-join-fail",
 		BindPort:  7099,
 		SeedNodes: []string{"0.0.0.0:0"}, // invalid / unreachable seed

@@ -1,3 +1,4 @@
+// Package gossip manages decentralized membership replication and message processing.
 package gossip
 
 import (

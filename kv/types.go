@@ -1,3 +1,4 @@
+// Package kv defines the core key-value types and structures for dkv.
 package kv
 
 // Key represents a unique identifier for a value in the dkv store.

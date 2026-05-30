@@ -1,3 +1,4 @@
+// Package gateway implements the gRPC API gateway and client routing cache.
 package gateway
 
 import (

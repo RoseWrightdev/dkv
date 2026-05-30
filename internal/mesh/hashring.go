@@ -1,3 +1,4 @@
+// Package mesh provides decentralized cluster discovery, gossip membership, and key routing.
 package mesh
 
 import (

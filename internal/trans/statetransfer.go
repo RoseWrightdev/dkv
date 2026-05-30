@@ -1,3 +1,4 @@
+// Package trans provides streaming and serialization mechanisms for partition state transfers.
 package trans
 
 import (
