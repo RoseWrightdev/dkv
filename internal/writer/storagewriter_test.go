@@ -24,8 +24,8 @@ func (mw *mockWal) Stop()                                                 {}
 func (mw *mockWal) Start()                                                {}
 
 type mockStorageWal struct {
-	mockWal
 	pubErr error
+	mockWal
 }
 
 func (m *mockStorageWal) Publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error {
@@ -45,8 +45,8 @@ func (m *mockStorageClock) Update(ts int64) {
 }
 
 type mockMesher struct {
-	Owners  []kv.NodeID
 	AddrMap map[kv.NodeID]mesh.PeerAddress
+	Owners  []kv.NodeID
 }
 
 func (m *mockMesher) Broadcast(_ []byte)          {}

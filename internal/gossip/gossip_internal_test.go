@@ -10,10 +10,10 @@ import (
 )
 
 type trackingStateWriter struct {
-	appliedSets    []*pb.SetRequest
-	appliedDeletes []*pb.DeleteRequest
 	setErr         error
 	deleteErr      error
+	appliedSets    []*pb.SetRequest
+	appliedDeletes []*pb.DeleteRequest
 }
 
 func (m *trackingStateWriter) ApplySet(req *pb.SetRequest) error {

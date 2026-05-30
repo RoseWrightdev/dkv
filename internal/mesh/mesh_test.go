@@ -103,8 +103,8 @@ func TestMesher_ConcurrentStop(t *testing.T) {
 }
 
 type trackingExchanger struct {
-	exported bool
 	imported []byte
+	exported bool
 }
 
 func (te *trackingExchanger) ExportState() []byte {

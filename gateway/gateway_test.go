@@ -32,8 +32,8 @@ func (m *MockStateWriter) ApplyDelete(_ *pb.DeleteRequest) error {
 
 // MockMesher implements Mesher
 type MockMesher struct {
-	Owners          []kv.NodeID
 	AddrMap         map[kv.NodeID]mesh.PeerAddress
+	Owners          []kv.NodeID
 	BroadcastCalled bool
 }
 

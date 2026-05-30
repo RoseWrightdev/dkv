@@ -56,14 +56,14 @@ type Config struct {
 
 // Mesh provides the implementation for L7 Routing and P2P communication between nodes.
 type Mesh struct {
-	memberList  *memberlist.Memberlist
-	broadcasts  *memberlist.TransmitLimitedQueue
 	gossip      Gossiper
 	exchanger   StateExchanger
+	memberList  *memberlist.Memberlist
+	broadcasts  *memberlist.TransmitLimitedQueue
 	ring        *HashRing
+	nodeAddrs   sync.Map
 	config      Config
 	stopping    atomic.Bool
-	nodeAddrs   sync.Map
 	localWeight atomic.Int32
 }
 
@@ -327,13 +327,13 @@ func (n *NopMesh) PutOwners([]kv.NodeID) {
 func (n *NopMesh) AddressForNode(kv.NodeID) PeerAddress { return "" }
 
 // Start does nothing in a NopMesh.
-func (n *NopMesh) Start() error                         { return nil }
+func (n *NopMesh) Start() error { return nil }
 
 // Stop does nothing in a NopMesh.
-func (n *NopMesh) Stop() error                          { return nil }
+func (n *NopMesh) Stop() error { return nil }
 
 // UpdateLocalWeight does nothing in a NopMesh.
-func (n *NopMesh) UpdateLocalWeight(_ int)              {}
+func (n *NopMesh) UpdateLocalWeight(_ int) {}
 
 type broadcast struct {
 	msg []byte

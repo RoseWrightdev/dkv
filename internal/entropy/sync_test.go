@@ -185,8 +185,8 @@ func TestSyncer_ExtraEdgeCases(t *testing.T) {
 }
 
 type MockMesher struct {
-	Owners  []kv.NodeID
 	AddrMap map[kv.NodeID]mesh.PeerAddress
+	Owners  []kv.NodeID
 }
 
 func (m *MockMesher) Broadcast(_ []byte) {}
