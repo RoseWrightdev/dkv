@@ -24,14 +24,14 @@ type StateWriter interface {
 type Gateway struct {
 	cc             *ClientCache
 	mesh           mesh.Mesher
-	meshConfig     *mesh.MeshConfig
+	meshConfig     *mesh.Config
 	sw             StateWriter // Set during engine initialization
 	setRequests    sync.Pool
 	deleteRequests sync.Pool
 }
 
 // NewGateway initializes a new Gateway instance.
-func NewGateway(meshObj mesh.Mesher, meshConfig *mesh.MeshConfig, creds credentials.TransportCredentials) *Gateway {
+func NewGateway(meshObj mesh.Mesher, meshConfig *mesh.Config, creds credentials.TransportCredentials) *Gateway {
 	return &Gateway{
 		cc:         NewClientCache(creds),
 		mesh:       meshObj,

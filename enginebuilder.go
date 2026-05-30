@@ -22,7 +22,7 @@ type EngineBuilder struct {
 	evt            evict.Evictor
 	clock          clock.Clocker
 	creds          credentials.TransportCredentials
-	meshBuilder    *mesh.MeshConfigBuilder
+	meshBuilder    *mesh.ConfigBuilder
 	walPath        string
 	snpPath        string
 	walInterval    time.Duration
@@ -35,7 +35,7 @@ type EngineBuilder struct {
 // NewEngineBuilder initializes a new EngineBuilder instance with default sub-builders.
 func NewEngineBuilder() *EngineBuilder {
 	return &EngineBuilder{
-		meshBuilder: mesh.NewMeshConfigBuilder(),
+		meshBuilder: mesh.NewConfigBuilder(),
 	}
 }
 
@@ -53,7 +53,7 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 	eb.evt = evict.NewLRU(evict.LRUConfig{Capacity: 10000, TTL: 24 * time.Hour, ShardCount: 16})
 	eb.clock = clock.NewClock()
 	eb.gossipInterval = 10 * time.Second
-	eb.meshBuilder = mesh.NewMeshConfigBuilder()
+	eb.meshBuilder = mesh.NewConfigBuilder()
 
 	// Autoselect NodeID to a SHA-256 hash
 	b := make([]byte, 16)
@@ -126,7 +126,7 @@ func (eb *EngineBuilder) SetClock(clock clock.Clocker) *EngineBuilder {
 }
 
 // SetCluster sets the cluster configuration builder.
-func (eb *EngineBuilder) SetCluster(cb *mesh.MeshConfigBuilder) *EngineBuilder {
+func (eb *EngineBuilder) SetCluster(cb *mesh.ConfigBuilder) *EngineBuilder {
 	eb.meshBuilder = cb
 	return eb
 }

@@ -23,7 +23,7 @@ var mockConfig = EngineConfig{
 	evt:            evict.NewLRU(evict.LRUConfig{Capacity: 100, TTL: time.Hour, ShardCount: 16}),
 	gossipInterval: 50 * time.Millisecond,
 	clock:          clock.NewClock(),
-	meshConfig:     mesh.MeshConfig{SingleNode: true},
+	meshConfig:     mesh.Config{SingleNode: true},
 	creds:          insecure.NewCredentials(),
 }
 

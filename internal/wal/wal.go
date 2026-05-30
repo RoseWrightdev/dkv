@@ -1,3 +1,4 @@
+// Package wal provides a segmented, thread-safe Write-Ahead Log implementation.
 package wal
 
 import (
@@ -63,6 +64,7 @@ type Wal struct {
 	count      int
 }
 
+// NewWal creates a new partition-segmented WAL instance.
 func NewWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segmentCount int) (*Wal, error) {
 	if err := os.MkdirAll(dirPath, 0750); err != nil {
 		return nil, err
@@ -119,12 +121,14 @@ func NewWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segme
 	return wal, nil
 }
 
+// Start spawns background sync goroutines for all log segments.
 func (w *Wal) Start() {
 	for _, seg := range w.segments {
 		go seg.backgroundSync()
 	}
 }
 
+// Stop flushes buffers and closes all segment files.
 func (w *Wal) Stop() {
 	for _, seg := range w.segments {
 		seg.mu.Lock()
@@ -144,6 +148,7 @@ func (w *Wal) getSegment(hash kv.HashKey) *walSegment {
 	return w.segments[int(idx)]
 }
 
+// Publish appends a write entry to the partition-segmented write-ahead log under proper segment locks.
 func (w *Wal) Publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	entry := w.entryPool.Get().(*pb.WalEntry)
 	defer w.entryPool.Put(entry)
@@ -200,6 +205,7 @@ func (w *Wal) Publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	return nil
 }
 
+// Replay reads all segments in parallel to reconstruct in-memory state.
 func (w *Wal) Replay() (map[kv.Key]kv.Value, error) {
 	results := make(map[kv.Key]kv.Value)
 	var mu sync.Mutex
@@ -301,6 +307,7 @@ func (w *Wal) replaySegment(seg *walSegment, results map[kv.Key]kv.Value, result
 	return err
 }
 
+// PrepareSnapshot flushes buffers and returns log offsets representing current snapshot boundary.
 func (w *Wal) PrepareSnapshot() ([]int64, error) {
 	offsets := make([]int64, w.count)
 	for i, seg := range w.segments {
@@ -320,6 +327,7 @@ func (w *Wal) PrepareSnapshot() ([]int64, error) {
 	return offsets, nil
 }
 
+// Clear truncates log segment files up to specified offsets to free disk space.
 func (w *Wal) Clear(offsets []int64) error {
 	for i, seg := range w.segments {
 		seg.mu.Lock()

@@ -1,3 +1,4 @@
+// Package evict provides cache eviction algorithms and helpers.
 package evict
 
 import (
@@ -9,14 +10,14 @@ import (
 	"github.com/rosewrightdev/dkv/kv"
 )
 
-// EvictReason defines the category/reason for cache eviction (e.g. TTL or Capacity).
-type EvictReason int
+// Reason defines the category/reason for cache eviction (e.g. TTL or Capacity).
+type Reason int
 
 const (
-	// EvictReasonTTL indicates the entry expired based on its lifespan.
-	EvictReasonTTL EvictReason = iota
-	// EvictReasonCapacity indicates the entry was evicted to free up memory due to reaching limit.
-	EvictReasonCapacity
+	// ReasonTTL indicates the entry expired based on its lifespan.
+	ReasonTTL Reason = iota
+	// ReasonCapacity indicates the entry was evicted to free up memory due to reaching limit.
+	ReasonCapacity
 )
 
 // Evictor defines the interface for cache invalidation.
@@ -25,7 +26,7 @@ type Evictor interface {
 	PublishDelete(key kv.Key, hash kv.HashKey)
 	Start()
 	Stop()
-	SetEvictCallback(func(kv.Key, EvictReason) error)
+	SetEvictCallback(func(kv.Key, Reason) error)
 }
 
 type entry struct {
@@ -43,7 +44,7 @@ type lruMsg struct {
 
 type evictMsg struct {
 	key    string
-	reason EvictReason
+	reason Reason
 }
 
 type lruShard struct {
@@ -55,7 +56,7 @@ type lruShard struct {
 	head     *entry
 	cancel   context.CancelFunc
 	cache    map[kv.HashKey]*entry
-	onEvict  func(kv.Key, EvictReason) error
+	onEvict  func(kv.Key, Reason) error
 	pool     *sync.Pool
 	wg       sync.WaitGroup
 	ttl      time.Duration
@@ -292,7 +293,7 @@ func (s *lruShard) evictOldest() {
 	delete(s.cache, e.hash)
 
 	select {
-	case s.evictCh <- evictMsg{key: e.key, reason: EvictReasonCapacity}:
+	case s.evictCh <- evictMsg{key: e.key, reason: ReasonCapacity}:
 	default:
 	}
 
@@ -315,7 +316,7 @@ func (s *lruShard) evictExpired() {
 		delete(s.cache, e.hash)
 
 		select {
-		case s.evictCh <- evictMsg{key: e.key, reason: EvictReasonTTL}:
+		case s.evictCh <- evictMsg{key: e.key, reason: ReasonTTL}:
 		default:
 		}
 
@@ -364,7 +365,7 @@ func (s *lruShard) pushFront(e *entry) {
 }
 
 // SetEvictCallback sets the function to be called when an entry is evicted.
-func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(kv.Key, EvictReason) error) {
+func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(kv.Key, Reason) error) {
 	for _, s := range lru.shards {
 		s.onEvict = fn
 	}

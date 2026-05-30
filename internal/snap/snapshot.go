@@ -1,3 +1,4 @@
+// Package snap manages local state snapshotting and WAL space reclamation.
 package snap
 
 import (
@@ -24,6 +25,7 @@ type Snapshotter struct {
 	Interval    time.Duration
 }
 
+// SnapshotEntry represents a single key-value state entry serialized inside a snapshot.
 type SnapshotEntry struct {
 	Key       kv.Key
 	Data      []byte
@@ -31,6 +33,7 @@ type SnapshotEntry struct {
 	Tombstone bool
 }
 
+// NewSnapshotter initializes a new Snapshotter instance.
 func NewSnapshotter(path string, interval time.Duration, wal wal.Waler, encCallBack func(*gob.Encoder) error) (*Snapshotter, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -102,6 +105,7 @@ func (snp *Snapshotter) queueSnapShot() {
 	}
 }
 
+// Create triggers a manual state snapshot and purges processed WAL offsets.
 func (snp *Snapshotter) Create() error {
 	offsets, err := snp.wal.PrepareSnapshot()
 	if err != nil {

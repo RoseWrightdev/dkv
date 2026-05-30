@@ -14,7 +14,7 @@ func BenchmarkStorageWriter_ApplySet(b *testing.B) {
 	wal := &mockWal{}
 	clock := &mockStorageClock{}
 	meshObj := &mesh.NopMesh{}
-	meshConfig := &mesh.MeshConfig{SingleNode: true}
+	meshConfig := &mesh.Config{SingleNode: true}
 
 	sw := NewStorageWriter(hm, wal, clock, meshObj, meshConfig)
 
@@ -38,7 +38,7 @@ func BenchmarkStorageWriter_ApplyDelete(b *testing.B) {
 	wal := &mockWal{}
 	clock := &mockStorageClock{}
 	meshObj := &mesh.NopMesh{}
-	meshConfig := &mesh.MeshConfig{SingleNode: true}
+	meshConfig := &mesh.Config{SingleNode: true}
 
 	sw := NewStorageWriter(hm, wal, clock, meshObj, meshConfig)
 

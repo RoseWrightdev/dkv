@@ -41,8 +41,8 @@ type Mesher interface {
 	UpdateLocalWeight(weight int)
 }
 
-// MeshConfig holds configuration for decentralized node discovery and membership.
-type MeshConfig struct {
+// Config holds configuration for decentralized node discovery and membership.
+type Config struct {
 	NodeID            kv.NodeID
 	BindAddr          string
 	AdvertiseAddr     string
@@ -61,14 +61,14 @@ type Mesh struct {
 	gossip      Gossiper
 	exchanger   StateExchanger
 	ring        *HashRing
-	config      MeshConfig
+	config      Config
 	stopping    atomic.Bool
 	nodeAddrs   sync.Map
 	localWeight atomic.Int32
 }
 
 // NewMesh initializes a new Mesh instance.
-func NewMesh(gossip Gossiper, exchanger StateExchanger, config MeshConfig) (*Mesh, error) {
+func NewMesh(gossip Gossiper, exchanger StateExchanger, config Config) (*Mesh, error) {
 	ring := NewHashRing()
 	m := &Mesh{
 		gossip:    gossip,

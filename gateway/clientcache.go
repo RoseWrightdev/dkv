@@ -19,10 +19,12 @@ type ClientCache struct {
 	mu      sync.Mutex // only used for closing the cache safely and synchronizing writes
 }
 
+// NewClientCache initializes a ClientCache instance.
 func NewClientCache(creds credentials.TransportCredentials) *ClientCache {
 	return &ClientCache{creds: creds}
 }
 
+// Get loads a cached Client for a given PeerAddress or constructs a new one if missing.
 func (cc *ClientCache) Get(addr mesh.PeerAddress) (*Client, error) {
 	if cc.closed.Load() {
 		return nil, fmt.Errorf("client cache is closed")
@@ -55,6 +57,7 @@ func (cc *ClientCache) Get(addr mesh.PeerAddress) (*Client, error) {
 	return client, nil
 }
 
+// Close terminates all active gRPC clients inside the cache.
 func (cc *ClientCache) Close() {
 	if !cc.closed.CompareAndSwap(false, true) {
 		return // already closed

@@ -1,3 +1,4 @@
+// Package hashmap provides a concurrent-safe sharded map implementation with incremental digest generation.
 package hashmap
 
 import (
@@ -19,8 +20,10 @@ type RootDigest = uint64
 // ShardDigest represents the collection of sub-bucket digests for a specific shard.
 type ShardDigest = []Digest
 
+// SubBucketCount defines the number of sub-buckets in each shard.
 const SubBucketCount = 64
 
+// ShardCount defines the total number of shards in the map.
 const ShardCount = 128
 
 // shard is a single thread-safe bucket within the ShardedMap.
@@ -34,6 +37,7 @@ type shard struct {
 // ShardedMap is a high-concurrency map implementation that uses multiple locks.
 type ShardedMap [ShardCount]*shard
 
+// NewShardedMap initializes a new ShardedMap with all shards prepared.
 func NewShardedMap() *ShardedMap {
 	var sm ShardedMap
 	for i := range ShardCount {

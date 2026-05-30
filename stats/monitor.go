@@ -1,3 +1,4 @@
+// Package stats provides capacity monitoring and dynamic load shedding triggers.
 package stats
 
 import (

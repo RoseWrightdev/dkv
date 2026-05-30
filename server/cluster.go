@@ -1,3 +1,4 @@
+// Package server manages server cluster nodes and high-level routing handlers.
 package server
 
 import (

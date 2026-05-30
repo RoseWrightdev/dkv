@@ -1,3 +1,4 @@
+// Package security provides secure hashing utilities for keys and state verification.
 package security
 
 import (

@@ -1,3 +1,4 @@
+// Package entropy performs background anti-entropy state reconciliation and sync protocols.
 package entropy
 
 import (
@@ -24,7 +25,7 @@ type Syncer struct {
 	writer     writer.StateWriter
 	mesh       mesh.Mesher
 	creds      credentials.TransportCredentials
-	meshConfig *mesh.MeshConfig
+	meshConfig *mesh.Config
 	hm         *hashmap.ShardedMap
 	pools      *pools
 	stopChan   chan struct{}
@@ -38,7 +39,7 @@ type SyncerConfig struct {
 	Writer     writer.StateWriter
 	Mesh       mesh.Mesher
 	Creds      credentials.TransportCredentials
-	MeshConfig *mesh.MeshConfig
+	MeshConfig *mesh.Config
 	Hm         *hashmap.ShardedMap
 	NodeID     kv.NodeID
 	Interval   time.Duration
@@ -140,6 +141,7 @@ func (s *Syncer) run() {
 	}
 }
 
+// Push applies a batch of sets and deletes directly to the local state writer.
 func (s *Syncer) Push(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
 	for _, req := range sets {
 		if err := s.writer.ApplySet(req); err != nil {
@@ -162,6 +164,7 @@ type PullConfig struct {
 	Root        hashmap.RootDigest
 }
 
+// Pull compares remote shard and bucket digests against local state and returns mismatch records.
 func (s *Syncer) Pull(pullConfig *PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
 	// Level 1: Global check. If the root hash matches, the entire database is identical.
 	if pullConfig.Root == s.hm.RootDigest() {
