@@ -18,9 +18,9 @@ const (
 // HashRing implements consistent hashing for data partitioning across dkv nodes.
 type HashRing struct {
 	nodes    map[kv.NodeID]uint32
+	weights  map[kv.NodeID]int
 	nodeList []kv.NodeID
 	vnodes   []vnode
-	weights  map[kv.NodeID]int
 	mu       sync.RWMutex
 }
 

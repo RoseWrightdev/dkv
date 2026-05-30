@@ -105,8 +105,8 @@ func TestPeriodicSnapshots(t *testing.T) {
 }
 
 type errorWal struct {
-	mockWal
 	prepErr error
+	mockWal
 }
 
 func (ew *errorWal) PrepareSnapshot() ([]int64, error) {

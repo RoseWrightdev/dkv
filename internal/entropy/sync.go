@@ -29,9 +29,9 @@ type Syncer struct {
 	hm         *hashmap.ShardedMap
 	pools      *pools
 	stopChan   chan struct{}
+	cc         *gateway.ClientCache
 	nodeID     kv.NodeID
 	interval   time.Duration
-	cc         *gateway.ClientCache
 }
 
 // SyncerConfig holds configuration options for the Syncer service.
@@ -41,9 +41,9 @@ type SyncerConfig struct {
 	Creds      credentials.TransportCredentials
 	MeshConfig *mesh.Config
 	Hm         *hashmap.ShardedMap
+	Cc         *gateway.ClientCache
 	NodeID     kv.NodeID
 	Interval   time.Duration
-	Cc         *gateway.ClientCache
 }
 
 type pools struct {

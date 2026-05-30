@@ -13,10 +13,10 @@ import (
 // ClientCache caches gRPC clients for each peer node to avoid
 // recreating network connections repeatedly during proxy routing.
 type ClientCache struct {
-	clients sync.Map // maps mesh.PeerAddress -> *Client
 	creds   credentials.TransportCredentials
+	clients sync.Map
+	mu      sync.Mutex
 	closed  atomic.Bool
-	mu      sync.Mutex // only used for closing the cache safely and synchronizing writes
 }
 
 // NewClientCache initializes a ClientCache instance.

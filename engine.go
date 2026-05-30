@@ -50,16 +50,16 @@ type engine struct {
 	wal        wal.Waler
 	mesh       mesh.Mesher
 	evt        evict.Evictor
-	gw         *gateway.Gateway
 	syncer     *entropy.Syncer
+	gw         *gateway.Gateway
 	pools      *pools
 	hm         *hashmap.ShardedMap
 	snp        *snap.Snapshotter
 	sw         *writer.StorageWriter
+	monitor    *stats.Monitor
 	meshConfig mesh.Config
 	startOnce  sync.Once
 	stopOnce   sync.Once
-	monitor    *stats.Monitor
 }
 
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
