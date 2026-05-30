@@ -7,11 +7,12 @@
 package __
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -651,6 +652,58 @@ func (*DeleteResponse) Descriptor() ([]byte, []int) {
 	return file_api_dkv_proto_rawDescGZIP(), []int{11}
 }
 
+type NodeMetadata struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GrpcPort      int32                  `protobuf:"varint,1,opt,name=grpc_port,json=grpcPort,proto3" json:"grpc_port,omitempty"`
+	Weight        int32                  `protobuf:"varint,2,opt,name=weight,proto3" json:"weight,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NodeMetadata) Reset() {
+	*x = NodeMetadata{}
+	mi := &file_api_dkv_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeMetadata) ProtoMessage() {}
+
+func (x *NodeMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_api_dkv_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeMetadata.ProtoReflect.Descriptor instead.
+func (*NodeMetadata) Descriptor() ([]byte, []int) {
+	return file_api_dkv_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *NodeMetadata) GetGrpcPort() int32 {
+	if x != nil {
+		return x.GrpcPort
+	}
+	return 0
+}
+
+func (x *NodeMetadata) GetWeight() int32 {
+	if x != nil {
+		return x.Weight
+	}
+	return 0
+}
+
 var File_api_dkv_proto protoreflect.FileDescriptor
 
 const file_api_dkv_proto_rawDesc = "" +
@@ -700,14 +753,18 @@ const file_api_dkv_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1c\n" +
 	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\x12\x17\n" +
 	"\anode_id\x18\x03 \x01(\tR\x06nodeId\"\x10\n" +
-	"\x0eDeleteResponse2\xf7\x01\n" +
+	"\x0eDeleteResponse\"C\n" +
+	"\fNodeMetadata\x12\x1b\n" +
+	"\tgrpc_port\x18\x01 \x01(\x05R\bgrpcPort\x12\x16\n" +
+	"\x06weight\x18\x02 \x01(\x05R\x06weight2\xf7\x01\n" +
 	"\n" +
 	"DkvService\x12*\n" +
 	"\x03Get\x12\x0f.dkv.GetRequest\x1a\x10.dkv.GetResponse\"\x00\x12*\n" +
 	"\x03Set\x12\x0f.dkv.SetRequest\x1a\x10.dkv.SetResponse\"\x00\x123\n" +
 	"\x06Delete\x12\x12.dkv.DeleteRequest\x1a\x13.dkv.DeleteResponse\"\x00\x12-\n" +
 	"\x04Pull\x12\x10.dkv.PullRequest\x1a\x11.dkv.PullResponse\"\x00\x12-\n" +
-	"\x04Push\x12\x10.dkv.PushRequest\x1a\x11.dkv.PushResponse\"\x00B\x04Z\x02./b\x06proto3"
+	"\x04Push\x12\x10.dkv.PushRequest\x1a\x11.dkv.PushResponse\"\x00B#\n" +
+	"\x1bcom.rosewrightdev.dkv.protoP\x01Z\x02./b\x06proto3"
 
 var (
 	file_api_dkv_proto_rawDescOnce sync.Once
@@ -721,7 +778,7 @@ func file_api_dkv_proto_rawDescGZIP() []byte {
 	return file_api_dkv_proto_rawDescData
 }
 
-var file_api_dkv_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_api_dkv_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_api_dkv_proto_goTypes = []any{
 	(*PushRequest)(nil),    // 0: dkv.PushRequest
 	(*PushResponse)(nil),   // 1: dkv.PushResponse
@@ -735,14 +792,15 @@ var file_api_dkv_proto_goTypes = []any{
 	(*SetResponse)(nil),    // 9: dkv.SetResponse
 	(*DeleteRequest)(nil),  // 10: dkv.DeleteRequest
 	(*DeleteResponse)(nil), // 11: dkv.DeleteResponse
-	nil,                    // 12: dkv.PullRequest.ShardDigestsEntry
-	nil,                    // 13: dkv.PullRequest.SubDigestsEntry
+	(*NodeMetadata)(nil),   // 12: dkv.NodeMetadata
+	nil,                    // 13: dkv.PullRequest.ShardDigestsEntry
+	nil,                    // 14: dkv.PullRequest.SubDigestsEntry
 }
 var file_api_dkv_proto_depIdxs = []int32{
 	8,  // 0: dkv.PushRequest.entries:type_name -> dkv.SetRequest
 	10, // 1: dkv.PushRequest.deletions:type_name -> dkv.DeleteRequest
-	12, // 2: dkv.PullRequest.shard_digests:type_name -> dkv.PullRequest.ShardDigestsEntry
-	13, // 3: dkv.PullRequest.sub_digests:type_name -> dkv.PullRequest.SubDigestsEntry
+	13, // 2: dkv.PullRequest.shard_digests:type_name -> dkv.PullRequest.ShardDigestsEntry
+	14, // 3: dkv.PullRequest.sub_digests:type_name -> dkv.PullRequest.SubDigestsEntry
 	8,  // 4: dkv.PullResponse.entries:type_name -> dkv.SetRequest
 	10, // 5: dkv.PullResponse.deletions:type_name -> dkv.DeleteRequest
 	8,  // 6: dkv.WalEntry.set:type_name -> dkv.SetRequest
@@ -780,7 +838,7 @@ func file_api_dkv_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_dkv_proto_rawDesc), len(file_api_dkv_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

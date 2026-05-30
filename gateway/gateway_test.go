@@ -70,6 +70,8 @@ func (m *MockMesher) Stop() error {
 	return nil
 }
 
+func (m *MockMesher) UpdateLocalWeight(_ int) {}
+
 // MockGrpcServer implements pb.DkvServiceServer
 type MockGrpcServer struct {
 	pb.UnimplementedDkvServiceServer

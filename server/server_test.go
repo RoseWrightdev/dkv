@@ -7,6 +7,7 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/internal/entropy"
 	"github.com/rosewrightdev/dkv/internal/hashmap"
+	"github.com/rosewrightdev/dkv/internal/mesh"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -53,6 +54,11 @@ func (m *mockEngine) Addr() string {
 func (m *mockEngine) GossipAddr() string {
 	args := m.Called()
 	return args.String(0)
+}
+
+func (m *mockEngine) Mesh() mesh.Mesher {
+	args := m.Called()
+	return args.Get(0).(mesh.Mesher)
 }
 
 func (m *mockEngine) Snapshot() error {

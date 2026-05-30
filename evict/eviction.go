@@ -120,6 +120,7 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 	}
 }
 
+// Start starts the background eviction loops for all shards.
 func (lru *LeastRecentlyUsed) Start() {
 	for _, s := range lru.shards {
 		s.Start()
@@ -131,6 +132,7 @@ func (s *lruShard) Start() {
 	go s.run()
 }
 
+// Stop gracefully stops the background eviction loops for all shards.
 func (lru *LeastRecentlyUsed) Stop() {
 	for _, s := range lru.shards {
 		s.Stop()
@@ -142,6 +144,7 @@ func (s *lruShard) Stop() {
 	s.wg.Wait()
 }
 
+// Publish sends a cache access telemetry event to the eviction queue.
 func (lru *LeastRecentlyUsed) Publish(key kv.Key, hash kv.HashKey) {
 	// Fast-path filter: immediately discard 50% of telemetry events
 	// before executing any memory accesses, sharding, or queue checks.
@@ -211,6 +214,7 @@ func (lru *LeastRecentlyUsed) seen(key kv.Key, hash kv.HashKey) {
 	lru.getShardByHash(hash).seen(key, hash)
 }
 
+// PublishDelete sends a cache deletion telemetry event to the eviction queue.
 func (lru *LeastRecentlyUsed) PublishDelete(_ kv.Key, hash kv.HashKey) {
 	shard := lru.getShardByHash(hash)
 	select {
@@ -376,3 +380,19 @@ func (lru *LeastRecentlyUsed) GetShardCapacity(idx int) uint32 {
 	return lru.shards[idx].capacity
 }
 
+// Occupancy returns the ratio of cached entries to total capacity across all shards.
+func (lru *LeastRecentlyUsed) Occupancy() float64 {
+	var totalSize uint32
+	var totalCap uint32
+	for _, s := range lru.shards {
+		s.mu.Lock()
+		// #nosec G115
+		totalSize += uint32(len(s.cache))
+		totalCap += s.capacity
+		s.mu.Unlock()
+	}
+	if totalCap == 0 {
+		return 0
+	}
+	return float64(totalSize) / float64(totalCap)
+}

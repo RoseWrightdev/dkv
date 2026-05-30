@@ -64,8 +64,9 @@ func (m *mockMesher) PutOwners(_ []kv.NodeID) {}
 func (m *mockMesher) AddressForNode(nodeID kv.NodeID) mesh.PeerAddress {
 	return m.AddrMap[nodeID]
 }
-func (m *mockMesher) Start() error { return nil }
-func (m *mockMesher) Stop() error  { return nil }
+func (m *mockMesher) Start() error            { return nil }
+func (m *mockMesher) Stop() error             { return nil }
+func (m *mockMesher) UpdateLocalWeight(_ int) {}
 
 func TestStorageWriter_All(t *testing.T) {
 	// Setup dependencies

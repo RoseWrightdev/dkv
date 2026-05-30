@@ -23,6 +23,7 @@ import (
 	"github.com/rosewrightdev/dkv/internal/writer"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/security"
+	"github.com/rosewrightdev/dkv/stats"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -39,6 +40,7 @@ type Engine interface {
 	SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error
 	Addr() string
 	GossipAddr() string
+	Mesh() mesh.Mesher
 }
 
 type engine struct {
@@ -56,6 +58,7 @@ type engine struct {
 	meshConfig mesh.MeshConfig
 	startOnce  sync.Once
 	stopOnce   sync.Once
+	monitor    *stats.Monitor
 }
 
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
@@ -77,6 +80,13 @@ func newEngine(config EngineConfig) (Engine, error) {
 	w, err := wal.NewWal(config.walPath, config.walInterval, config.walBufferSize, config.walSegments)
 	if err != nil {
 		return nil, err
+	}
+
+	var occupancy func() float64
+	if occupier, ok := config.evt.(interface{ Occupancy() float64 }); ok {
+		occupancy = occupier.Occupancy
+	} else {
+		occupancy = func() float64 { return 0.0 }
 	}
 
 	eng := &engine{
@@ -137,6 +147,10 @@ func newEngine(config EngineConfig) (Engine, error) {
 		})
 	}
 
+	eng.monitor = stats.NewMonitor(occupancy, func(w int) {
+		eng.mesh.UpdateLocalWeight(w)
+	})
+
 	return eng, nil
 }
 
@@ -172,12 +186,18 @@ func (eng *engine) Start() {
 		if eng.syncer != nil {
 			eng.syncer.Start()
 		}
+		if eng.monitor != nil {
+			eng.monitor.Start()
+		}
 	})
 }
 
 // Stop gracefully shuts down the engine and its background services.
 func (eng *engine) Stop() {
 	eng.stopOnce.Do(func() {
+		if eng.monitor != nil {
+			eng.monitor.Stop()
+		}
 		if eng.syncer != nil {
 			eng.syncer.Stop()
 		}
@@ -386,4 +406,8 @@ func (eng *engine) GossipAddr() string {
 		panic("dkv: bind address not configured")
 	}
 	return fmt.Sprintf("%s:%d", addr, eng.meshConfig.BindPort)
+}
+
+func (eng *engine) Mesh() mesh.Mesher {
+	return eng.mesh
 }

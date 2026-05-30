@@ -9,8 +9,8 @@ import (
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/gateway"
 	"github.com/rosewrightdev/dkv/internal/hashmap"
-	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/security"
 	"github.com/stretchr/testify/assert"
 )
@@ -219,3 +219,5 @@ func (m *MockMesher) Start() error {
 func (m *MockMesher) Stop() error {
 	return nil
 }
+
+func (m *MockMesher) UpdateLocalWeight(_ int) {}
