@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/gateway"
+	"github.com/rosewrightdev/dkv/cluster/gateway"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/require"
 )

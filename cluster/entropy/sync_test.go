@@ -7,9 +7,9 @@ import (
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/gateway"
-	"github.com/rosewrightdev/dkv/internal/hashmap"
-	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/cluster/gateway"
+	"github.com/rosewrightdev/dkv/core/hashmap"
+	"github.com/rosewrightdev/dkv/cluster/mesh"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/rosewrightdev/dkv/security"
 	"github.com/stretchr/testify/assert"

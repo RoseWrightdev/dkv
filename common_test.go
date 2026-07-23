@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/internal/clock"
-	"github.com/rosewrightdev/dkv/evict"
-	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/core/clock"
+	"github.com/rosewrightdev/dkv/core/evict"
+	"github.com/rosewrightdev/dkv/cluster/mesh"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/credentials/insecure"
 )

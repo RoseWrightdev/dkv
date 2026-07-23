@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/gateway"
-	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/cluster/gateway"
+	"github.com/rosewrightdev/dkv/cluster/mesh"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

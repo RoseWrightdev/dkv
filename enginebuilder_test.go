@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/evict"
-	"github.com/rosewrightdev/dkv/internal/clock"
+	"github.com/rosewrightdev/dkv/core"
+	"github.com/rosewrightdev/dkv/core/clock"
+	"github.com/rosewrightdev/dkv/core/evict"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 )
@@ -47,10 +48,10 @@ func TestEngineBuilder(t *testing.T) {
 	assert.Nil(t, err)
 	defer eng.Stop()
 
-	e := eng.(*engine)
-	assert.Equal(t, e.snp.Interval, mockConfig.snpInterval)
+	e := eng.(interface{ Core() core.Engine }).Core()
+	assert.Equal(t, e.Snp().Interval, mockConfig.snpInterval)
 
-	actualLRU, ok := e.evt.(*evict.LeastRecentlyUsed)
+	actualLRU, ok := e.Evt().(*evict.LeastRecentlyUsed)
 	assert.True(t, ok)
 	assert.Equal(t, time.Minute, actualLRU.GetShardTTL(0))
 	assert.Equal(t, uint32(500/16), actualLRU.GetShardCapacity(0))
