@@ -2,29 +2,17 @@
 package dkv
 
 import (
-	"encoding/gob"
 	"fmt"
-	"io"
-	"log/slog"
-	"os"
-	"sync"
 	"time"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/evict"
-	"github.com/rosewrightdev/dkv/gateway"
-	"github.com/rosewrightdev/dkv/internal/clock"
-	"github.com/rosewrightdev/dkv/internal/entropy"
-	"github.com/rosewrightdev/dkv/internal/gossip"
-	"github.com/rosewrightdev/dkv/internal/hashmap"
-	"github.com/rosewrightdev/dkv/internal/mesh"
-	"github.com/rosewrightdev/dkv/internal/snap"
-	"github.com/rosewrightdev/dkv/internal/trans"
-	"github.com/rosewrightdev/dkv/internal/wal"
-	"github.com/rosewrightdev/dkv/internal/writer"
+	"github.com/rosewrightdev/dkv/cluster"
+	"github.com/rosewrightdev/dkv/cluster/entropy"
+	"github.com/rosewrightdev/dkv/cluster/mesh"
+	"github.com/rosewrightdev/dkv/core"
+	"github.com/rosewrightdev/dkv/core/clock"
+	"github.com/rosewrightdev/dkv/core/evict"
 	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/security"
-	"github.com/rosewrightdev/dkv/stats"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -44,24 +32,6 @@ type Engine interface {
 	Mesh() mesh.Mesher
 }
 
-type engine struct {
-	creds      credentials.TransportCredentials
-	clock      clock.Clocker
-	wal        wal.Waler
-	mesh       mesh.Mesher
-	evt        evict.Evictor
-	syncer     *entropy.Syncer
-	gw         *gateway.Gateway
-	pools      *pools
-	hm         *hashmap.ShardedMap
-	snp        *snap.Snapshotter
-	sw         *writer.StorageWriter
-	monitor    *stats.Monitor
-	meshConfig mesh.Config
-	startOnce  sync.Once
-	stopOnce   sync.Once
-}
-
 // EngineConfig specifies the parameters required to initialize and run a dkv Engine.
 type EngineConfig struct {
 	evt            evict.Evictor
@@ -78,337 +48,83 @@ type EngineConfig struct {
 }
 
 func newEngine(config EngineConfig) (Engine, error) {
-	w, err := wal.NewWal(config.walPath, config.walInterval, config.walBufferSize, config.walSegments)
+	coreConfig := core.Config{
+		Evt:           config.evt,
+		Clock:         config.clock,
+		WalPath:       config.walPath,
+		SnpPath:       config.snpPath,
+		WalInterval:   config.walInterval,
+		SnpInterval:   config.snpInterval,
+		WalSegments:   config.walSegments,
+		WalBufferSize: config.walBufferSize,
+		NodeID:        config.meshConfig.NodeID,
+	}
+
+	coreEng, err := core.NewEngine(coreConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	var occupancy func() float64
-	if occupier, ok := config.evt.(interface{ Occupancy() float64 }); ok {
-		occupancy = occupier.Occupancy
-	} else {
-		occupancy = func() float64 { return 0.0 }
+	if config.meshConfig.SingleNode {
+		return &singleNodeAdapter{
+			Engine: coreEng,
+			config: config.meshConfig,
+		}, nil
 	}
 
-	eng := &engine{
-		hm:         hashmap.NewShardedMap(),
-		wal:        w,
-		clock:      config.clock,
-		meshConfig: config.meshConfig,
-		creds:      config.creds,
-		pools:      newPools(),
+	clusterConfig := cluster.Config{
+		MeshConfig:     config.meshConfig,
+		Creds:          config.creds,
+		GossipInterval: config.gossipInterval,
 	}
 
-	if err := eng.recover(config.snpPath); err != nil {
-		slog.Error("Failed to recover database state", "error", err)
-	}
-
-	swWriter := writer.NewStorageWriter(eng.hm, eng.wal, eng.clock, eng.mesh, &eng.meshConfig)
-	eng.sw = swWriter
-
-	stateTransfer := trans.NewStateTransfer(eng.hm, swWriter)
-
-	snp, err := snap.NewSnapshotter(config.snpPath, config.snpInterval, w, stateTransfer.StreamToEncoder)
+	node, err := cluster.NewNode(coreEng, clusterConfig)
 	if err != nil {
 		return nil, err
 	}
-	eng.snp = snp
-	eng.evt = config.evt
-	eng.evt.SetEvictCallback(eng.Evict)
 
-	gossipService := gossip.NewGossip(swWriter)
-
-	eng.mesh = &mesh.NopMesh{}
-	if !config.meshConfig.SingleNode {
-		meshObj, err := mesh.NewMesh(
-			gossipService,
-			stateTransfer,
-			config.meshConfig,
-		)
-		if err != nil {
-			return nil, err
-		}
-		eng.mesh = meshObj
-	}
-	swWriter.SetMesh(eng.mesh)
-
-	eng.gw = gateway.NewGateway(eng.mesh, &eng.meshConfig, config.creds)
-	eng.gw.SetStateWriter(swWriter)
-
-	if !config.meshConfig.SingleNode {
-		eng.syncer = entropy.NewSyncer(&entropy.SyncerConfig{
-			NodeID:     config.meshConfig.NodeID,
-			Writer:     eng.sw,
-			Mesh:       eng.mesh,
-			MeshConfig: &eng.meshConfig,
-			Hm:         eng.hm,
-			Interval:   config.gossipInterval,
-			Creds:      config.creds,
-			Cc:         eng.gw.GetClientCache(),
-		})
-	}
-
-	eng.monitor = stats.NewMonitor(occupancy, func(w int) {
-		eng.mesh.UpdateLocalWeight(w)
-	})
-
-	return eng, nil
+	return node, nil
 }
 
-type pools struct {
-	setRequests     sync.Pool
-	deleteRequests  sync.Pool
-	snapshotEntries sync.Pool
+type singleNodeAdapter struct {
+	core.Engine
+	config mesh.Config
 }
 
-func newPools() *pools {
-	return &pools{
-		setRequests: sync.Pool{
-			New: func() any { return &pb.SetRequest{} },
-		},
-		deleteRequests: sync.Pool{
-			New: func() any { return &pb.DeleteRequest{} },
-		},
-		snapshotEntries: sync.Pool{
-			New: func() any { return &snap.SnapshotEntry{} },
-		},
-	}
+func (s *singleNodeAdapter) Core() core.Engine {
+	return s.Engine
 }
 
-// Start initializes background services.
-func (eng *engine) Start() {
-	eng.startOnce.Do(func() {
-		eng.snp.Start()
-		eng.wal.Start()
-		eng.evt.Start()
-		if err := eng.mesh.Start(); err != nil {
-			panic(fmt.Sprintf("failed to start cluster service: %v", err))
-		}
-		if eng.syncer != nil {
-			eng.syncer.Start()
-		}
-		if eng.monitor != nil {
-			eng.monitor.Start()
-		}
-	})
+func (s *singleNodeAdapter) Owner(_ kv.Key) kv.NodeID {
+	return s.config.NodeID
 }
 
-// Stop gracefully shuts down the engine and its background services.
-func (eng *engine) Stop() {
-	eng.stopOnce.Do(func() {
-		if eng.monitor != nil {
-			eng.monitor.Stop()
-		}
-		if eng.syncer != nil {
-			eng.syncer.Stop()
-		}
-		eng.snp.Stop()
-		eng.wal.Stop()
-		eng.evt.Stop()
-		if err := eng.mesh.Stop(); err != nil {
-			panic(fmt.Sprintf("failed to stop cluster service: %v", err))
-		}
-		eng.gw.Close()
-	})
+func (s *singleNodeAdapter) NodeID() kv.NodeID {
+	return s.config.NodeID
 }
 
-// Get retrieves the value associated with a key from the sharded map.
-func (eng *engine) Get(key kv.Key) ([]byte, bool) {
-	hash := kv.HashKey(security.HashFunc(key))
-	iv, ok := eng.hm.Load(key, hash)
-	if ok && !iv.Tombstone {
-		eng.evt.Publish(key, hash)
-		return iv.Data, true
-	} else if ok && iv.Tombstone {
-		// We have a local tombstone. Do not proxy the read as the key is known to be deleted.
-		return nil, false
-	}
-
-	// Gateway Proxy: If we don't have it locally, fetch it from an owner
-	if !eng.meshConfig.SingleNode {
-		return eng.gw.Get(key)
-	}
-
-	return nil, false
+func (s *singleNodeAdapter) SyncPull(_ *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+	return nil, nil, nil
 }
 
-// Set persists a key-value pair to the WAL and updates the sharded map.
-func (eng *engine) Set(key kv.Key, value []byte) error {
-	hash := security.HashFunc(key)
-	eng.evt.Publish(key, hash)
-
-	ts := eng.clock.Now()
-
-	if eng.meshConfig.SingleNode {
-		// Hot path: bypass ApplySet to avoid redundant clock.Update, double HashFunc, and
-		// the always-true isLocal() ring check — restoring the pre-refactor baseline perf.
-		req := eng.pools.setRequests.Get().(*pb.SetRequest)
-		req.Key = key
-		req.Value = value
-		req.Timestamp = ts
-		req.NodeId = string(eng.meshConfig.NodeID)
-
-		eng.hm.Store(key, hash, kv.Value{
-			Data:      value,
-			Timestamp: ts,
-			NodeID:    string(eng.meshConfig.NodeID),
-			Tombstone: false,
-		})
-		err := eng.wal.Publish(key, hash, req)
-		req.Reset()
-		eng.pools.setRequests.Put(req)
-		return err
-	}
-
-	return eng.gw.Set(key, value, ts)
-}
-
-// Delete marks a key as deleted by publishing a tombstone to the WAL.
-func (eng *engine) Delete(key kv.Key) error {
-	hash := security.HashFunc(key)
-	eng.evt.PublishDelete(key, hash)
-
-	ts := eng.clock.Now()
-
-	if eng.meshConfig.SingleNode {
-		// Hot path: same bypass rationale as Set — skip ApplyDelete overhead.
-		req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
-		req.Key = key
-		req.Timestamp = ts
-		req.NodeId = string(eng.meshConfig.NodeID)
-
-		eng.hm.Store(key, hash, kv.Value{
-			Timestamp: ts,
-			NodeID:    string(eng.meshConfig.NodeID),
-			Tombstone: true,
-		})
-		err := eng.wal.Publish(key, hash, req)
-		req.Reset()
-		eng.pools.deleteRequests.Put(req)
-		return err
-	}
-
-	return eng.gw.Delete(key, ts)
-}
-
-func (eng *engine) Evict(key kv.Key, reason evict.Reason) error {
-	hash := security.HashFunc(key)
-
-	if reason == evict.ReasonCapacity {
-		eng.hm.Delete(key, hash)
-		return nil
-	}
-
-	ts := eng.clock.Now()
-
-	if eng.meshConfig.SingleNode {
-		// Hot path: same bypass rationale as Set/Delete.
-		req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
-		req.Key = key
-		req.Timestamp = ts
-		req.NodeId = string(eng.meshConfig.NodeID)
-
-		eng.hm.Store(key, hash, kv.Value{
-			Timestamp: ts,
-			NodeID:    string(eng.meshConfig.NodeID),
-			Tombstone: true,
-		})
-		err := eng.wal.Publish(key, hash, req)
-		req.Reset()
-		eng.pools.deleteRequests.Put(req)
-		return err
-	}
-
-	return eng.gw.Delete(key, ts)
-}
-
-func (eng *engine) recover(snpPath string) error {
-	if info, err := os.Stat(snpPath); err == nil && info.Size() > 0 {
-		// #nosec G304
-		file, err := os.Open(snpPath)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			_ = file.Close()
-		}()
-
-		dec := gob.NewDecoder(file)
-		count := 0
-		for {
-			entry := eng.pools.snapshotEntries.Get().(*snap.SnapshotEntry)
-			if err := dec.Decode(entry); err != nil {
-				entry.Key = ""
-				entry.Data = nil
-				eng.pools.snapshotEntries.Put(entry)
-				if err == io.EOF {
-					break
-				}
-				return err
-			}
-			eng.hm.Store(entry.Key, security.HashFunc(entry.Key), kv.Value{
-				Data:      entry.Data,
-				Timestamp: entry.Timestamp,
-				Tombstone: entry.Tombstone,
-			})
-			entry.Key = ""
-			entry.Data = nil
-			eng.pools.snapshotEntries.Put(entry)
-			count++
-		}
-		slog.Info("Loaded state from snapshot", "path", snpPath, "keys", count)
-	}
-
-	updates, err := eng.wal.Replay()
-	if err != nil {
-		return err
-	}
-	for k, v := range updates {
-		h := security.HashFunc(k)
-		eng.hm.Store(k, h, v)
-	}
-	if len(updates) > 0 {
-		slog.Info("Replayed updates from WAL", "count", len(updates))
-	}
-
+func (s *singleNodeAdapter) SyncPush(_ []*pb.SetRequest, _ []*pb.DeleteRequest) error {
 	return nil
 }
 
-func (eng *engine) SyncPull(pullConfig *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
-	return eng.syncer.Pull(pullConfig)
-}
-
-func (eng *engine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
-	return eng.syncer.Push(sets, deletes)
-}
-
-func (eng *engine) Owner(key kv.Key) kv.NodeID {
-	if eng.meshConfig.SingleNode {
-		return eng.meshConfig.NodeID
-	}
-	return eng.mesh.Owner(key)
-}
-
-func (eng *engine) NodeID() kv.NodeID {
-	return eng.meshConfig.NodeID
-}
-
-func (eng *engine) Addr() string {
-	addr := eng.meshConfig.BindAddr
-	if addr == "" {
+func (s *singleNodeAdapter) Addr() string {
+	if s.config.BindAddr == "" {
 		panic("dkv: bind address not configured")
 	}
-	return fmt.Sprintf("%s:%d", addr, eng.meshConfig.GrpcPort)
+	return fmt.Sprintf("%s:%d", s.config.BindAddr, s.config.GrpcPort)
 }
 
-func (eng *engine) GossipAddr() string {
-	addr := eng.meshConfig.BindAddr
-	if addr == "" {
+func (s *singleNodeAdapter) GossipAddr() string {
+	if s.config.BindAddr == "" {
 		panic("dkv: bind address not configured")
 	}
-	return fmt.Sprintf("%s:%d", addr, eng.meshConfig.BindPort)
+	return fmt.Sprintf("%s:%d", s.config.BindAddr, s.config.BindPort)
 }
 
-func (eng *engine) Mesh() mesh.Mesher {
-	return eng.mesh
+func (s *singleNodeAdapter) Mesh() mesh.Mesher {
+	return &mesh.NopMesh{}
 }

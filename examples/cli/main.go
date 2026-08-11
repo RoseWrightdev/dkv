@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/rosewrightdev/dkv/gateway"
+	"github.com/rosewrightdev/dkv/cluster/gateway"
 )
 
 func printUsage() {

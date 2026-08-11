@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rosewrightdev/dkv/internal/wal"
+	"github.com/rosewrightdev/dkv/core/wal"
 	"github.com/rosewrightdev/dkv/kv"
 )
 

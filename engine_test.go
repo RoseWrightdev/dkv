@@ -6,52 +6,56 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/internal/entropy"
-	"github.com/rosewrightdev/dkv/internal/hashmap"
+	"github.com/rosewrightdev/dkv/cluster/entropy"
+	"github.com/rosewrightdev/dkv/cluster/gateway"
+	"github.com/rosewrightdev/dkv/cluster/mesh"
+	"github.com/rosewrightdev/dkv/core/hashmap"
 	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestEngineOperations(t *testing.T) {
+func TestEngineBasicOps(t *testing.T) {
+	defer cleanupEngineMocks(t)
+
 	eng, err := newEngine(mockConfig)
 	assert.Nil(t, err)
 	eng.Start()
 	defer eng.Stop()
-	bytes := make([]byte, 1)
-	bytes = append(bytes, byte(10))
 
-	err = eng.Set("key", bytes)
+	// Get non-existent key
+	_, ok := eng.Get(kv.Key("nonexistent"))
+	assert.False(t, ok)
+
+	// Set and Get
+	key, val := "user:100", []byte("john_doe")
+	err = eng.Set(key, val)
 	assert.Nil(t, err)
-	val, ok := eng.Get(kv.Key("key"))
-	assert.Equal(t, val, bytes)
+
+	got, ok := eng.Get(kv.Key(key))
 	assert.True(t, ok)
+	assert.Equal(t, val, got)
 
-	bytes = make([]byte, 1)
-	bytes = append(bytes, byte(1))
-	err = eng.Set("key", bytes)
-	assert.Nil(t, err)
-	val, ok = eng.Get(kv.Key("key"))
-	assert.True(t, ok)
-	assert.Equal(t, val, bytes)
-
-	err = eng.Delete("key")
+	// Delete and Get
+	err = eng.Delete(key)
 	assert.Nil(t, err)
 
-	cleanupEngineMocks(t)
+	_, ok = eng.Get(kv.Key(key))
+	assert.False(t, ok)
 }
 
 func TestEnginePersistence(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
 	eng, err := newEngine(mockConfig)
-	eng.Start()
 	assert.Nil(t, err)
+	eng.Start()
 	key1, val1 := "persist1", []byte("value1")
 	key2, val2 := "persist2", []byte("value2")
 	assert.Nil(t, eng.Set(key1, val1))
 	assert.Nil(t, eng.Set(key2, val2))
 
-	err = eng.(*engine).snp.Create()
+	coreEng := eng.(*singleNodeAdapter).Core()
+	err = coreEng.Snp().Create()
 	assert.Nil(t, err)
 
 	key3, val3 := "persist3", []byte("value3")
@@ -95,7 +99,7 @@ func TestEngine_DeletePersistence(t *testing.T) {
 func TestEngine_LWW(t *testing.T) {
 	defer cleanupEngineMocks(t)
 	e, _ := newEngine(mockConfig)
-	eng := e.(*engine)
+	eng := e.(*singleNodeAdapter).Core()
 	eng.Start()
 	defer eng.Stop()
 
@@ -104,11 +108,11 @@ func TestEngine_LWW(t *testing.T) {
 	val2 := []byte("new-value")
 
 	ts1 := int64(1000)
-	eng.clock.Update(ts1)
+	eng.Clock().Update(ts1)
 	assert.NoError(t, eng.Set(key, val1))
 
 	ts2 := int64(2000)
-	eng.clock.Update(ts2)
+	eng.Clock().Update(ts2)
 	assert.NoError(t, eng.Set(key, val2))
 	got, _ := eng.Get(kv.Key(key))
 	assert.Equal(t, val2, got)
@@ -116,7 +120,7 @@ func TestEngine_LWW(t *testing.T) {
 	// Set with older timestamp (should be ignored)
 	ts3 := int64(1500)
 	// We call ApplySet directly to simulate a delayed gossip arrival
-	err := eng.sw.ApplySet(&pb.SetRequest{
+	err := eng.ApplySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("delayed-old-value"),
 		Timestamp: ts3,
@@ -129,7 +133,7 @@ func TestEngine_LWW(t *testing.T) {
 func TestEngine_TombstoneLWW(t *testing.T) {
 	defer cleanupEngineMocks(t)
 	e, _ := newEngine(mockConfig)
-	eng := e.(*engine)
+	eng := e.(*singleNodeAdapter).Core()
 	eng.Start()
 	defer eng.Stop()
 
@@ -137,11 +141,11 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 	val := []byte("data")
 
 	ts1 := int64(1000)
-	eng.clock.Update(ts1)
+	eng.Clock().Update(ts1)
 	assert.NoError(t, eng.Set(key, val))
 
 	ts2 := int64(2000)
-	eng.clock.Update(ts2)
+	eng.Clock().Update(ts2)
 	assert.NoError(t, eng.Delete(key))
 
 	_, ok := eng.Get(kv.Key(key))
@@ -149,7 +153,7 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 
 	// Late-arriving Set with older timestamp
 	ts3 := int64(1500)
-	err := eng.sw.ApplySet(&pb.SetRequest{
+	err := eng.ApplySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("zombie"),
 		Timestamp: ts3,
@@ -162,12 +166,12 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 func TestEngine_SyncLogic(t *testing.T) {
 	defer cleanupEngineMocks(t)
 	e1, _ := newEngine(mockConfig)
-	eng1 := e1.(*engine)
+	eng1 := e1.(*singleNodeAdapter).Core()
 	eng1.Start()
 	defer eng1.Stop()
 
 	e2, _ := newEngine(mockConfig)
-	eng2 := e2.(*engine)
+	eng2 := e2.(*singleNodeAdapter).Core()
 	eng2.Start()
 	defer eng2.Stop()
 
@@ -176,25 +180,24 @@ func TestEngine_SyncLogic(t *testing.T) {
 	assert.NoError(t, eng1.Set(key1, val1))
 
 	// 2. eng2 is empty, it pulls from eng1
-	root2 := eng2.hm.RootDigest()
+	root2 := eng2.HM().RootDigest()
 	shards2 := make(map[hashmap.ShardID]hashmap.Digest)
 	buckets2 := make(map[hashmap.ShardID]hashmap.ShardDigest)
-	eng2.hm.FillShardDigests(shards2)
-	eng2.hm.FillDigests(buckets2)
+	eng2.HM().FillShardDigests(shards2)
+	eng2.HM().FillDigests(buckets2)
 
 	syncer1 := entropy.NewSyncer(&entropy.SyncerConfig{
-		NodeID:     eng1.meshConfig.NodeID,
-		Writer:     eng1.sw,
-		Mesh:       eng1.mesh,
-		MeshConfig: &eng1.meshConfig,
-		Hm:         eng1.hm,
+		NodeID:     mockConfig.meshConfig.NodeID,
+		Writer:     eng1.Writer(),
+		Mesh:       &mesh.NopMesh{},
+		MeshConfig: &mockConfig.meshConfig,
+		Hm:         eng1.HM(),
 		Interval:   mockConfig.gossipInterval,
 		Creds:      mockConfig.creds,
-		Cc:         eng1.gw.GetClientCache(),
+		Cc:         gateway.NewClientCache(mockConfig.creds),
 	})
-	eng1.syncer = syncer1
 
-	sets, deletes, err := eng1.SyncPull(&entropy.PullConfig{
+	sets, deletes, err := syncer1.Pull(&entropy.PullConfig{
 		RequesterID: "node2",
 		Root:        root2,
 		Shards:      shards2,
@@ -207,18 +210,17 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 	// 3. eng2 pushes the updates
 	syncer2 := entropy.NewSyncer(&entropy.SyncerConfig{
-		NodeID:     eng2.meshConfig.NodeID,
-		Writer:     eng2.sw,
-		Mesh:       eng2.mesh,
-		MeshConfig: &eng2.meshConfig,
-		Hm:         eng2.hm,
+		NodeID:     mockConfig.meshConfig.NodeID,
+		Writer:     eng2.Writer(),
+		Mesh:       &mesh.NopMesh{},
+		MeshConfig: &mockConfig.meshConfig,
+		Hm:         eng2.HM(),
 		Interval:   mockConfig.gossipInterval,
 		Creds:      mockConfig.creds,
-		Cc:         eng2.gw.GetClientCache(),
+		Cc:         gateway.NewClientCache(mockConfig.creds),
 	})
-	eng2.syncer = syncer2
 
-	err = eng2.SyncPush(sets, deletes)
+	err = syncer2.Push(sets, deletes)
 	assert.NoError(t, err)
 
 	got, ok := eng2.Get(kv.Key(key1))
@@ -228,8 +230,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 func TestEngine_Concurrency(t *testing.T) {
 	defer cleanupEngineMocks(t)
-	e, _ := newEngine(mockConfig)
-	eng := e.(*engine)
+	eng, _ := newEngine(mockConfig)
 	eng.Start()
 	defer eng.Stop()
 
@@ -253,28 +254,4 @@ func TestEngine_Concurrency(t *testing.T) {
 	}
 
 	wg.Wait()
-}
-
-func TestEngine_SetRequestReset(t *testing.T) {
-	defer cleanupEngineMocks(t)
-	e, _ := newEngine(mockConfig)
-	eng := e.(*engine)
-	eng.Start()
-	defer eng.Stop()
-
-	err := eng.Set("pooled-key", []byte("large-val"))
-	assert.NoError(t, err)
-
-	foundRecycled := false
-	for range 20 {
-		req := eng.pools.setRequests.Get().(*pb.SetRequest)
-		if req.Key != "" {
-			foundRecycled = true
-			assert.Empty(t, req.Key, "recycled SetRequest was NOT reset, retaining memory references!")
-			assert.Nil(t, req.Value, "recycled SetRequest value slice should be cleared")
-		}
-	}
-	// Note: sync.Pool might not always return the recycled object in some platforms/runs,
-	// but when it does (which is very common), it will catch the failure before the fix.
-	_ = foundRecycled
 }

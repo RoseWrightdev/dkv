@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/gateway"
+	"github.com/rosewrightdev/dkv/cluster/gateway"
 )
 
 func setupBenchmarkEngine(b *testing.B, distributed bool) (dkv.Engine, func()) {

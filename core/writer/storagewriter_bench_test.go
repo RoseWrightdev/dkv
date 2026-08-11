@@ -5,18 +5,15 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/internal/hashmap"
-	"github.com/rosewrightdev/dkv/internal/mesh"
+	"github.com/rosewrightdev/dkv/core/hashmap"
 )
 
 func BenchmarkStorageWriter_ApplySet(b *testing.B) {
 	hm := hashmap.NewShardedMap()
 	wal := &mockWal{}
 	clock := &mockStorageClock{}
-	meshObj := &mesh.NopMesh{}
-	meshConfig := &mesh.Config{SingleNode: true}
 
-	sw := NewStorageWriter(hm, wal, clock, meshObj, meshConfig)
+	sw := NewStorageWriter(hm, wal, clock)
 
 	req := &pb.SetRequest{
 		Key:       "key",
@@ -37,10 +34,8 @@ func BenchmarkStorageWriter_ApplyDelete(b *testing.B) {
 	hm := hashmap.NewShardedMap()
 	wal := &mockWal{}
 	clock := &mockStorageClock{}
-	meshObj := &mesh.NopMesh{}
-	meshConfig := &mesh.Config{SingleNode: true}
 
-	sw := NewStorageWriter(hm, wal, clock, meshObj, meshConfig)
+	sw := NewStorageWriter(hm, wal, clock)
 
 	req := &pb.DeleteRequest{
 		Key:       "key",

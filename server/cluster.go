@@ -3,6 +3,7 @@ package server
 
 import (
 	"fmt"
+	"net"
 	"path/filepath"
 	"sync/atomic"
 
@@ -11,21 +12,38 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-var nextBasePort int32 = 15000
+var nextBasePort int32 = 18000
 
 func getNextBasePort(nodeCount int) int {
 	for {
 		current := atomic.LoadInt32(&nextBasePort)
-		// #nosec G115
-		next := current + int32(nodeCount*2)
+		stride := int32(nodeCount * 20)
+		next := current + stride
 		if next >= 60000 {
-			// #nosec G115
-			next = 15000 + int32(nodeCount*2)
+			next = 18000 + stride
 		}
 		if atomic.CompareAndSwapInt32(&nextBasePort, current, next) {
-			return int(next) - nodeCount*2
+			return findAvailableBasePort(int(current), nodeCount)
 		}
 	}
+}
+
+func findAvailableBasePort(startPort int, nodeCount int) int {
+	for p := startPort; p < startPort+500; p += 2 {
+		available := true
+		for i := range nodeCount * 2 {
+			l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p+i))
+			if err != nil {
+				available = false
+				break
+			}
+			_ = l.Close()
+		}
+		if available {
+			return p
+		}
+	}
+	return startPort
 }
 
 // Cluster represents a group of dkv engines and servers.

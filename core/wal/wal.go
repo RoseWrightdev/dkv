@@ -227,7 +227,6 @@ func (w *Wal) Replay() (map[kv.Key]kv.Value, error) {
 	return results, firstErr
 }
 
-// todo: refactor, too long and nested
 func (w *Wal) replaySegment(seg *walSegment, results map[kv.Key]kv.Value, resultsMu *sync.Mutex) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
@@ -269,42 +268,47 @@ func (w *Wal) replaySegment(seg *walSegment, results map[kv.Key]kv.Value, result
 		if _, err := io.ReadFull(reader, payload); err != nil {
 			return err
 		}
-
-		entry := w.entryPool.Get().(*pb.WalEntry)
-		entry.Reset()
-		if err := proto.Unmarshal(payload, entry); err != nil {
-			w.entryPool.Put(entry)
-			return err
-		}
-
-		resultsMu.Lock()
-		switch op := entry.Entry.(type) {
-		case *pb.WalEntry_Set:
-			k := kv.Key(op.Set.Key)
-			existing, exists := results[k]
-			if !exists || op.Set.Timestamp > existing.Timestamp {
-				results[k] = kv.Value{
-					Data:      op.Set.Value,
-					Timestamp: op.Set.Timestamp,
-					Tombstone: false,
-				}
-			}
-		case *pb.WalEntry_Delete:
-			k := kv.Key(op.Delete.Key)
-			existing, exists := results[k]
-			if !exists || op.Delete.Timestamp > existing.Timestamp {
-				results[k] = kv.Value{
-					Timestamp: op.Delete.Timestamp,
-					Tombstone: true,
-				}
-			}
-		}
-		resultsMu.Unlock()
-		w.entryPool.Put(entry)
+		w.setResults(payload, results, resultsMu)
 	}
 
 	_, err = seg.file.Seek(0, io.SeekEnd)
 	return err
+}
+
+func (w *Wal) setResults(payload []byte, results map[kv.Key]kv.Value, resultsMu *sync.Mutex) error {
+	entry := w.entryPool.Get().(*pb.WalEntry)
+	entry.Reset()
+	if err := proto.Unmarshal(payload, entry); err != nil {
+		w.entryPool.Put(entry)
+		return err
+	}
+
+	resultsMu.Lock()
+	switch op := entry.Entry.(type) {
+	case *pb.WalEntry_Set:
+		k := kv.Key(op.Set.Key)
+		existing, exists := results[k]
+		if !exists || op.Set.Timestamp > existing.Timestamp {
+			results[k] = kv.Value{
+				Data:      op.Set.Value,
+				Timestamp: op.Set.Timestamp,
+				Tombstone: false,
+			}
+		}
+	case *pb.WalEntry_Delete:
+		k := kv.Key(op.Delete.Key)
+		existing, exists := results[k]
+		if !exists || op.Delete.Timestamp > existing.Timestamp {
+			results[k] = kv.Value{
+				Timestamp: op.Delete.Timestamp,
+				Tombstone: true,
+			}
+		}
+	}
+	resultsMu.Unlock()
+
+	w.entryPool.Put(entry)
+	return nil
 }
 
 // PrepareSnapshot flushes buffers and returns log offsets representing current snapshot boundary.

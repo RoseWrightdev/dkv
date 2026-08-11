@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/internal/hashmap"
-	"github.com/rosewrightdev/dkv/internal/snap"
+	"github.com/rosewrightdev/dkv/core/hashmap"
+	"github.com/rosewrightdev/dkv/core/snap"
 	"github.com/rosewrightdev/dkv/kv"
 )
 
