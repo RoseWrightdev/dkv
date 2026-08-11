@@ -5,7 +5,7 @@ go 1.26.3
 require (
 	github.com/hashicorp/memberlist v0.5.4
 	github.com/stretchr/testify v1.11.1
-	google.golang.org/grpc v1.81.1
+	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 )
 
