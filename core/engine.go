@@ -333,7 +333,7 @@ func (eng *engine) recover(snpPath string) error {
 	}
 	for k, v := range updates {
 		h := security.HashFunc(k)
-		eng.hm.Store(k, h, v)
+		eng.hm.StoreLWW(k, h, v)
 	}
 	if len(updates) > 0 {
 		slog.Info("Replayed updates from WAL", "count", len(updates))

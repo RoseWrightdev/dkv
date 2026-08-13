@@ -41,13 +41,16 @@ func (cc *ClientCache) Get(addr mesh.PeerAddress) (*Client, error) {
 		return nil, err
 	}
 
-	// Re-check after dial
+	cc.mu.Lock()
 	if cc.closed.Load() {
+		cc.mu.Unlock()
 		_ = client.Close()
 		return nil, fmt.Errorf("client cache is closed")
 	}
 
 	actual, loaded := cc.clients.LoadOrStore(addr, client)
+	cc.mu.Unlock()
+
 	if loaded {
 		// Another goroutine beat us to it, close the one we just created to prevent leak
 		_ = client.Close()
@@ -66,9 +69,10 @@ func (cc *ClientCache) Close() {
 	cc.mu.Lock()
 	defer cc.mu.Unlock()
 
-	cc.clients.Range(func(_, value any) bool {
+	cc.clients.Range(func(key, value any) bool {
 		client := value.(*Client)
 		_ = client.Close()
+		cc.clients.Delete(key)
 		return true
 	})
 }
