@@ -45,6 +45,23 @@ func (m *mockStateTransferWriter) ApplyDelete(req *pb.DeleteRequest) error {
 	return nil
 }
 
+func (m *mockStateTransferWriter) ApplySetMutation(req *kv.SetRequest) error {
+	return m.ApplySet(&pb.SetRequest{
+		Key:       req.Key,
+		Value:     req.Value,
+		Timestamp: req.Timestamp,
+		NodeId:    req.NodeID,
+	})
+}
+
+func (m *mockStateTransferWriter) ApplyDeleteMutation(req *kv.DeleteRequest) error {
+	return m.ApplyDelete(&pb.DeleteRequest{
+		Key:       req.Key,
+		Timestamp: req.Timestamp,
+		NodeId:    req.NodeID,
+	})
+}
+
 func TestStateTransfer_All(t *testing.T) {
 	// 1. Test empty import
 	stEmpty := NewStateTransfer(hashmap.NewShardedMap(), &mockStateTransferWriter{})

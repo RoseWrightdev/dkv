@@ -14,6 +14,8 @@ type mockStateWriter struct{}
 
 func (m *mockStateWriter) ApplySet(_ *pb.SetRequest) error       { return nil }
 func (m *mockStateWriter) ApplyDelete(_ *pb.DeleteRequest) error { return nil }
+func (m *mockStateWriter) ApplySetMutation(_ *kv.SetRequest) error { return nil }
+func (m *mockStateWriter) ApplyDeleteMutation(_ *kv.DeleteRequest) error { return nil }
 
 func BenchmarkStateTransfer_ExportState(b *testing.B) {
 	hm := hashmap.NewShardedMap()

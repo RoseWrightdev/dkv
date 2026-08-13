@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -11,6 +12,8 @@ type mockStateWriter struct{}
 
 func (m *mockStateWriter) ApplySet(_ *pb.SetRequest) error       { return nil }
 func (m *mockStateWriter) ApplyDelete(_ *pb.DeleteRequest) error { return nil }
+func (m *mockStateWriter) ApplySetMutation(_ *kv.SetRequest) error { return nil }
+func (m *mockStateWriter) ApplyDeleteMutation(_ *kv.DeleteRequest) error { return nil }
 
 func BenchmarkGossip_OnGossip(b *testing.B) {
 	writer := &mockStateWriter{}

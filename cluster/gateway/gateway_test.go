@@ -30,6 +30,14 @@ func (m *MockStateWriter) ApplyDelete(_ *pb.DeleteRequest) error {
 	return m.DeleteErr
 }
 
+func (m *MockStateWriter) ApplySetMutation(req *kv.SetRequest) error {
+	return m.SetErr
+}
+
+func (m *MockStateWriter) ApplyDeleteMutation(req *kv.DeleteRequest) error {
+	return m.DeleteErr
+}
+
 // MockMesher implements Mesher
 type MockMesher struct {
 	AddrMap         map[kv.NodeID]mesh.PeerAddress

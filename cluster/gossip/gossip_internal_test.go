@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/kv"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )
@@ -24,6 +25,23 @@ func (m *trackingStateWriter) ApplySet(req *pb.SetRequest) error {
 func (m *trackingStateWriter) ApplyDelete(req *pb.DeleteRequest) error {
 	m.appliedDeletes = append(m.appliedDeletes, req)
 	return m.deleteErr
+}
+
+func (m *trackingStateWriter) ApplySetMutation(req *kv.SetRequest) error {
+	return m.ApplySet(&pb.SetRequest{
+		Key:       req.Key,
+		Value:     req.Value,
+		Timestamp: req.Timestamp,
+		NodeId:    req.NodeID,
+	})
+}
+
+func (m *trackingStateWriter) ApplyDeleteMutation(req *kv.DeleteRequest) error {
+	return m.ApplyDelete(&pb.DeleteRequest{
+		Key:       req.Key,
+		Timestamp: req.Timestamp,
+		NodeId:    req.NodeID,
+	})
 }
 
 func TestGossip_OnGossip(t *testing.T) {
