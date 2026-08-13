@@ -151,7 +151,14 @@ func (w *Wal) getSegment(hash kv.HashKey) *walSegment {
 // Publish appends a write entry to the partition-segmented write-ahead log under proper segment locks.
 func (w *Wal) Publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	entry := w.entryPool.Get().(*pb.WalEntry)
-	defer w.entryPool.Put(entry)
+	defer func() {
+		if wrapper, ok := entry.Entry.(*pb.WalEntry_Set); ok {
+			wrapper.Set = nil
+		} else if wrapper, ok := entry.Entry.(*pb.WalEntry_Delete); ok {
+			wrapper.Delete = nil
+		}
+		w.entryPool.Put(entry)
+	}()
 
 	switch m := msg.(type) {
 	case *pb.WalEntry:
