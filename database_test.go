@@ -17,7 +17,7 @@ import (
 func TestEngineBasicOps(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
-	eng, err := newEngine(mockConfig)
+	eng, err := newDatabase(mockConfig)
 	assert.Nil(t, err)
 	eng.Start()
 	defer eng.Stop()
@@ -46,7 +46,7 @@ func TestEngineBasicOps(t *testing.T) {
 func TestEnginePersistence(t *testing.T) {
 	defer cleanupEngineMocks(t)
 
-	eng, err := newEngine(mockConfig)
+	eng, err := newDatabase(mockConfig)
 	assert.Nil(t, err)
 	eng.Start()
 	key1, val1 := "persist1", []byte("value1")
@@ -63,7 +63,7 @@ func TestEnginePersistence(t *testing.T) {
 
 	eng.Stop()
 
-	eng2, err := newEngine(mockConfig)
+	eng2, err := newDatabase(mockConfig)
 	assert.Nil(t, err)
 	eng2.Start()
 	defer eng2.Stop()
@@ -79,7 +79,7 @@ func TestEnginePersistence(t *testing.T) {
 
 func TestEngine_DeletePersistence(t *testing.T) {
 	defer cleanupEngineMocks(t)
-	eng, _ := newEngine(mockConfig)
+	eng, _ := newDatabase(mockConfig)
 	eng.Start()
 
 	key, val := "del-persist", []byte("data")
@@ -88,7 +88,7 @@ func TestEngine_DeletePersistence(t *testing.T) {
 	eng.Stop()
 
 	// Recover
-	eng2, _ := newEngine(mockConfig)
+	eng2, _ := newDatabase(mockConfig)
 	eng2.Start()
 	defer eng2.Stop()
 
@@ -98,7 +98,7 @@ func TestEngine_DeletePersistence(t *testing.T) {
 
 func TestEngine_LWW(t *testing.T) {
 	defer cleanupEngineMocks(t)
-	e, _ := newEngine(mockConfig)
+	e, _ := newDatabase(mockConfig)
 	eng := e.(*singleNodeAdapter).Core()
 	eng.Start()
 	defer eng.Stop()
@@ -132,7 +132,7 @@ func TestEngine_LWW(t *testing.T) {
 
 func TestEngine_TombstoneLWW(t *testing.T) {
 	defer cleanupEngineMocks(t)
-	e, _ := newEngine(mockConfig)
+	e, _ := newDatabase(mockConfig)
 	eng := e.(*singleNodeAdapter).Core()
 	eng.Start()
 	defer eng.Stop()
@@ -165,12 +165,12 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 
 func TestEngine_SyncLogic(t *testing.T) {
 	defer cleanupEngineMocks(t)
-	e1, _ := newEngine(mockConfig)
+	e1, _ := newDatabase(mockConfig)
 	eng1 := e1.(*singleNodeAdapter).Core()
 	eng1.Start()
 	defer eng1.Stop()
 
-	e2, _ := newEngine(mockConfig)
+	e2, _ := newDatabase(mockConfig)
 	eng2 := e2.(*singleNodeAdapter).Core()
 	eng2.Start()
 	defer eng2.Stop()
@@ -230,7 +230,7 @@ func TestEngine_SyncLogic(t *testing.T) {
 
 func TestEngine_Concurrency(t *testing.T) {
 	defer cleanupEngineMocks(t)
-	eng, _ := newEngine(mockConfig)
+	eng, _ := newDatabase(mockConfig)
 	eng.Start()
 	defer eng.Stop()
 

@@ -46,23 +46,23 @@ func findAvailableBasePort(startPort int, nodeCount int) int {
 	return startPort
 }
 
-// Cluster represents a group of dkv engines and servers.
+// Cluster represents a group of dkv databases and servers.
 type Cluster struct {
-	Engines []dkv.Engine
-	Servers []*Grpc
+	Databases []dkv.Database
+	Servers   []*Grpc
 }
 
-// Stop gracefully shuts down all engines and servers in the cluster.
+// Stop gracefully shuts down all databases and servers in the cluster.
 func (c *Cluster) Stop() {
 	for _, s := range c.Servers {
 		s.Stop()
 	}
-	for _, e := range c.Engines {
+	for _, e := range c.Databases {
 		e.Stop()
 	}
 }
 
-// HardStop immediately shuts down all engines and servers in the cluster.
+// HardStop immediately shuts down all databases and servers in the cluster.
 func (c *Cluster) HardStop() {
 	for _, s := range c.Servers {
 		s.HardStop()
@@ -82,58 +82,58 @@ func newCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 	for i := range nodeCount {
 		name := fmt.Sprintf("node-%d", i+1)
 
-		eb := dkv.NewEngineBuilder().
+		dbBuilder := dkv.NewDatabaseBuilder().
 			Default()
 
 		if fastTest {
-			eb.FastTest()
+			dbBuilder.FastTest()
 		}
 
-		eb.SetNodeID(kv.NodeID(name)).
+		dbBuilder.SetNodeID(kv.NodeID(name)).
 			SetCreds(creds).
 			SetBindPort(basePort + i*2).
 			SetGrpcPort(basePort + i*2 + 1)
 
 		if dataDir != "" {
-			eb.SetWalPath(filepath.Join(dataDir, name, "wal")).
+			dbBuilder.SetWalPath(filepath.Join(dataDir, name, "wal")).
 				SetSnpPath(filepath.Join(dataDir, name, "snp.gob"))
 		}
 
 		if i > 0 {
-			eb.SetSeedNodes([]string{seedAddr})
+			dbBuilder.SetSeedNodes([]string{seedAddr})
 		}
 
-		engine, err := eb.Build()
+		database, err := dbBuilder.Build()
 		if err != nil {
 			cluster.Stop()
 			return nil, err
 		}
 
 		if i == 0 {
-			seedAddr = engine.GossipAddr()
+			seedAddr = database.GossipAddr()
 		}
 
-		cluster.Engines = append(cluster.Engines, engine)
-		server := NewServer(engine)
+		cluster.Databases = append(cluster.Databases, database)
+		server := NewServer(database)
 		cluster.Servers = append(cluster.Servers, server)
 	}
 
 	return cluster, nil
 }
 
-// Start starts all engines and servers in the cluster.
+// Start starts all databases and servers in the cluster.
 func (c *Cluster) Start() error {
-	ch := make(chan error, len(c.Engines))
-	for i, engine := range c.Engines {
+	ch := make(chan error, len(c.Databases))
+	for i, database := range c.Databases {
 		server := c.Servers[i]
 
-		go func(e dkv.Engine, s *Grpc) {
-			e.Start()
+		go func(d dkv.Database, s *Grpc) {
+			d.Start()
 			err := s.Run()
 			if err != nil {
 				ch <- err
 			}
-		}(engine, server)
+		}(database, server)
 
 		select {
 		case err := <-ch:
@@ -146,10 +146,10 @@ func (c *Cluster) Start() error {
 	return nil
 }
 
-// stopEngine stops a specific engine and its corresponding server for integration tests.
-func (c *Cluster) stopEngine(id kv.NodeID) {
-	for i, engine := range c.Engines {
-		if engine.NodeID() == id {
+// stopDatabase stops a specific database and its corresponding server for integration tests.
+func (c *Cluster) stopDatabase(id kv.NodeID) {
+	for i, database := range c.Databases {
+		if database.NodeID() == id {
 			c.Servers[i].HardStop()
 			return
 		}
@@ -159,37 +159,37 @@ func (c *Cluster) stopEngine(id kv.NodeID) {
 func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds credentials.TransportCredentials, fastTest bool) error {
 	basePort := getNextBasePort(1)
 
-	eb := dkv.NewEngineBuilder().
+	dbBuilder := dkv.NewDatabaseBuilder().
 		Default()
 
 	if fastTest {
-		eb.FastTest()
+		dbBuilder.FastTest()
 	}
 
-	eb.SetNodeID(kv.NodeID(name)).
+	dbBuilder.SetNodeID(kv.NodeID(name)).
 		SetCreds(creds).
 		SetBindPort(basePort).
 		SetGrpcPort(basePort + 1).
 		SetSeedNodes([]string{seedAddr})
 
 	if dataDir != "" {
-		eb.SetWalPath(filepath.Join(dataDir, name, "wal")).
+		dbBuilder.SetWalPath(filepath.Join(dataDir, name, "wal")).
 			SetSnpPath(filepath.Join(dataDir, name, "snp.gob"))
 	}
 
-	engine, err := eb.Build()
+	database, err := dbBuilder.Build()
 	if err != nil {
 		return err
 	}
 
-	server := NewServer(engine)
+	server := NewServer(database)
 
-	c.Engines = append(c.Engines, engine)
+	c.Databases = append(c.Databases, database)
 	c.Servers = append(c.Servers, server)
 
 	// Start the newly added node
 	go func() {
-		engine.Start()
+		database.Start()
 		_ = server.Run() // Run blocks
 	}()
 

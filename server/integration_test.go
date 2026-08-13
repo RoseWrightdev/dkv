@@ -24,7 +24,7 @@ func TestEngineOperations(t *testing.T) {
 	walPath := filepath.Join(tmpDir, "wal")
 	snpPath := filepath.Join(tmpDir, "snapshot.bin")
 
-	eng, err := dkv.NewEngineBuilder().
+	eng, err := dkv.NewDatabaseBuilder().
 		Default().
 		SetWalPath(walPath).
 		SetSnpPath(snpPath).
@@ -65,7 +65,7 @@ func TestClusterScale(t *testing.T) {
 	}()
 
 	count := 3
-	var engines []dkv.Engine
+	var databases []dkv.Database
 	var clients []*gateway.Client
 	var seedAddr string
 
@@ -84,7 +84,7 @@ func TestClusterScale(t *testing.T) {
 		grpcPort := gLis.Addr().(*net.TCPAddr).Port
 		_ = gLis.Close()
 
-		eb := dkv.NewEngineBuilder().
+		eb := dkv.NewDatabaseBuilder().
 			Default().
 			FastTest().
 			SetWalPath(filepath.Join(nodeDir, "wal")).
@@ -103,7 +103,7 @@ func TestClusterScale(t *testing.T) {
 
 		eng, err := eb.Build()
 		require.NoError(t, err, "Failed to create engine for %s", name)
-		engines = append(engines, eng)
+		databases = append(databases, eng)
 
 		server := NewServer(eng)
 		go func() { _ = server.Run() }()
@@ -113,11 +113,11 @@ func TestClusterScale(t *testing.T) {
 		clients = append(clients, client)
 	}
 
-	for _, e := range engines {
+	for _, e := range databases {
 		e.Start()
 	}
 	defer func() {
-		for _, e := range engines {
+		for _, e := range databases {
 			e.Stop()
 		}
 	}()
@@ -163,7 +163,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	mlPort1 := mlLis1.Addr().(*net.TCPAddr).Port
 	_ = mlLis1.Close()
 
-	eng1, err := dkv.NewEngineBuilder().
+	eng1, err := dkv.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
@@ -186,7 +186,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	}
 
 	// Setup Node 2 (joins Node 1)
-	eng2, err := dkv.NewEngineBuilder().
+	eng2, err := dkv.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n2-wal")).
@@ -229,7 +229,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 	grpcPort1 := gLis1.Addr().(*net.TCPAddr).Port
 	_ = gLis1.Close()
 
-	eng1, err := dkv.NewEngineBuilder().
+	eng1, err := dkv.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
@@ -252,7 +252,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 	grpcPort2 := gLis2.Addr().(*net.TCPAddr).Port
 	_ = gLis2.Close()
 
-	eng2, err := dkv.NewEngineBuilder().
+	eng2, err := dkv.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n2-wal")).

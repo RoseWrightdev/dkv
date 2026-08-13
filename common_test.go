@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-var mockConfig = EngineConfig{
+var mockConfig = DatabaseConfig{
 	walPath:        "test_wal_dir",
 	snpPath:        "test_snapshot.gob",
 	walInterval:    10 * time.Millisecond,

@@ -17,7 +17,7 @@ import (
 
 type server struct {
 	pb.UnimplementedDkvServiceServer
-	eng   dkv.Engine
+	eng   dkv.Database
 	pools *serverPools
 }
 
@@ -120,11 +120,11 @@ func (s *server) Push(_ context.Context, in *pb.PushRequest) (*pb.PushResponse, 
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
-	eng      dkv.Engine
+	eng      dkv.Database
 }
 
-// NewServer creates a new Grpc server instance around a dkv Engine.
-func NewServer(eng dkv.Engine) *Grpc {
+// NewServer creates a new Grpc server instance around a dkv Database.
+func NewServer(eng dkv.Database) *Grpc {
 	s := grpc.NewServer()
 	h := &server{
 		eng:   eng,

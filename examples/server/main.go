@@ -9,8 +9,8 @@ import (
 )
 
 func main() {
-	// Initialize the Engine using the flat fluent API with sensible defaults
-	eng, err := dkv.NewEngineBuilder().
+	// Initialize the Database using the flat fluent API with sensible defaults
+	db, err := dkv.NewDatabaseBuilder().
 		Default().
 		SetInsecure().
 		Build()
@@ -20,12 +20,12 @@ func main() {
 	}
 
 	// Start background services
-	eng.Start()
-	defer eng.Stop()
+	db.Start()
+	defer db.Stop()
 
-	// Run the gRPC Server using the address/port configured from the engine
-	s := server.NewServer(eng)
-	fmt.Printf("Starting DKV server on %s...\n", eng.Addr())
+	// Run the gRPC Server using the address/port configured from the database
+	s := server.NewServer(db)
+	fmt.Printf("Starting DKV server on %s...\n", db.Addr())
 	if err := s.Run(); err != nil {
 		panic(err)
 	}

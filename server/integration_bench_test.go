@@ -30,7 +30,7 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 	grpcPort1 := gLis1.Addr().(*net.TCPAddr).Port
 	_ = gLis1.Close()
 
-	e1, _ := dkv.NewEngineBuilder().
+	e1, _ := dkv.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
@@ -56,7 +56,7 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 	grpcPort2 := gLis2.Addr().(*net.TCPAddr).Port
 	_ = gLis2.Close()
 
-	e2, _ := dkv.NewEngineBuilder().
+	e2, _ := dkv.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(n2Dir, "wal")).

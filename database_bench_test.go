@@ -7,13 +7,13 @@ import (
 	"time"
 )
 
-func setupBenchmarkEngine(b *testing.B, distributed bool) (Engine, func()) {
+func setupBenchmarkDatabase(b *testing.B, distributed bool) (Database, func()) {
 	tmpDir, err := os.MkdirTemp("", "dkv-bench-*")
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	builder := NewEngineBuilder().
+	builder := NewDatabaseBuilder().
 		Default().
 		SetWalPath(tmpDir).
 		SetSnpPath(tmpDir + "/snp.bin").
@@ -43,7 +43,7 @@ func setupBenchmarkEngine(b *testing.B, distributed bool) (Engine, func()) {
 }
 
 func BenchmarkEngine_Set(b *testing.B) {
-	eng, cleanup := setupBenchmarkEngine(b, false)
+	eng, cleanup := setupBenchmarkDatabase(b, false)
 	defer cleanup()
 	val := []byte("value-data-12345")
 	for b.Loop() {
@@ -52,7 +52,7 @@ func BenchmarkEngine_Set(b *testing.B) {
 }
 
 func BenchmarkEngine_Get(b *testing.B) {
-	eng, cleanup := setupBenchmarkEngine(b, false)
+	eng, cleanup := setupBenchmarkDatabase(b, false)
 	defer cleanup()
 	_ = eng.Set("key", []byte("val"))
 	for b.Loop() {
@@ -61,7 +61,7 @@ func BenchmarkEngine_Get(b *testing.B) {
 }
 
 func BenchmarkEngine_Delete(b *testing.B) {
-	eng, cleanup := setupBenchmarkEngine(b, false)
+	eng, cleanup := setupBenchmarkDatabase(b, false)
 	defer cleanup()
 	_ = eng.Set("key", []byte("val"))
 	for b.Loop() {
@@ -70,7 +70,7 @@ func BenchmarkEngine_Delete(b *testing.B) {
 }
 
 func BenchmarkEngine_Set_Parallel(b *testing.B) {
-	eng, cleanup := setupBenchmarkEngine(b, false)
+	eng, cleanup := setupBenchmarkDatabase(b, false)
 	defer cleanup()
 
 	const numKeys = 10000
@@ -91,7 +91,7 @@ func BenchmarkEngine_Set_Parallel(b *testing.B) {
 }
 
 func BenchmarkEngine_Get_Parallel(b *testing.B) {
-	eng, cleanup := setupBenchmarkEngine(b, false)
+	eng, cleanup := setupBenchmarkDatabase(b, false)
 	defer cleanup()
 
 	const numKeys = 10000
@@ -113,7 +113,7 @@ func BenchmarkEngine_Get_Parallel(b *testing.B) {
 }
 
 func BenchmarkEngine_Delete_Parallel(b *testing.B) {
-	eng, cleanup := setupBenchmarkEngine(b, false)
+	eng, cleanup := setupBenchmarkDatabase(b, false)
 	defer cleanup()
 
 	const numKeys = 10000
@@ -140,7 +140,7 @@ func BenchmarkEngine_PayloadSizes(b *testing.B) {
 
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Size-%d", size), func(b *testing.B) {
-			eng, cleanup := setupBenchmarkEngine(b, false)
+			eng, cleanup := setupBenchmarkDatabase(b, false)
 			defer cleanup()
 			val := make([]byte, size)
 			for b.Loop() {

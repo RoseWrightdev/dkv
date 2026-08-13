@@ -14,12 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds []string, rf int) (dkv.Engine, *gateway.Client) {
+func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds []string, rf int) (dkv.Database, *gateway.Client) {
 	t.Helper()
 	nodeDir := filepath.Join(tmpDir, name)
 	require.NoError(t, os.MkdirAll(nodeDir, 0750))
 
-	eb := dkv.NewEngineBuilder().
+	eb := dkv.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(nodeDir, "wal")).
@@ -62,7 +62,7 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-func FindKeyForNode(e dkv.Engine, nodeID string) string {
+func FindKeyForNode(e dkv.Database, nodeID string) string {
 	for i := range 1000 {
 		k := fmt.Sprintf("test-key-%d", i)
 		if e.Owner(kv.Key(k)) == kv.NodeID(nodeID) {

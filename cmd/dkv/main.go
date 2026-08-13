@@ -17,7 +17,7 @@ import (
 )
 
 func main() {
-	builder := dkv.NewEngineBuilder().Default()
+	builder := dkv.NewDatabaseBuilder().Default()
 
 	certFile := os.Getenv("DKV_TLS_CERT_FILE")
 	keyFile := os.Getenv("DKV_TLS_KEY_FILE")

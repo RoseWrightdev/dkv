@@ -2,10 +2,10 @@ package dkv
 
 import "testing"
 
-func BenchmarkEngineBuilder_Build(b *testing.B) {
+func BenchmarkDatabaseBuilder_Build(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		builder := NewEngineBuilder().
+		builder := NewDatabaseBuilder().
 			Default().
 			SingleNode().
 			SetInsecure()

@@ -16,8 +16,8 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
-// Engine defines the core storage and replication engine interface of the dkv node.
-type Engine interface {
+// Database defines the core storage and replication database interface of the dkv node.
+type Database interface {
 	Get(key kv.Key) ([]byte, bool)
 	Set(key kv.Key, value []byte) error
 	Delete(key kv.Key) error
@@ -32,8 +32,8 @@ type Engine interface {
 	Mesh() mesh.Mesher
 }
 
-// EngineConfig specifies the parameters required to initialize and run a dkv Engine.
-type EngineConfig struct {
+// DatabaseConfig specifies the parameters required to initialize and run a dkv Database.
+type DatabaseConfig struct {
 	evt            evict.Evictor
 	clock          clock.Clocker
 	creds          credentials.TransportCredentials
@@ -47,7 +47,7 @@ type EngineConfig struct {
 	walBufferSize  uint32
 }
 
-func newEngine(config EngineConfig) (Engine, error) {
+func newDatabase(config DatabaseConfig) (Database, error) {
 	coreConfig := core.Config{
 		Evt:           config.evt,
 		Clock:         config.clock,

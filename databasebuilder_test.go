@@ -13,7 +13,7 @@ import (
 
 // todo: add more invarient testing
 func TestEngineBuilder(t *testing.T) {
-	eb := NewEngineBuilder()
+	eb := NewDatabaseBuilder()
 	assert.Equal(t, 0, eb.walSegments)
 
 	eb.SetWalPath(mockConfig.walPath)
@@ -61,42 +61,42 @@ func TestEngineBuilder(t *testing.T) {
 
 func TestEngineBuilder_Validation(t *testing.T) {
 	t.Run("MissingWalPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
+		eb := NewDatabaseBuilder().Default().SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.walPath = ""
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.walPath is unset")
 	})
 
 	t.Run("MissingSnpPath", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetClock(clock.NewClock()).SetInsecure()
+		eb := NewDatabaseBuilder().Default().SetWalPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.snpPath = ""
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.snpPath is unset")
 	})
 
 	t.Run("MissingWalInterval", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
+		eb := NewDatabaseBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.walInterval = 0
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.walInterval is unset")
 	})
 
 	t.Run("MissingCredentials", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
+		eb := NewDatabaseBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.creds = nil
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "transport credentials are required")
 	})
 
 	t.Run("MissingClock", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetInsecure()
+		eb := NewDatabaseBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetInsecure()
 		eb.clock = nil
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.clock is unset")
 	})
 
 	t.Run("MissingGossipInterval_InDistributedMode", func(t *testing.T) {
-		eb := NewEngineBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
+		eb := NewDatabaseBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
 		eb.meshBuilder.Distributed()
 		eb.gossipInterval = 0
 		_, err := eb.Build()
@@ -105,7 +105,7 @@ func TestEngineBuilder_Validation(t *testing.T) {
 }
 
 func TestEngineBuilder_ProxyMethods(t *testing.T) {
-	eb := NewEngineBuilder()
+	eb := NewDatabaseBuilder()
 	eb.SetNodeID(kv.NodeID("test-node")).
 		SetBindAddr("127.0.0.1").
 		SetBindPort(1234).
