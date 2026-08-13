@@ -114,17 +114,20 @@ func NewEngine(config Config) (Engine, error) {
 			snapEntry.Key = k
 			snapEntry.Data = v.Data
 			snapEntry.Timestamp = v.Timestamp
+			snapEntry.NodeID = kv.NodeID(v.NodeID)
 			snapEntry.Tombstone = v.Tombstone
 
 			if err := enc.Encode(snapEntry); err != nil {
 				encodeErr = fmt.Errorf("failed to encode snapshot entry: %w", err)
 				snapEntry.Key = ""
 				snapEntry.Data = nil
+				snapEntry.NodeID = ""
 				eng.pools.snapshotEntries.Put(snapEntry)
 				return false
 			}
 			snapEntry.Key = ""
 			snapEntry.Data = nil
+			snapEntry.NodeID = ""
 			eng.pools.snapshotEntries.Put(snapEntry)
 			return true
 		})
@@ -312,10 +315,12 @@ func (eng *engine) recover(snpPath string) error {
 			eng.hm.Store(entry.Key, security.HashFunc(entry.Key), kv.Value{
 				Data:      entry.Data,
 				Timestamp: entry.Timestamp,
+				NodeID:    string(entry.NodeID),
 				Tombstone: entry.Tombstone,
 			})
 			entry.Key = ""
 			entry.Data = nil
+			entry.NodeID = ""
 			eng.pools.snapshotEntries.Put(entry)
 			count++
 		}

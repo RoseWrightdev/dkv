@@ -30,6 +30,7 @@ type SnapshotEntry struct {
 	Key       kv.Key
 	Data      []byte
 	Timestamp int64
+	NodeID    kv.NodeID
 	Tombstone bool
 }
 

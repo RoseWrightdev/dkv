@@ -84,6 +84,7 @@ func (st *StateTransfer) StreamToEncoder(enc *gob.Encoder) error {
 		entry.Key = k
 		entry.Data = v.Data
 		entry.Timestamp = v.Timestamp
+		entry.NodeID = kv.NodeID(v.NodeID)
 		entry.Tombstone = v.Tombstone
 
 		if encErr := enc.Encode(entry); encErr != nil {
@@ -91,6 +92,7 @@ func (st *StateTransfer) StreamToEncoder(enc *gob.Encoder) error {
 			entry.Key = ""
 			entry.Data = nil
 			entry.Timestamp = 0
+			entry.NodeID = ""
 			entry.Tombstone = false
 			st.snapshotEntries.Put(entry)
 			return false // stop iteration
@@ -98,6 +100,7 @@ func (st *StateTransfer) StreamToEncoder(enc *gob.Encoder) error {
 		entry.Key = ""
 		entry.Data = nil
 		entry.Timestamp = 0
+		entry.NodeID = ""
 		entry.Tombstone = false
 		st.snapshotEntries.Put(entry)
 		return true // continue iteration
@@ -115,6 +118,7 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 			entry.Key = ""
 			entry.Data = nil
 			entry.Timestamp = 0
+			entry.NodeID = ""
 			entry.Tombstone = false
 			st.snapshotEntries.Put(entry)
 			if err == io.EOF {
@@ -127,6 +131,7 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 			req := st.deleteRequests.Get().(*pb.DeleteRequest)
 			req.Key = entry.Key
 			req.Timestamp = entry.Timestamp
+			req.NodeId = string(entry.NodeID)
 			err := st.writer.ApplyDelete(req)
 			req.Reset()
 			st.deleteRequests.Put(req)
@@ -134,6 +139,7 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 				entry.Key = ""
 				entry.Data = nil
 				entry.Timestamp = 0
+				entry.NodeID = ""
 				entry.Tombstone = false
 				st.snapshotEntries.Put(entry)
 				return err
@@ -143,6 +149,7 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 			req.Key = entry.Key
 			req.Value = entry.Data
 			req.Timestamp = entry.Timestamp
+			req.NodeId = string(entry.NodeID)
 			err := st.writer.ApplySet(req)
 			req.Reset()
 			st.setRequests.Put(req)
@@ -150,6 +157,7 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 				entry.Key = ""
 				entry.Data = nil
 				entry.Timestamp = 0
+				entry.NodeID = ""
 				entry.Tombstone = false
 				st.snapshotEntries.Put(entry)
 				return err
@@ -159,6 +167,7 @@ func (st *StateTransfer) DecodeFromReader(r io.Reader) error {
 		entry.Key = ""
 		entry.Data = nil
 		entry.Timestamp = 0
+		entry.NodeID = ""
 		entry.Tombstone = false
 		st.snapshotEntries.Put(entry)
 		count++
