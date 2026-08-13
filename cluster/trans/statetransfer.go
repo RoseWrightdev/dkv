@@ -10,38 +10,30 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/cluster/mesh"
 	"github.com/rosewrightdev/dkv/core/hashmap"
 	"github.com/rosewrightdev/dkv/core/snap"
+	"github.com/rosewrightdev/dkv/core/writer"
 	"github.com/rosewrightdev/dkv/kv"
 )
 
-
-// StateWriter defines the interface for applying sets and deletes to the state.
-type StateWriter interface {
-	ApplySet(req *pb.SetRequest) error
-	ApplyDelete(req *pb.DeleteRequest) error
-}
-
-// StateExchanger defines the interface for exporting and importing cluster state.
-type StateExchanger interface {
-	ExportState() []byte
-	ImportState(state []byte)
-}
+// Re-export mesh.StateExchanger for package backwards compatibility.
+type StateExchanger = mesh.StateExchanger
 
 // StateTransfer coordinates the exchange of local and remote database state.
 type StateTransfer struct {
 	hm              *hashmap.ShardedMap
-	writer          StateWriter
+	writer          writer.StateWriter
 	snapshotEntries sync.Pool
 	setRequests     sync.Pool
 	deleteRequests  sync.Pool
 }
 
 // NewStateTransfer creates a StateTransfer instance to handle state import/export across cluster nodes.
-func NewStateTransfer(hm *hashmap.ShardedMap, writer StateWriter) *StateTransfer {
+func NewStateTransfer(hm *hashmap.ShardedMap, w writer.StateWriter) *StateTransfer {
 	return &StateTransfer{
 		hm:     hm,
-		writer: writer,
+		writer: w,
 		snapshotEntries: sync.Pool{
 			New: func() any { return &snap.SnapshotEntry{} },
 		},

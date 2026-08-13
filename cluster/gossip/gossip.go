@@ -6,31 +6,24 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
+	"github.com/rosewrightdev/dkv/cluster/mesh"
+	"github.com/rosewrightdev/dkv/core/writer"
 	"google.golang.org/protobuf/proto"
 )
 
-
-// StateWriter defines the interface for applying sets and deletes to the state.
-type StateWriter interface {
-	ApplySet(req *pb.SetRequest) error
-	ApplyDelete(req *pb.DeleteRequest) error
-}
-
-// Gossiper defines the interface for handling incoming gossip messages.
-type Gossiper interface {
-	OnGossip(msg []byte)
-}
+// Re-export mesh.Gossiper for package backwards compatibility if needed.
+type Gossiper = mesh.Gossiper
 
 // Gossip manages the replication of messages received via gossip protocols.
 type Gossip struct {
-	writer         StateWriter
+	writer         writer.StateWriter
 	walEntriesPool sync.Pool
 }
 
 // NewGossip creates a new Gossip instance that handles incoming UDP replication messages.
-func NewGossip(writer StateWriter) *Gossip {
+func NewGossip(w writer.StateWriter) *Gossip {
 	return &Gossip{
-		writer: writer,
+		writer: w,
 		walEntriesPool: sync.Pool{
 			New: func() any { return &pb.WalEntry{} },
 		},
