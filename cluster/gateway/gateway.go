@@ -8,16 +8,10 @@ import (
 
 	pb "github.com/rosewrightdev/dkv/api"
 	"github.com/rosewrightdev/dkv/cluster/mesh"
+	"github.com/rosewrightdev/dkv/core/writer"
 	"github.com/rosewrightdev/dkv/kv"
 	"google.golang.org/grpc/credentials"
 )
-
-
-// StateWriter defines the interface for applying sets and deletes to the state.
-type StateWriter interface {
-	ApplySet(req *pb.SetRequest) error
-	ApplyDelete(req *pb.DeleteRequest) error
-}
 
 // Gateway wraps a client cache and consistent hashing routing to proxy
 // requests to the appropriate peer nodes.
@@ -25,7 +19,7 @@ type Gateway struct {
 	cc             *ClientCache
 	mesh           mesh.Mesher
 	meshConfig     *mesh.Config
-	sw             StateWriter // Set during engine initialization
+	sw             writer.StateWriter // Set during engine initialization
 	setRequests    sync.Pool
 	deleteRequests sync.Pool
 }
@@ -46,7 +40,7 @@ func NewGateway(meshObj mesh.Mesher, meshConfig *mesh.Config, creds credentials.
 }
 
 // SetStateWriter registers the local state writer for processing local replicas.
-func (g *Gateway) SetStateWriter(sw StateWriter) {
+func (g *Gateway) SetStateWriter(sw writer.StateWriter) {
 	g.sw = sw
 }
 
