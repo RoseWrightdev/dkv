@@ -16,6 +16,8 @@ import (
 type StateWriter interface {
 	ApplySet(req *pb.SetRequest) error
 	ApplyDelete(req *pb.DeleteRequest) error
+	ApplySetMutation(req *kv.SetRequest) error
+	ApplyDeleteMutation(req *kv.DeleteRequest) error
 }
 
 // StorageWriter handles applying mutations to the storage engine.
@@ -34,15 +36,15 @@ func NewStorageWriter(hm *hashmap.ShardedMap, wal wal.Waler, clock clock.Clocker
 	}
 }
 
-// ApplySet updates the in-memory store and publishes the update to the WAL after performing LWW conflict resolution.
-func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
+// ApplySetMutation updates the in-memory store and publishes the update to the WAL using domain types under LWW rules.
+func (sw *StorageWriter) ApplySetMutation(req *kv.SetRequest) error {
 	sw.clock.Update(req.Timestamp)
 	hash := security.HashFunc(req.Key)
 
 	val := kv.Value{
 		Data:      req.Value,
 		Timestamp: req.Timestamp,
-		NodeID:    req.NodeId,
+		NodeID:    req.NodeID,
 		Tombstone: false,
 	}
 
@@ -50,20 +52,27 @@ func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
 		return nil // Stale update ignored under LWW rules
 	}
 
-	if err := sw.wal.Publish(req.Key, hash, req); err != nil {
+	pbReq := &pb.SetRequest{
+		Key:       req.Key,
+		Value:     req.Value,
+		Timestamp: req.Timestamp,
+		NodeId:    req.NodeID,
+	}
+
+	if err := sw.wal.Publish(req.Key, hash, pbReq); err != nil {
 		return fmt.Errorf("failed to persist set to WAL: %w", err)
 	}
 	return nil
 }
 
-// ApplyDelete marks a key as deleted (using a tombstone) in-memory and in the WAL after performing LWW conflict resolution.
-func (sw *StorageWriter) ApplyDelete(req *pb.DeleteRequest) error {
+// ApplyDeleteMutation marks a key as deleted in-memory and in the WAL using domain types under LWW rules.
+func (sw *StorageWriter) ApplyDeleteMutation(req *kv.DeleteRequest) error {
 	sw.clock.Update(req.Timestamp)
 	hash := security.HashFunc(req.Key)
 
 	val := kv.Value{
 		Timestamp: req.Timestamp,
-		NodeID:    req.NodeId,
+		NodeID:    req.NodeID,
 		Tombstone: true,
 	}
 
@@ -71,8 +80,33 @@ func (sw *StorageWriter) ApplyDelete(req *pb.DeleteRequest) error {
 		return nil // Stale delete ignored under LWW rules
 	}
 
-	if err := sw.wal.Publish(req.Key, hash, req); err != nil {
+	pbReq := &pb.DeleteRequest{
+		Key:       req.Key,
+		Timestamp: req.Timestamp,
+		NodeId:    req.NodeID,
+	}
+
+	if err := sw.wal.Publish(req.Key, hash, pbReq); err != nil {
 		return fmt.Errorf("failed to persist delete to WAL: %w", err)
 	}
 	return nil
+}
+
+// ApplySet updates the in-memory store and publishes the update to the WAL after performing LWW conflict resolution.
+func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
+	return sw.ApplySetMutation(&kv.SetRequest{
+		Key:       req.Key,
+		Value:     req.Value,
+		Timestamp: req.Timestamp,
+		NodeID:    req.NodeId,
+	})
+}
+
+// ApplyDelete marks a key as deleted (using a tombstone) in-memory and in the WAL after performing LWW conflict resolution.
+func (sw *StorageWriter) ApplyDelete(req *pb.DeleteRequest) error {
+	return sw.ApplyDeleteMutation(&kv.DeleteRequest{
+		Key:       req.Key,
+		Timestamp: req.Timestamp,
+		NodeID:    req.NodeId,
+	})
 }

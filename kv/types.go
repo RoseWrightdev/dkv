@@ -18,3 +18,18 @@ type Value struct {
 
 // NodeID is a unique identifier for a node in the cluster.
 type NodeID string
+
+// SetRequest defines a domain-level write request for setting a key-value pair with timestamp metadata.
+type SetRequest struct {
+	Key       Key
+	Value     []byte
+	Timestamp int64
+	NodeID    string
+}
+
+// DeleteRequest defines a domain-level delete request for marking a key as deleted with timestamp metadata.
+type DeleteRequest struct {
+	Key       Key
+	Timestamp int64
+	NodeID    string
+}
