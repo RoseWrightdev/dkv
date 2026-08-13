@@ -198,13 +198,7 @@ func (eng *engine) Set(key kv.Key, value []byte) error {
 	req.Timestamp = ts
 	req.NodeId = string(eng.nodeID)
 
-	eng.hm.Store(key, hash, kv.Value{
-		Data:      value,
-		Timestamp: ts,
-		NodeID:    string(eng.nodeID),
-		Tombstone: false,
-	})
-	err := eng.wal.Publish(key, hash, req)
+	err := eng.sw.ApplySet(req)
 	req.Reset()
 	eng.pools.setRequests.Put(req)
 	return err
@@ -223,12 +217,7 @@ func (eng *engine) Delete(key kv.Key) error {
 	req.Timestamp = ts
 	req.NodeId = string(eng.nodeID)
 
-	eng.hm.Store(key, hash, kv.Value{
-		Timestamp: ts,
-		NodeID:    string(eng.nodeID),
-		Tombstone: true,
-	})
-	err := eng.wal.Publish(key, hash, req)
+	err := eng.sw.ApplyDelete(req)
 	req.Reset()
 	eng.pools.deleteRequests.Put(req)
 	return err
