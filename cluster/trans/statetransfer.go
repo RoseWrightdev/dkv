@@ -10,15 +10,11 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/cluster/mesh"
 	"github.com/rosewrightdev/dkv/core/hashmap"
 	"github.com/rosewrightdev/dkv/core/snap"
 	"github.com/rosewrightdev/dkv/core/writer"
 	"github.com/rosewrightdev/dkv/kv"
 )
-
-// Re-export mesh.StateExchanger for package backwards compatibility.
-type StateExchanger = mesh.StateExchanger
 
 // StateTransfer coordinates the exchange of local and remote database state.
 type StateTransfer struct {
