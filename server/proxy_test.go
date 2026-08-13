@@ -105,7 +105,7 @@ func TestWriteProxying(t *testing.T) {
 
 	// Verify the owning node actually has the key.
 	ownerID := eng0.Owner(kv.Key(key))
-	var ownerEng dkv.Engine
+	var ownerEng dkv.Database
 	switch ownerID {
 	case "node-0":
 		ownerEng = eng0
@@ -139,7 +139,7 @@ func TestDeleteProxying(t *testing.T) {
 
 	// Find a key owned by node-0 or node-1 (not node-2, so delete is proxied)
 	var key string
-	var ownerEng dkv.Engine
+	var ownerEng dkv.Database
 	require.Eventually(t, func() bool {
 		for i := range 5000 {
 			k := fmt.Sprintf("proxy-del-key-%d", i)

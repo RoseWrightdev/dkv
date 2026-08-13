@@ -10,13 +10,13 @@ import (
 	"github.com/rosewrightdev/dkv/cluster/gateway"
 )
 
-func setupBenchmarkEngine(b *testing.B, distributed bool) (dkv.Engine, func()) {
+func setupBenchmarkDatabase(b *testing.B, distributed bool) (dkv.Database, func()) {
 	tmpDir, err := os.MkdirTemp("", "dkv-bench-*")
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	builder := dkv.NewEngineBuilder().
+	builder := dkv.NewDatabaseBuilder().
 		Default().
 		SetWalPath(tmpDir).
 		SetSnpPath(tmpDir + "/snp.bin").
@@ -46,7 +46,7 @@ func setupBenchmarkEngine(b *testing.B, distributed bool) (dkv.Engine, func()) {
 }
 
 func BenchmarkServer_Get_gRPC(b *testing.B) {
-	eng, cleanup := setupBenchmarkEngine(b, false)
+	eng, cleanup := setupBenchmarkDatabase(b, false)
 	defer cleanup()
 	s := NewServer(eng)
 	go func() {
@@ -70,7 +70,7 @@ func BenchmarkServer_Delete_gRPC(b *testing.B) {
 	if testing.Short() {
 		b.Skip("skipping heavy gRPC parallel benchmark")
 	}
-	eng, cleanup := setupBenchmarkEngine(b, false)
+	eng, cleanup := setupBenchmarkDatabase(b, false)
 	defer cleanup()
 	s := NewServer(eng)
 	go func() {
@@ -94,7 +94,7 @@ func BenchmarkServer_Set_gRPC_Parallel(b *testing.B) {
 	if testing.Short() {
 		b.Skip("skipping heavy gRPC parallel benchmark")
 	}
-	eng, cleanup := setupBenchmarkEngine(b, true) // Distributed to measure marshaling overhead
+	eng, cleanup := setupBenchmarkDatabase(b, true) // Distributed to measure marshaling overhead
 	defer cleanup()
 	s := NewServer(eng)
 	go func() {

@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-type mockEngine struct {
+type mockDatabase struct {
 	mock.Mock
 }
 
-func (m *mockEngine) Get(key kv.Key) ([]byte, bool) {
+func (m *mockDatabase) Get(key kv.Key) ([]byte, bool) {
 	args := m.Called(key)
 	if v := args.Get(0); v != nil {
 		return v.([]byte), args.Bool(1)
@@ -25,71 +25,71 @@ func (m *mockEngine) Get(key kv.Key) ([]byte, bool) {
 	return nil, args.Bool(1)
 }
 
-func (m *mockEngine) Set(key kv.Key, value []byte) error {
+func (m *mockDatabase) Set(key kv.Key, value []byte) error {
 	args := m.Called(key, value)
 	return args.Error(0)
 }
 
-func (m *mockEngine) Delete(key kv.Key) error {
+func (m *mockDatabase) Delete(key kv.Key) error {
 	args := m.Called(key)
 	return args.Error(0)
 }
 
-func (m *mockEngine) Owner(key kv.Key) kv.NodeID {
+func (m *mockDatabase) Owner(key kv.Key) kv.NodeID {
 	args := m.Called(key)
 	return kv.NodeID(args.String(0))
 }
 
-func (m *mockEngine) NodeID() kv.NodeID {
+func (m *mockDatabase) NodeID() kv.NodeID {
 	args := m.Called()
 	return kv.NodeID(args.String(0))
 }
 
-func (m *mockEngine) Start() { m.Called() }
-func (m *mockEngine) Stop()  { m.Called() }
-func (m *mockEngine) Addr() string {
+func (m *mockDatabase) Start() { m.Called() }
+func (m *mockDatabase) Stop()  { m.Called() }
+func (m *mockDatabase) Addr() string {
 	args := m.Called()
 	return args.String(0)
 }
-func (m *mockEngine) GossipAddr() string {
+func (m *mockDatabase) GossipAddr() string {
 	args := m.Called()
 	return args.String(0)
 }
 
-func (m *mockEngine) Mesh() mesh.Mesher {
+func (m *mockDatabase) Mesh() mesh.Mesher {
 	args := m.Called()
 	return args.Get(0).(mesh.Mesher)
 }
 
-func (m *mockEngine) Snapshot() error {
+func (m *mockDatabase) Snapshot() error {
 	args := m.Called()
 	return args.Error(0)
 }
 
-func (m *mockEngine) SyncPull(pullConfig *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
+func (m *mockDatabase) SyncPull(pullConfig *entropy.PullConfig) ([]*pb.SetRequest, []*pb.DeleteRequest, error) {
 	args := m.Called(pullConfig.RequesterID, pullConfig.Root, pullConfig.Shards, pullConfig.Buckets)
 	return args.Get(0).([]*pb.SetRequest), args.Get(1).([]*pb.DeleteRequest), args.Error(2)
 }
 
-func (m *mockEngine) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
+func (m *mockDatabase) SyncPush(sets []*pb.SetRequest, deletes []*pb.DeleteRequest) error {
 	args := m.Called(sets, deletes)
 	return args.Error(0)
 }
 
-func (m *mockEngine) RootDigest() hashmap.RootDigest {
+func (m *mockDatabase) RootDigest() hashmap.RootDigest {
 	return m.Called().Get(0).(hashmap.RootDigest)
 }
 
-func (m *mockEngine) FillShardDigests(dst map[hashmap.ShardID]hashmap.Digest) {
+func (m *mockDatabase) FillShardDigests(dst map[hashmap.ShardID]hashmap.Digest) {
 	m.Called(dst)
 }
 
-func (m *mockEngine) FillDigests(dst map[hashmap.ShardID]hashmap.ShardDigest) {
+func (m *mockDatabase) FillDigests(dst map[hashmap.ShardID]hashmap.ShardDigest) {
 	m.Called(dst)
 }
 
 func TestServerHandlers(t *testing.T) {
-	me := new(mockEngine)
+	me := new(mockDatabase)
 	srv := &server{
 		eng:   me,
 		pools: newServerPools(),
@@ -146,7 +146,7 @@ func TestServerHandlers(t *testing.T) {
 }
 
 func TestServer_PoolDegradation(t *testing.T) {
-	me := new(mockEngine)
+	me := new(mockDatabase)
 	srv := &server{
 		eng:   me,
 		pools: newServerPools(),
@@ -174,7 +174,7 @@ func TestServer_PoolDegradation(t *testing.T) {
 }
 
 func TestServer_ExtraEdgeCases(t *testing.T) {
-	me := new(mockEngine)
+	me := new(mockDatabase)
 	srv := &server{
 		eng:   me,
 		pools: newServerPools(),

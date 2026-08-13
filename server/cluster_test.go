@@ -21,7 +21,7 @@ func TestNewCluster(t *testing.T) {
 	cluster, err := newCluster(10, "", insecure.NewCredentials(), true)
 	assert.Nil(t, err)
 	assert.NotNil(t, cluster)
-	assert.Equal(t, 10, len(cluster.Engines))
+	assert.Equal(t, 10, len(cluster.Databases))
 	assert.Equal(t, 10, len(cluster.Servers))
 
 	cluster.Stop()
@@ -51,7 +51,7 @@ func TestClusterScaleAndDurability(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// We create an insecure client against the first node
-	client, err := gateway.NewInsecureClient(cluster.Engines[0].Addr(), 2*time.Second)
+	client, err := gateway.NewInsecureClient(cluster.Databases[0].Addr(), 2*time.Second)
 	require.NoError(t, err)
 
 	// Concurrently write 1000 keys
@@ -73,10 +73,10 @@ func TestClusterScaleAndDurability(t *testing.T) {
 
 	// While writes are happening, we take down node-3 and node-7
 	time.Sleep(50 * time.Millisecond)
-	cluster.stopEngine(kv.NodeID("node-3"))
-	cluster.stopEngine(kv.NodeID("node-7"))
-	cluster.stopEngine(kv.NodeID("node-13"))
-	cluster.stopEngine(kv.NodeID("node-14"))
+	cluster.stopDatabase(kv.NodeID("node-3"))
+	cluster.stopDatabase(kv.NodeID("node-7"))
+	cluster.stopDatabase(kv.NodeID("node-13"))
+	cluster.stopDatabase(kv.NodeID("node-14"))
 
 	wg.Wait()
 	close(errs)
@@ -118,7 +118,7 @@ func TestClusterFullRestartDurability(t *testing.T) {
 	// Wait a moment for gossip to stabilize
 	time.Sleep(1 * time.Second)
 
-	client, err := gateway.NewInsecureClient(cluster.Engines[0].Addr(), 2*time.Second)
+	client, err := gateway.NewInsecureClient(cluster.Databases[0].Addr(), 2*time.Second)
 	require.NoError(t, err)
 
 	numKeys := 2000
@@ -183,7 +183,7 @@ func TestClusterFullRestartDurability(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	client2, err := gateway.NewInsecureClient(cluster2.Engines[0].Addr(), 2*time.Second)
+	client2, err := gateway.NewInsecureClient(cluster2.Databases[0].Addr(), 2*time.Second)
 	require.NoError(t, err)
 
 	// Verify the 500 deleted keys are gone
@@ -228,7 +228,7 @@ func TestClusterChaosDurability(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	var clients []*gateway.Client
-	for _, eng := range cluster.Engines {
+	for _, eng := range cluster.Databases {
 		c, err := gateway.NewInsecureClient(eng.Addr(), 50*time.Millisecond)
 		require.NoError(t, err)
 		clients = append(clients, c)
@@ -274,7 +274,7 @@ func TestClusterChaosDurability(t *testing.T) {
 			}
 			killed[target] = true
 			mu.Unlock()
-			cluster.stopEngine(kv.NodeID(fmt.Sprintf("node-%d", target+1)))
+			cluster.stopDatabase(kv.NodeID(fmt.Sprintf("node-%d", target+1)))
 		}
 	}()
 
@@ -332,7 +332,7 @@ func TestClusterDataRebalancing(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	var clients []*gateway.Client
-	for _, eng := range cluster.Engines {
+	for _, eng := range cluster.Databases {
 		c, err := gateway.NewInsecureClient(eng.Addr(), 2*time.Second)
 		require.NoError(t, err)
 		clients = append(clients, c)
@@ -361,7 +361,7 @@ func TestClusterDataRebalancing(t *testing.T) {
 	}
 
 	// Phase 2: Add 2 new nodes while writes are happening
-	seedAddr := cluster.Engines[0].GossipAddr()
+	seedAddr := cluster.Databases[0].GossipAddr()
 	for i := range 2 {
 		time.Sleep(100 * time.Millisecond)
 		newNodeName := fmt.Sprintf("node-%d", numInitialNodes+i+1)
@@ -402,13 +402,13 @@ func TestClusterDataRebalancing(t *testing.T) {
 
 	// Verify that the new nodes actually received data via background anti-entropy or direct proxy push!
 	// (Check node 4 and 5's local state engines)
-	newEngines := cluster.Engines[numInitialNodes:]
+	newEngines := cluster.Databases[numInitialNodes:]
 	for _, e := range newEngines {
 		// e.db is not directly accessible, but we could use local API if we had one.
 		// For now, we trust the successful verification above.
 		_ = e
 	}
-	t.Logf("Found 2 dynamically added engines in cluster.Engines slice")
+	t.Logf("Found 2 dynamically added engines in cluster.Databases slice")
 }
 
 func TestDynamicLoadBalancingShedding(t *testing.T) {
@@ -422,14 +422,14 @@ func TestDynamicLoadBalancingShedding(t *testing.T) {
 	// Wait for gossip to settle
 	time.Sleep(1 * time.Second)
 
-	mesh1 := cluster.Engines[0].Mesh()
+	mesh1 := cluster.Databases[0].Mesh()
 	var _ mesh.Mesher // keep mesh import happy
 
 	// Find a key owned by node-1
 	var targetKey kv.Key
 	for i := range 1000 {
 		k := kv.Key(fmt.Sprintf("load-shed-key-%d", i))
-		if cluster.Engines[0].Owner(k) == "node-1" {
+		if cluster.Databases[0].Owner(k) == "node-1" {
 			targetKey = k
 			break
 		}
@@ -437,7 +437,7 @@ func TestDynamicLoadBalancingShedding(t *testing.T) {
 	require.NotEmpty(t, targetKey)
 
 	// Verify it resolves to node-1 initially
-	assert.Equal(t, kv.NodeID("node-1"), cluster.Engines[0].Owner(targetKey))
+	assert.Equal(t, kv.NodeID("node-1"), cluster.Databases[0].Owner(targetKey))
 
 	// Dynamically shed traffic from node-1 by reducing its weight to 0
 	mesh1.UpdateLocalWeight(0)
@@ -446,7 +446,7 @@ func TestDynamicLoadBalancingShedding(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// The key should have been rebalanced to a different node in the cluster
-	newOwner := cluster.Engines[0].Owner(targetKey)
+	newOwner := cluster.Databases[0].Owner(targetKey)
 	assert.NotEqual(t, kv.NodeID("node-1"), newOwner, "Key should have been rebalanced away from node-1")
 	assert.Contains(t, []kv.NodeID{"node-2", "node-3"}, newOwner)
 }

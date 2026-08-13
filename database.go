@@ -32,9 +32,6 @@ type Database interface {
 	Mesh() mesh.Mesher
 }
 
-// Engine is a type alias for Database for backward compatibility.
-type Engine = Database
-
 // DatabaseConfig specifies the parameters required to initialize and run a dkv Database.
 type DatabaseConfig struct {
 	evt            evict.Evictor
@@ -49,9 +46,6 @@ type DatabaseConfig struct {
 	gossipInterval time.Duration
 	walBufferSize  uint32
 }
-
-// EngineConfig is a type alias for DatabaseConfig for backward compatibility.
-type EngineConfig = DatabaseConfig
 
 func newDatabase(config DatabaseConfig) (Database, error) {
 	coreConfig := core.Config{

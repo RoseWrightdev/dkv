@@ -32,9 +32,6 @@ type DatabaseBuilder struct {
 	walBufferSize  uint32
 }
 
-// EngineBuilder is a type alias for DatabaseBuilder for backward compatibility.
-type EngineBuilder = DatabaseBuilder
-
 // NewDatabaseBuilder initializes a new DatabaseBuilder instance with default sub-builders.
 func NewDatabaseBuilder() *DatabaseBuilder {
 	return &DatabaseBuilder{
@@ -42,19 +39,9 @@ func NewDatabaseBuilder() *DatabaseBuilder {
 	}
 }
 
-// NewEngineBuilder initializes a new EngineBuilder instance for backward compatibility.
-func NewEngineBuilder() *DatabaseBuilder {
-	return NewDatabaseBuilder()
-}
-
 // NewDefaultDatabase constructs a default dkv database configuration.
 func NewDefaultDatabase(walPath, snpPath string) (Database, error) {
 	return NewDatabaseBuilder().Default().SetWalPath(walPath).SetSnpPath(snpPath).Build()
-}
-
-// NewDefaultEngine constructs a default dkv database configuration for backward compatibility.
-func NewDefaultEngine(walPath, snpPath string) (Database, error) {
-	return NewDefaultDatabase(walPath, snpPath)
 }
 
 // Default populates the DatabaseBuilder with sensible default values.

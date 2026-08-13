@@ -27,9 +27,9 @@ func main() {
 		panic(fmt.Errorf("failed to start cluster: %w", err))
 	}
 
-	for i, engine := range cluster.Engines {
+	for i, db := range cluster.Databases {
 		name := fmt.Sprintf("node-%d", i+1)
-		fmt.Printf("  -> %s online (gRPC: %s)\n", name, engine.Addr())
+		fmt.Printf("  -> %s online (gRPC: %s)\n", name, db.Addr())
 	}
 
 	fmt.Println("\nCluster is fully operational!")
