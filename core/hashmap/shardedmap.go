@@ -2,6 +2,7 @@
 package hashmap
 
 import (
+	"math/bits"
 	"sync"
 
 	"github.com/rosewrightdev/dkv/kv"
@@ -67,14 +68,14 @@ func (sm *ShardedMap) Load(key kv.Key, hash kv.HashKey) (kv.Value, bool) {
 
 func getItemHash(hash kv.HashKey, val kv.Value) uint64 {
 	// #nosec G115
-	h := hash ^ uint64(val.Timestamp)
+	h := hash ^ bits.RotateLeft64(uint64(val.Timestamp), 17)
 
 	if val.NodeID != "" {
-		h ^= security.HashFunc(val.NodeID)
+		h ^= bits.RotateLeft64(security.HashFunc(val.NodeID), 31)
 	}
 
 	if len(val.Data) > 0 {
-		h ^= security.HashBytes(val.Data)
+		h ^= bits.RotateLeft64(security.HashBytes(val.Data), 47)
 	}
 
 	if val.Tombstone {
