@@ -17,8 +17,8 @@ import (
 	"github.com/rosewrightdev/dkv/kv"
 )
 
-// EngineBuilder provides a fluent API for constructing and configuring a dkv engine.
-type EngineBuilder struct {
+// DatabaseBuilder provides a fluent API for constructing and configuring a dkv database.
+type DatabaseBuilder struct {
 	evt            evict.Evictor
 	clock          clock.Clocker
 	creds          credentials.TransportCredentials
@@ -32,20 +32,33 @@ type EngineBuilder struct {
 	walBufferSize  uint32
 }
 
-// NewEngineBuilder initializes a new EngineBuilder instance with default sub-builders.
-func NewEngineBuilder() *EngineBuilder {
-	return &EngineBuilder{
+// EngineBuilder is a type alias for DatabaseBuilder for backward compatibility.
+type EngineBuilder = DatabaseBuilder
+
+// NewDatabaseBuilder initializes a new DatabaseBuilder instance with default sub-builders.
+func NewDatabaseBuilder() *DatabaseBuilder {
+	return &DatabaseBuilder{
 		meshBuilder: mesh.NewConfigBuilder(),
 	}
 }
 
-// NewDefaultEngine constructs a default dkv engine configuration.
-func NewDefaultEngine(walPath, snpPath string) (Engine, error) {
-	return NewEngineBuilder().Default().SetWalPath(walPath).SetSnpPath(snpPath).Build()
+// NewEngineBuilder initializes a new EngineBuilder instance for backward compatibility.
+func NewEngineBuilder() *DatabaseBuilder {
+	return NewDatabaseBuilder()
 }
 
-// Default populates the EngineBuilder with sensible default values.
-func (eb *EngineBuilder) Default() *EngineBuilder {
+// NewDefaultDatabase constructs a default dkv database configuration.
+func NewDefaultDatabase(walPath, snpPath string) (Database, error) {
+	return NewDatabaseBuilder().Default().SetWalPath(walPath).SetSnpPath(snpPath).Build()
+}
+
+// NewDefaultEngine constructs a default dkv database configuration for backward compatibility.
+func NewDefaultEngine(walPath, snpPath string) (Database, error) {
+	return NewDefaultDatabase(walPath, snpPath)
+}
+
+// Default populates the DatabaseBuilder with sensible default values.
+func (eb *DatabaseBuilder) Default() *DatabaseBuilder {
 	eb.walInterval = 500 * time.Millisecond
 	eb.snpInterval = 5 * time.Minute
 	eb.walBufferSize = 64 * 1024
@@ -78,55 +91,55 @@ func (eb *EngineBuilder) Default() *EngineBuilder {
 }
 
 // SetWalPath sets the path to the write-ahead log directory.
-func (eb *EngineBuilder) SetWalPath(path string) *EngineBuilder {
+func (eb *DatabaseBuilder) SetWalPath(path string) *DatabaseBuilder {
 	eb.walPath = path
 	return eb
 }
 
 // SetSnpPath sets the path to the snapshot file.
-func (eb *EngineBuilder) SetSnpPath(path string) *EngineBuilder {
+func (eb *DatabaseBuilder) SetSnpPath(path string) *DatabaseBuilder {
 	eb.snpPath = path
 	return eb
 }
 
 // SetSnpInterval sets the snapshot interval.
-func (eb *EngineBuilder) SetSnpInterval(interval time.Duration) *EngineBuilder {
+func (eb *DatabaseBuilder) SetSnpInterval(interval time.Duration) *DatabaseBuilder {
 	eb.snpInterval = interval
 	return eb
 }
 
 // SetWalInterval sets the sync interval for the write-ahead log.
-func (eb *EngineBuilder) SetWalInterval(interval time.Duration) *EngineBuilder {
+func (eb *DatabaseBuilder) SetWalInterval(interval time.Duration) *DatabaseBuilder {
 	eb.walInterval = interval
 	return eb
 }
 
 // SetWalBufferSize sets the buffer size for the write-ahead log.
-func (eb *EngineBuilder) SetWalBufferSize(size uint32) *EngineBuilder {
+func (eb *DatabaseBuilder) SetWalBufferSize(size uint32) *DatabaseBuilder {
 	eb.walBufferSize = size
 	return eb
 }
 
 // SetWalSegments sets the maximum number of log segments.
-func (eb *EngineBuilder) SetWalSegments(count int) *EngineBuilder {
+func (eb *DatabaseBuilder) SetWalSegments(count int) *DatabaseBuilder {
 	eb.walSegments = count
 	return eb
 }
 
 // SetEvictor sets the eviction service instance.
-func (eb *EngineBuilder) SetEvictor(evt evict.Evictor) *EngineBuilder {
+func (eb *DatabaseBuilder) SetEvictor(evt evict.Evictor) *DatabaseBuilder {
 	eb.evt = evt
 	return eb
 }
 
 // SetClock sets the clock implementation for generating timestamps.
-func (eb *EngineBuilder) SetClock(clock clock.Clocker) *EngineBuilder {
+func (eb *DatabaseBuilder) SetClock(clock clock.Clocker) *DatabaseBuilder {
 	eb.clock = clock
 	return eb
 }
 
 // SetCluster sets the cluster configuration builder.
-func (eb *EngineBuilder) SetCluster(cb *mesh.ConfigBuilder) *EngineBuilder {
+func (eb *DatabaseBuilder) SetCluster(cb *mesh.ConfigBuilder) *DatabaseBuilder {
 	eb.meshBuilder = cb
 	return eb
 }
@@ -135,79 +148,79 @@ func (eb *EngineBuilder) SetCluster(cb *mesh.ConfigBuilder) *EngineBuilder {
 // These allow for a flatter API while maintaining modularity under the hood.
 
 // SetNodeID sets the unique node ID for cluster identity.
-func (eb *EngineBuilder) SetNodeID(id kv.NodeID) *EngineBuilder {
+func (eb *DatabaseBuilder) SetNodeID(id kv.NodeID) *DatabaseBuilder {
 	eb.meshBuilder.SetNodeID(id)
 	return eb
 }
 
 // SetReplicationFactor sets the replication factor for the cluster.
-func (eb *EngineBuilder) SetReplicationFactor(n int) *EngineBuilder {
+func (eb *DatabaseBuilder) SetReplicationFactor(n int) *DatabaseBuilder {
 	eb.meshBuilder.SetReplicationFactor(n)
 	return eb
 }
 
 // SetBindAddr sets the bind address for gossip membership.
-func (eb *EngineBuilder) SetBindAddr(addr string) *EngineBuilder {
+func (eb *DatabaseBuilder) SetBindAddr(addr string) *DatabaseBuilder {
 	eb.meshBuilder.SetBindAddr(addr)
 	return eb
 }
 
 // SetBindPort sets the bind port for gossip membership.
-func (eb *EngineBuilder) SetBindPort(port int) *EngineBuilder {
+func (eb *DatabaseBuilder) SetBindPort(port int) *DatabaseBuilder {
 	eb.meshBuilder.SetBindPort(port)
 	return eb
 }
 
 // SetAdvertiseAddr sets the address advertised to other cluster nodes.
-func (eb *EngineBuilder) SetAdvertiseAddr(addr string) *EngineBuilder {
+func (eb *DatabaseBuilder) SetAdvertiseAddr(addr string) *DatabaseBuilder {
 	eb.meshBuilder.SetAdvertiseAddr(addr)
 	return eb
 }
 
 // SetSeedNodes sets the seed nodes to join upon startup.
-func (eb *EngineBuilder) SetSeedNodes(seeds []string) *EngineBuilder {
+func (eb *DatabaseBuilder) SetSeedNodes(seeds []string) *DatabaseBuilder {
 	eb.meshBuilder.SetSeedNodes(seeds)
 	return eb
 }
 
 // SetGrpcPort sets the gRPC API port.
-func (eb *EngineBuilder) SetGrpcPort(port int) *EngineBuilder {
+func (eb *DatabaseBuilder) SetGrpcPort(port int) *DatabaseBuilder {
 	eb.meshBuilder.SetGrpcPort(port)
 	return eb
 }
 
-// SingleNode configures the engine to run in single-node mode.
-func (eb *EngineBuilder) SingleNode() *EngineBuilder {
+// SingleNode configures the database to run in single-node mode.
+func (eb *DatabaseBuilder) SingleNode() *DatabaseBuilder {
 	eb.meshBuilder.SingleNode()
 	return eb
 }
 
 // SetGossipInterval sets the gossip communication interval.
-func (eb *EngineBuilder) SetGossipInterval(interval time.Duration) *EngineBuilder {
+func (eb *DatabaseBuilder) SetGossipInterval(interval time.Duration) *DatabaseBuilder {
 	eb.gossipInterval = interval
 	return eb
 }
 
 // SetCreds sets the transport credentials for secure node-to-node connections.
-func (eb *EngineBuilder) SetCreds(creds credentials.TransportCredentials) *EngineBuilder {
+func (eb *DatabaseBuilder) SetCreds(creds credentials.TransportCredentials) *DatabaseBuilder {
 	eb.creds = creds
 	return eb
 }
 
 // SetInsecure configures insecure gRPC connections for development.
-func (eb *EngineBuilder) SetInsecure() *EngineBuilder {
+func (eb *DatabaseBuilder) SetInsecure() *DatabaseBuilder {
 	eb.creds = insecure.NewCredentials()
 	return eb
 }
 
 // FastTest optimizes cluster parameters for quick unit/integration testing.
-func (eb *EngineBuilder) FastTest() *EngineBuilder {
+func (eb *DatabaseBuilder) FastTest() *DatabaseBuilder {
 	eb.meshBuilder.EnableFastTest()
 	return eb
 }
 
-// Build validates the configuration and returns a new Engine instance.
-func (eb *EngineBuilder) Build() (Engine, error) {
+// Build validates the configuration and returns a new Database instance.
+func (eb *DatabaseBuilder) Build() (Database, error) {
 	if isUnit(eb.walPath) {
 		return nil, fmt.Errorf("required eb.walPath is unset; configure eb.walPath with SetWalPath(path string)")
 	}
@@ -249,7 +262,7 @@ func (eb *EngineBuilder) Build() (Engine, error) {
 		}
 	}
 
-	config := EngineConfig{
+	config := DatabaseConfig{
 		walPath:        eb.walPath,
 		snpPath:        eb.snpPath,
 		walInterval:    eb.walInterval,
@@ -263,7 +276,7 @@ func (eb *EngineBuilder) Build() (Engine, error) {
 		creds:          eb.creds,
 	}
 
-	return newEngine(config)
+	return newDatabase(config)
 }
 
 func isUnit[T comparable](val T) bool {

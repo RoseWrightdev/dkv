@@ -46,23 +46,24 @@ func findAvailableBasePort(startPort int, nodeCount int) int {
 	return startPort
 }
 
-// Cluster represents a group of dkv engines and servers.
+// Cluster represents a group of dkv databases and servers.
 type Cluster struct {
-	Engines []dkv.Engine
-	Servers []*Grpc
+	Databases []dkv.Database
+	Engines   []dkv.Database // Keep Engines slice for backwards compatibility
+	Servers   []*Grpc
 }
 
-// Stop gracefully shuts down all engines and servers in the cluster.
+// Stop gracefully shuts down all databases and servers in the cluster.
 func (c *Cluster) Stop() {
 	for _, s := range c.Servers {
 		s.Stop()
 	}
-	for _, e := range c.Engines {
+	for _, e := range c.Databases {
 		e.Stop()
 	}
 }
 
-// HardStop immediately shuts down all engines and servers in the cluster.
+// HardStop immediately shuts down all databases and servers in the cluster.
 func (c *Cluster) HardStop() {
 	for _, s := range c.Servers {
 		s.HardStop()
@@ -82,39 +83,40 @@ func newCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 	for i := range nodeCount {
 		name := fmt.Sprintf("node-%d", i+1)
 
-		eb := dkv.NewEngineBuilder().
+		dbBuilder := dkv.NewDatabaseBuilder().
 			Default()
 
 		if fastTest {
-			eb.FastTest()
+			dbBuilder.FastTest()
 		}
 
-		eb.SetNodeID(kv.NodeID(name)).
+		dbBuilder.SetNodeID(kv.NodeID(name)).
 			SetCreds(creds).
 			SetBindPort(basePort + i*2).
 			SetGrpcPort(basePort + i*2 + 1)
 
 		if dataDir != "" {
-			eb.SetWalPath(filepath.Join(dataDir, name, "wal")).
+			dbBuilder.SetWalPath(filepath.Join(dataDir, name, "wal")).
 				SetSnpPath(filepath.Join(dataDir, name, "snp.gob"))
 		}
 
 		if i > 0 {
-			eb.SetSeedNodes([]string{seedAddr})
+			dbBuilder.SetSeedNodes([]string{seedAddr})
 		}
 
-		engine, err := eb.Build()
+		database, err := dbBuilder.Build()
 		if err != nil {
 			cluster.Stop()
 			return nil, err
 		}
 
 		if i == 0 {
-			seedAddr = engine.GossipAddr()
+			seedAddr = database.GossipAddr()
 		}
 
-		cluster.Engines = append(cluster.Engines, engine)
-		server := NewServer(engine)
+		cluster.Databases = append(cluster.Databases, database)
+		cluster.Engines = append(cluster.Engines, database)
+		server := NewServer(database)
 		cluster.Servers = append(cluster.Servers, server)
 	}
 
