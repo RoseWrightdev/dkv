@@ -6,13 +6,11 @@ import (
 	"sync"
 
 	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/cluster/mesh"
 	"github.com/rosewrightdev/dkv/core/writer"
 	"google.golang.org/protobuf/proto"
 )
 
-// Re-export mesh.Gossiper for package backwards compatibility if needed.
-type Gossiper = mesh.Gossiper
+
 
 // Gossip manages the replication of messages received via gossip protocols.
 type Gossip struct {
