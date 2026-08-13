@@ -152,7 +152,11 @@ func (w *Wal) getSegment(hash kv.HashKey) *walSegment {
 func (w *Wal) Publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	entry := w.entryPool.Get().(*pb.WalEntry)
 	defer func() {
-		entry.Entry = nil
+		if wrapper, ok := entry.Entry.(*pb.WalEntry_Set); ok {
+			wrapper.Set = nil
+		} else if wrapper, ok := entry.Entry.(*pb.WalEntry_Delete); ok {
+			wrapper.Delete = nil
+		}
 		w.entryPool.Put(entry)
 	}()
 
@@ -160,9 +164,17 @@ func (w *Wal) Publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	case *pb.WalEntry:
 		entry.Entry = m.Entry
 	case *pb.SetRequest:
-		entry.Entry = &pb.WalEntry_Set{Set: m}
+		if wrapper, ok := entry.Entry.(*pb.WalEntry_Set); ok {
+			wrapper.Set = m
+		} else {
+			entry.Entry = &pb.WalEntry_Set{Set: m}
+		}
 	case *pb.DeleteRequest:
-		entry.Entry = &pb.WalEntry_Delete{Delete: m}
+		if wrapper, ok := entry.Entry.(*pb.WalEntry_Delete); ok {
+			wrapper.Delete = m
+		} else {
+			entry.Entry = &pb.WalEntry_Delete{Delete: m}
+		}
 	default:
 		return fmt.Errorf("unsupported message type: %T", msg)
 	}
