@@ -20,7 +20,9 @@ oryx is a partitioned, state-replicated key-value database implemented in Go. In
 All benchmarks conducted locally on an Apple M4 Max (14 cores, 64GB RAM, Go 1.26.3) and LinuxKit Kernel 6.12.
 
 ### 1. Storage Core Benchmark vs Production Go DBs
-Direct parallel read workload comparison (`go test -bench=BenchmarkComparative_Get_Parallel -benchmem ./core`).
+```bash
+cd benchmarks && go test -bench=BenchmarkComparative_Get_Parallel -benchmem ./...
+```
 
 | Database Engine | Storage Architecture | Throughput (RPS) | Latency (ns/op) | Memory/op | Allocs/op |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -56,7 +58,28 @@ redis-cli -p 6379 SET mykey "hello world"
 redis-cli -p 6379 GET mykey
 ```
 
-### 3. Connect via Go Client
+### 3. Interact via the CLI
+
+The `oryx` binary doubles as a CLI client with `get`, `set`, and `delete` subcommands.
+
+```bash
+# Set a key (insecure / no TLS)
+oryx --insecure set mykey "hello world"
+
+# Get a key
+oryx --insecure get mykey
+
+# Delete a key (aliases: del, rm)
+oryx --insecure delete mykey
+
+# Connect to a remote node with TLS
+oryx --host 10.0.0.1 --grpc-port 50055 --tls-cert ./certs/client.crt --tls-key ./certs/client.key get mykey
+```
+
+Connection flags (`--host`, `--grpc-port`, `--insecure`, `--tls-cert`, `--tls-key`, `--timeout`) are available on every subcommand.
+
+### 4. Connect via Go Client
+
 ```bash
 go run examples/client/main.go
 ```
@@ -116,14 +139,17 @@ flowchart TD
 ## Running Benchmarks & Profiling
 
 ```bash
-# Run full benchmark suite
+# Run main module benchmarks (storage core, engine micro-benchmarks)
 go test -bench=. -benchmem ./...
 
+# Run comparative benchmarks vs external DBs (isolated sub-module)
+cd benchmarks && go test -bench=. -benchmem ./...
+
 # CPU Profiling
-go test -bench . -cpuprofile=cpu.prof
+go test -bench=. -cpuprofile=cpu.prof ./...
 go tool pprof -top cpu.prof
 
 # Memory Profiling
-go test -bench . -memprofile=mem.prof
+go test -bench=. -memprofile=mem.prof ./...
 go tool pprof -top mem.prof
 ```
