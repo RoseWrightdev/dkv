@@ -405,3 +405,16 @@ func (w *Wal) Clear(offsets []int64) error {
 	}
 	return nil
 }
+
+// NopWal implements a zero-disk-write WAL for volatile in-memory mode.
+type NopWal struct{}
+
+// NewNopWal creates a new zero-disk-write Waler instance.
+func NewNopWal() Waler { return &NopWal{} }
+
+func (n *NopWal) Publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error { return nil }
+func (n *NopWal) Replay() (map[kv.Key]kv.Value, error)                  { return make(map[kv.Key]kv.Value), nil }
+func (n *NopWal) Clear(_ []int64) error                                  { return nil }
+func (n *NopWal) PrepareSnapshot() ([]int64, error)                     { return nil, nil }
+func (n *NopWal) Start()                                                 {}
+func (n *NopWal) Stop()                                                  {}

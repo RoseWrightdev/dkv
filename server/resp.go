@@ -36,6 +36,7 @@ var (
 type connState struct {
 	argBuf [][]byte
 	outBuf []byte
+	vecBuf [][]byte
 }
 
 type RESPServer struct {
@@ -81,6 +82,7 @@ func (s *RESPServer) OnOpen(c gnet.Conn) (out []byte, action gnet.Action) {
 	c.SetContext(&connState{
 		argBuf: make([][]byte, 0, 32),
 		outBuf: make([]byte, 0, 65536),
+		vecBuf: make([][]byte, 0, 32),
 	})
 	return
 }
@@ -95,12 +97,14 @@ func (s *RESPServer) OnTraffic(c gnet.Conn) gnet.Action {
 		state = &connState{
 			argBuf: make([][]byte, 0, 32),
 			outBuf: make([]byte, 0, 65536),
+			vecBuf: make([][]byte, 0, 32),
 		}
 		c.SetContext(state)
 	}
 
 	data, _ := c.Next(-1)
 	state.outBuf = state.outBuf[:0]
+	state.vecBuf = state.vecBuf[:0]
 
 	for len(data) > 0 {
 		args, read, ok := parseRESPFrame(data, state.argBuf)
@@ -108,11 +112,19 @@ func (s *RESPServer) OnTraffic(c gnet.Conn) gnet.Action {
 			break
 		}
 		data = data[read:]
+		prevLen := len(state.outBuf)
 		state.outBuf = s.dispatchToBuffer(args, state.outBuf)
+		if len(state.outBuf) > prevLen {
+			state.vecBuf = append(state.vecBuf, state.outBuf[prevLen:])
+		}
 	}
 
-	if len(state.outBuf) > 0 {
-		_, _ = c.Write(state.outBuf)
+	if len(state.vecBuf) > 0 {
+		if len(state.vecBuf) == 1 {
+			_, _ = c.Write(state.vecBuf[0])
+		} else {
+			_, _ = c.Writev(state.vecBuf)
+		}
 	}
 
 	return gnet.None

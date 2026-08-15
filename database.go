@@ -34,30 +34,34 @@ type Database interface {
 
 // DatabaseConfig specifies the parameters required to initialize and run a oryx Database.
 type DatabaseConfig struct {
-	evt            evict.Evictor
-	clock          clock.Clocker
-	creds          credentials.TransportCredentials
-	walPath        string
-	snpPath        string
-	meshConfig     mesh.Config
-	walInterval    time.Duration
-	snpInterval    time.Duration
-	walSegments    int
-	gossipInterval time.Duration
-	walBufferSize  uint32
+	evt             evict.Evictor
+	clock           clock.Clocker
+	creds           credentials.TransportCredentials
+	walPath         string
+	snpPath         string
+	meshConfig      mesh.Config
+	walInterval     time.Duration
+	snpInterval     time.Duration
+	walSegments     int
+	gossipInterval  time.Duration
+	walBufferSize   uint32
+	disableWal      bool
+	disableSnapshot bool
 }
 
 func newDatabase(config DatabaseConfig) (Database, error) {
 	coreConfig := core.Config{
-		Evt:           config.evt,
-		Clock:         config.clock,
-		WalPath:       config.walPath,
-		SnpPath:       config.snpPath,
-		WalInterval:   config.walInterval,
-		SnpInterval:   config.snpInterval,
-		WalSegments:   config.walSegments,
-		WalBufferSize: config.walBufferSize,
-		NodeID:        config.meshConfig.NodeID,
+		Evt:             config.evt,
+		Clock:           config.clock,
+		WalPath:         config.walPath,
+		SnpPath:         config.snpPath,
+		WalInterval:     config.walInterval,
+		SnpInterval:     config.snpInterval,
+		WalSegments:     config.walSegments,
+		WalBufferSize:   config.walBufferSize,
+		NodeID:          config.meshConfig.NodeID,
+		DisableWal:      config.disableWal,
+		DisableSnapshot: config.disableSnapshot,
 	}
 
 	coreEng, err := core.NewEngine(coreConfig)

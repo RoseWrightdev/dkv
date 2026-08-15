@@ -41,28 +41,31 @@ type Engine interface {
 
 // Config specifies initialization parameters for the core storage engine.
 type Config struct {
-	Evt           evict.Evictor
-	Clock         clock.Clocker
-	WalPath       string
-	SnpPath       string
-	WalInterval   time.Duration
-	SnpInterval   time.Duration
-	WalSegments   int
-	WalBufferSize uint32
-	NodeID        kv.NodeID
+	Evt             evict.Evictor
+	Clock           clock.Clocker
+	WalPath         string
+	SnpPath         string
+	WalInterval     time.Duration
+	SnpInterval     time.Duration
+	WalSegments     int
+	WalBufferSize   uint32
+	NodeID          kv.NodeID
+	DisableWal      bool
+	DisableSnapshot bool
 }
 
 type engine struct {
-	clock     clock.Clocker
-	wal       wal.Waler
-	evt       evict.Evictor
-	hm        *hashmap.ShardedMap
-	snp       *snap.Snapshotter
-	sw        *writer.StorageWriter
-	pools     *pools
-	nodeID    kv.NodeID
-	startOnce sync.Once
-	stopOnce  sync.Once
+	clock           clock.Clocker
+	wal             wal.Waler
+	evt             evict.Evictor
+	hm              *hashmap.ShardedMap
+	snp             *snap.Snapshotter
+	sw              *writer.StorageWriter
+	pools           *pools
+	nodeID          kv.NodeID
+	disableSnapshot bool
+	startOnce       sync.Once
+	stopOnce        sync.Once
 }
 
 type pools struct {
@@ -87,22 +90,31 @@ func newPools() *pools {
 
 // NewEngine creates and initializes a standalone core storage engine.
 func NewEngine(config Config) (Engine, error) {
-	w, err := wal.NewWal(config.WalPath, config.WalInterval, config.WalBufferSize, config.WalSegments)
-	if err != nil {
-		return nil, err
+	var w wal.Waler
+	var err error
+	if config.DisableWal {
+		w = wal.NewNopWal()
+	} else {
+		w, err = wal.NewWal(config.WalPath, config.WalInterval, config.WalBufferSize, config.WalSegments)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	eng := &engine{
-		hm:     hashmap.NewShardedMap(),
-		wal:    w,
-		clock:  config.Clock,
-		evt:    config.Evt,
-		nodeID: config.NodeID,
-		pools:  newPools(),
+		hm:              hashmap.NewShardedMap(),
+		wal:             w,
+		clock:           config.Clock,
+		evt:             config.Evt,
+		nodeID:          config.NodeID,
+		pools:           newPools(),
+		disableSnapshot: config.DisableSnapshot,
 	}
 
-	if err := eng.recover(config.SnpPath); err != nil {
-		slog.Error("Failed to recover database state", "error", err)
+	if !config.DisableSnapshot && config.SnpPath != "" {
+		if err := eng.recover(config.SnpPath); err != nil {
+			slog.Error("Failed to recover database state", "error", err)
+		}
 	}
 
 	eng.sw = writer.NewStorageWriter(eng.hm, eng.wal, eng.clock)
@@ -149,7 +161,7 @@ func NewEngine(config Config) (Engine, error) {
 
 func (eng *engine) Start() {
 	eng.startOnce.Do(func() {
-		if eng.snp != nil {
+		if eng.snp != nil && !eng.disableSnapshot {
 			eng.snp.Start()
 		}
 		if eng.wal != nil {
@@ -163,7 +175,7 @@ func (eng *engine) Start() {
 
 func (eng *engine) Stop() {
 	eng.stopOnce.Do(func() {
-		if eng.snp != nil {
+		if eng.snp != nil && !eng.disableSnapshot {
 			eng.snp.Stop()
 		}
 		if eng.wal != nil {

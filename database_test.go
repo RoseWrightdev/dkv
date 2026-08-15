@@ -257,3 +257,34 @@ func TestEngine_Concurrency(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestDatabase_VolatileMode(t *testing.T) {
+	volConfig := mockConfig
+	volConfig.disableWal = true
+	volConfig.disableSnapshot = true
+	volConfig.walPath = "nop"
+	volConfig.snpPath = "nop"
+
+	db1, err := newDatabase(volConfig)
+	assert.NoError(t, err)
+	db1.Start()
+
+	key := "vol-test-key"
+	val := []byte("vol-test-val")
+	assert.NoError(t, db1.Set(key, val))
+
+	got, ok := db1.Get(kv.Key(key))
+	assert.True(t, ok)
+	assert.Equal(t, val, got)
+
+	db1.Stop()
+
+	// New DB instance in volatile mode should start clean with zero persisted data
+	db2, err := newDatabase(volConfig)
+	assert.NoError(t, err)
+	db2.Start()
+	defer db2.Stop()
+
+	_, ok = db2.Get(kv.Key(key))
+	assert.False(t, ok, "key should not persist across volatile mode restarts")
+}

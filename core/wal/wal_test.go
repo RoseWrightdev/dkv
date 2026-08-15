@@ -244,3 +244,34 @@ func TestWal_ExtraEdgeCases(t *testing.T) {
 	_, err = walReopen.Replay()
 	assert.Error(t, err)
 }
+
+func TestNopWal(t *testing.T) {
+	nopWal := NewNopWal()
+	require.NotNil(t, nopWal)
+
+	// Start and Stop should be no-ops
+	nopWal.Start()
+	nopWal.Stop()
+
+	// Publish should accept set and delete requests without error or disk writing
+	setReq := &pb.SetRequest{Key: "key1", Value: []byte("val1"), Timestamp: 100}
+	assert.NoError(t, nopWal.Publish("key1", security.HashFunc("key1"), setReq))
+
+	delReq := &pb.DeleteRequest{Key: "key1", Timestamp: 101}
+	assert.NoError(t, nopWal.Publish("key1", security.HashFunc("key1"), delReq))
+
+	// Replay should return empty map
+	replay, err := nopWal.Replay()
+	assert.NoError(t, err)
+	assert.NotNil(t, replay)
+	assert.Empty(t, replay)
+
+	// PrepareSnapshot should return nil offsets
+	offsets, err := nopWal.PrepareSnapshot()
+	assert.NoError(t, err)
+	assert.Nil(t, offsets)
+
+	// Clear should succeed for nil or non-nil offsets
+	assert.NoError(t, nopWal.Clear(nil))
+	assert.NoError(t, nopWal.Clear([]int64{100, 200}))
+}
