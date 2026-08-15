@@ -56,6 +56,13 @@ func (sw *StorageWriter) ApplySet(req *pb.SetRequest) error {
 	return nil
 }
 
+// Exists reports whether the key currently holds a live value in local storage.
+// A tombstoned key reports false: it is present in the map but logically deleted.
+func (sw *StorageWriter) Exists(key kv.Key) bool {
+	val, ok := sw.hm.Load(key, security.HashFunc(key))
+	return ok && !val.Tombstone
+}
+
 // ApplyDelete marks a key as deleted (using a tombstone) in-memory and in the WAL after performing LWW conflict resolution.
 func (sw *StorageWriter) ApplyDelete(req *pb.DeleteRequest) error {
 	sw.clock.Update(req.Timestamp)

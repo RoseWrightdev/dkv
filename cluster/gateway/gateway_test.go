@@ -134,7 +134,7 @@ func TestGateway_AllBranches(t *testing.T) {
 	sw := &MockStateWriter{}
 
 	gw := NewGateway(meshObj, mc, insecure.NewCredentials())
-	gw.sw = sw
+	gw.SetStateWriter(sw)
 	defer gw.Close()
 
 	// 3. Test Set success (local and remote)
@@ -237,6 +237,96 @@ func TestGateway_AllBranches(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// ExistenceStateWriter implements StateWriter plus the optional existenceChecker
+// interface the gateway uses to answer DEL accurately.
+type ExistenceStateWriter struct {
+	MockStateWriter
+	Live map[kv.Key]bool
+}
+
+func (m *ExistenceStateWriter) Exists(key kv.Key) bool {
+	return m.Live[key]
+}
+
+func TestGateway_DeleteReportsExistence(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = lis.Close() }()
+
+	grpcServer := grpc.NewServer()
+	mockSrv := &MockGrpcServer{
+		GetFunc: func(_ *pb.GetRequest) (*pb.GetResponse, error) {
+			return &pb.GetResponse{Exists: false}, nil
+		},
+		PushFunc: func(_ *pb.PushRequest) (*pb.PushResponse, error) {
+			return &pb.PushResponse{}, nil
+		},
+	}
+	pb.RegisterOryxServiceServer(grpcServer, mockSrv)
+
+	go func() {
+		_ = grpcServer.Serve(lis)
+	}()
+	defer grpcServer.Stop()
+
+	mc := &mesh.Config{
+		NodeID:                 "local-node",
+		ReplicationFactor:      2,
+		ReplicationFailureMode: mesh.Lenient,
+	}
+	meshObj := &MockMesher{
+		Owners: []kv.NodeID{"local-node", "remote-node"},
+		AddrMap: map[kv.NodeID]mesh.PeerAddress{
+			"remote-node": mesh.PeerAddress(lis.Addr().String()),
+		},
+	}
+
+	gw := NewGateway(meshObj, mc, insecure.NewCredentials())
+	defer gw.Close()
+	gw.SetStateWriter(&ExistenceStateWriter{Live: map[kv.Key]bool{"present": true}})
+
+	// A key held by the local replica reports 1, matching Redis DEL.
+	existed, err := gw.Delete("present", time.Now().UnixNano())
+	assert.NoError(t, err)
+	assert.True(t, existed)
+
+	// A key absent from every replica reports 0 rather than an unconditional 1.
+	existed, err = gw.Delete("missing", time.Now().UnixNano())
+	assert.NoError(t, err)
+	assert.False(t, existed)
+
+	// A key held only by a remote replica is still reported as existing.
+	mockSrv.GetFunc = func(_ *pb.GetRequest) (*pb.GetResponse, error) {
+		return &pb.GetResponse{Value: []byte("v"), Exists: true}, nil
+	}
+	existed, err = gw.Delete("remote-only", time.Now().UnixNano())
+	assert.NoError(t, err)
+	assert.True(t, existed)
+}
+
+func TestGateway_UnregisteredStateWriter(t *testing.T) {
+	mc := &mesh.Config{
+		NodeID:                 "local-node",
+		ReplicationFactor:      1,
+		ReplicationFailureMode: mesh.Lenient,
+	}
+	meshObj := &MockMesher{Owners: []kv.NodeID{"local-node"}}
+
+	// No SetStateWriter call: requests arriving before the engine finishes
+	// bootstrapping must surface an error instead of a nil dereference panic.
+	gw := NewGateway(meshObj, mc, insecure.NewCredentials())
+	defer gw.Close()
+
+	assert.NotPanics(t, func() {
+		err := gw.Set("key", []byte("val"), time.Now().UnixNano())
+		assert.Error(t, err)
+
+		existed, err := gw.Delete("key", time.Now().UnixNano())
+		assert.Error(t, err)
+		assert.False(t, existed)
+	})
+}
+
 func TestGateway_StrictReplication(t *testing.T) {
 	// Start a local gRPC server for testing remote proxying
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -268,7 +358,7 @@ func TestGateway_StrictReplication(t *testing.T) {
 	sw := &MockStateWriter{}
 
 	gw := NewGateway(meshObj, mc, insecure.NewCredentials())
-	gw.sw = sw
+	gw.SetStateWriter(sw)
 	defer gw.Close()
 
 	// 1. Set succeeds when all replicas succeed
