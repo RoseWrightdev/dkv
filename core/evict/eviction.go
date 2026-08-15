@@ -5,6 +5,7 @@ import (
 	"context"
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rosewrightdev/oryx/kv"
@@ -56,7 +57,7 @@ type lruShard struct {
 	head     *entry
 	cancel   context.CancelFunc
 	cache    map[kv.HashKey]*entry
-	onEvict  func(kv.Key, Reason) error
+	onEvict  atomic.Pointer[func(kv.Key, Reason) error]
 	pool     *sync.Pool
 	wg       sync.WaitGroup
 	ttl      time.Duration
@@ -255,8 +256,8 @@ func (s *lruShard) run() {
 		case hKey := <-s.delCh:
 			s.delete(hKey)
 		case msg := <-s.evictCh:
-			if s.onEvict != nil {
-				_ = s.onEvict(msg.key, msg.reason)
+			if fn := s.onEvict.Load(); fn != nil {
+				_ = (*fn)(msg.key, msg.reason)
 			}
 		case <-tickerC:
 			s.evictExpired()
@@ -379,7 +380,7 @@ func (s *lruShard) pushFront(e *entry) {
 // SetEvictCallback sets the function to be called when an entry is evicted.
 func (lru *LeastRecentlyUsed) SetEvictCallback(fn func(kv.Key, Reason) error) {
 	for _, s := range lru.shards {
-		s.onEvict = fn
+		s.onEvict.Store(&fn)
 	}
 }
 
