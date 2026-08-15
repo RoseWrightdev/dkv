@@ -65,7 +65,7 @@ func BenchmarkEngine_Delete(b *testing.B) {
 	defer cleanup()
 	_ = eng.Set("key", []byte("val"))
 	for b.Loop() {
-		_ = eng.Delete("key")
+		_, _ = eng.Delete("key")
 	}
 }
 
@@ -126,7 +126,7 @@ func BenchmarkEngine_Delete_Parallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			_ = eng.Delete(keys[i%numKeys])
+			_, _ = eng.Delete(keys[i%numKeys])
 			i++
 		}
 	})

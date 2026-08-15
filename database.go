@@ -20,7 +20,7 @@ import (
 type Database interface {
 	Get(key kv.Key) ([]byte, bool)
 	Set(key kv.Key, value []byte) error
-	Delete(key kv.Key) error
+	Delete(key kv.Key) (bool, error)
 	Owner(key kv.Key) kv.NodeID
 	NodeID() kv.NodeID
 	Start()

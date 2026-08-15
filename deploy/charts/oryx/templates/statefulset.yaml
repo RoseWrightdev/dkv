@@ -23,6 +23,9 @@ spec:
             - name: grpc
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            - name: resp
+              containerPort: {{ .Values.resp.port }}
+              protocol: TCP
             - name: syncer
               containerPort: {{ .Values.gossip.port }}
               protocol: TCP
@@ -52,6 +55,8 @@ spec:
               value: "{{ .Values.gossip.port }}"
             - name: ORYX_GRPC_PORT
               value: "{{ .Values.service.port }}"
+            - name: ORYX_RESP_PORT
+              value: "{{ .Values.resp.port }}"
             - name: ORYX_REPLICATION_FACTOR
               value: "{{ .Values.engine.replicationFactor }}"
             - name: ORYX_SEED_NODES

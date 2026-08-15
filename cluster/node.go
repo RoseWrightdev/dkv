@@ -149,7 +149,7 @@ func (n *Node) Set(key kv.Key, value []byte) error {
 }
 
 // Delete marks a key as deleted locally or forwards through the gateway to replica nodes.
-func (n *Node) Delete(key kv.Key) error {
+func (n *Node) Delete(key kv.Key) (bool, error) {
 	if n.meshConfig.SingleNode {
 		return n.core.Delete(key)
 	}

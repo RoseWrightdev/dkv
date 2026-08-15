@@ -36,7 +36,7 @@ func TestEngineBasicOps(t *testing.T) {
 	assert.Equal(t, val, got)
 
 	// Delete and Get
-	err = eng.Delete(key)
+	_, err = eng.Delete(key)
 	assert.Nil(t, err)
 
 	_, ok = eng.Get(kv.Key(key))
@@ -84,7 +84,8 @@ func TestEngine_DeletePersistence(t *testing.T) {
 
 	key, val := "del-persist", []byte("data")
 	assert.NoError(t, eng.Set(key, val))
-	assert.NoError(t, eng.Delete(key))
+	_, err := eng.Delete(key)
+	assert.NoError(t, err)
 	eng.Stop()
 
 	// Recover
@@ -146,14 +147,15 @@ func TestEngine_TombstoneLWW(t *testing.T) {
 
 	ts2 := int64(2000)
 	eng.Clock().Update(ts2)
-	assert.NoError(t, eng.Delete(key))
+	_, err := eng.Delete(key)
+	assert.NoError(t, err)
 
 	_, ok := eng.Get(kv.Key(key))
 	assert.False(t, ok, "kv.Key should be deleted")
 
 	// Late-arriving Set with older timestamp
 	ts3 := int64(1500)
-	err := eng.ApplySet(&pb.SetRequest{
+	err = eng.ApplySet(&pb.SetRequest{
 		Key:       key,
 		Value:     []byte("zombie"),
 		Timestamp: ts3,

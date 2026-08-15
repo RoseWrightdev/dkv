@@ -12,6 +12,9 @@ service:
   type: ClusterIP
   port: 50051
 
+resp:
+  port: 6379
+
 gossip:
   port: 7946
 

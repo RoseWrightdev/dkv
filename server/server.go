@@ -60,10 +60,11 @@ func (s *server) Set(_ context.Context, in *pb.SetRequest) (*pb.SetResponse, err
 }
 
 func (s *server) Delete(_ context.Context, in *pb.DeleteRequest) (*pb.DeleteResponse, error) {
-	if err := s.eng.Delete(in.Key); err != nil {
-		return &pb.DeleteResponse{}, err
+	existed, err := s.eng.Delete(in.Key)
+	if err != nil {
+		return &pb.DeleteResponse{Existed: false}, err
 	}
-	return &pb.DeleteResponse{}, nil
+	return &pb.DeleteResponse{Existed: existed}, nil
 }
 
 func (s *server) Pull(_ context.Context, in *pb.PullRequest) (*pb.PullResponse, error) {

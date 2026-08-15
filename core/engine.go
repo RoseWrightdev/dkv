@@ -25,7 +25,7 @@ import (
 type Engine interface {
 	Get(key kv.Key) ([]byte, bool)
 	Set(key kv.Key, value []byte) error
-	Delete(key kv.Key) error
+	Delete(key kv.Key) (bool, error)
 	Start()
 	Stop()
 	ApplySet(req *pb.SetRequest) error
@@ -207,8 +207,14 @@ func (eng *engine) Set(key kv.Key, value []byte) error {
 	return err
 }
 
-func (eng *engine) Delete(key kv.Key) error {
+func (eng *engine) Delete(key kv.Key) (bool, error) {
 	hash := security.HashFunc(key)
+	hk := kv.HashKey(hash)
+	iv, ok := eng.hm.Load(key, hk)
+	if !ok || iv.Tombstone {
+		return false, nil
+	}
+
 	if eng.evt != nil {
 		eng.evt.PublishDelete(key, hash)
 	}
@@ -223,7 +229,7 @@ func (eng *engine) Delete(key kv.Key) error {
 	err := eng.sw.ApplyDelete(req)
 	req.Reset()
 	eng.pools.deleteRequests.Put(req)
-	return err
+	return true, err
 }
 
 func (eng *engine) Evict(key kv.Key, reason evict.Reason) error {

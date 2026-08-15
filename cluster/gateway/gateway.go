@@ -109,21 +109,23 @@ func (g *Gateway) Set(key kv.Key, value []byte, ts int64) error {
 }
 
 // Delete queries the hash ring for owners and executes parallel deletes to replicas.
-func (g *Gateway) Delete(key kv.Key, ts int64) error {
+func (g *Gateway) Delete(key kv.Key, ts int64) (bool, error) {
 	rf := g.getReplicationFactor()
 	owners := g.mesh.GetOwners(key, rf)
 	defer g.mesh.PutOwners(owners)
 
 	if len(owners) == 0 {
-		return fmt.Errorf("no replica owners found for key: %s", key)
+		return false, fmt.Errorf("no replica owners found for key: %s", key)
 	}
 
 	if len(owners) == 1 {
 		owner := owners[0]
 		if owner == g.meshConfig.NodeID {
-			return g.applyDeleteLocal(key, ts)
+			err := g.applyDeleteLocal(key, ts)
+			return true, err
 		}
-		return g.applyDeleteRemote(owner, key, ts)
+		err := g.applyDeleteRemote(owner, key, ts)
+		return true, err
 	}
 
 	var wg sync.WaitGroup
@@ -149,9 +151,9 @@ func (g *Gateway) Delete(key kv.Key, ts int64) error {
 	close(errChan)
 
 	if len(errChan) == len(owners) {
-		return fmt.Errorf("direct delete replication failed on all replicas: %v", <-errChan)
+		return false, fmt.Errorf("direct delete replication failed on all replicas: %v", <-errChan)
 	}
-	return nil
+	return true, nil
 }
 
 // Close gracefully closes all cached gRPC connections.

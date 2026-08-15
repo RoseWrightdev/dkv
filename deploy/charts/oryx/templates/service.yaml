@@ -11,5 +11,9 @@ spec:
       targetPort: grpc
       protocol: TCP
       name: grpc
+    - port: {{ .Values.resp.port }}
+      targetPort: resp
+      protocol: TCP
+      name: resp
   selector:
     app: {{ include "oryx.fullname" . }}

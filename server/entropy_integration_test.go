@@ -86,7 +86,7 @@ func TestSync(t *testing.T) {
 	assert.Equal(t, val, got)
 
 	// Test Deletion reconciliation
-	err = e1.Delete(key)
+	_, err = e1.Delete(key)
 	require.NoError(t, err)
 
 	time.Sleep(1500 * time.Millisecond)

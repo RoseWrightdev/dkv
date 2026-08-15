@@ -69,7 +69,9 @@ message DeleteRequest {
   string node_id = 3;
 }
 
-message DeleteResponse {}
+message DeleteResponse {
+  bool existed = 1;
+}
 
 message NodeMetadata {
   int32 grpc_port = 1;
