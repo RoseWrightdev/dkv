@@ -160,6 +160,13 @@ func (lru *LeastRecentlyUsed) Publish(key kv.Key, hash kv.HashKey) {
 		return
 	}
 
+	// Clone the key synchronously, before Publish returns, so the caller is
+	// free to recycle/overwrite the buffer it built key from (e.g. a gnet
+	// socket read buffer). The run() goroutine that eventually dequeues this
+	// message may not do so until long after Publish returns, by which point
+	// the original buffer can already have been reused (#79).
+	key = kv.Key(string([]byte(key)))
+
 	select {
 	case shard.ch <- lruMsg{key: key, hash: hash}:
 	default:
@@ -287,10 +294,10 @@ func (s *lruShard) seen(key string, hkey kv.HashKey) {
 	}
 
 	e := s.pool.Get().(*entry)
-	// Clone the key string before storing it in the LRU entry. The caller
-	// may pass an unsafe string aliasing a socket read buffer (#79); storing
-	// a direct alias would corrupt the eviction key when the buffer is recycled.
-	e.key = string([]byte(key))
+	// key is already an owned, cloned string by the time it reaches seen():
+	// Publish() clones it synchronously before enqueueing (#79), so it's safe
+	// to store the alias here without a second copy.
+	e.key = key
 	e.hash = hkey
 	e.expiry = expiry
 	s.cache[hkey] = e
