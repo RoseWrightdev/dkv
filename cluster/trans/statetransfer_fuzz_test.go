@@ -5,9 +5,9 @@ import (
 	"encoding/gob"
 	"testing"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/core/hashmap"
-	"github.com/rosewrightdev/dkv/core/snap"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/core/hashmap"
+	"github.com/rosewrightdev/oryx/core/snap"
 )
 
 type fuzzNopWriter struct{}
