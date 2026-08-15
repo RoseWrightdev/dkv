@@ -12,8 +12,8 @@ import (
 
 	pb "github.com/rosewrightdev/oryx/api"
 	"github.com/rosewrightdev/oryx/cluster/gateway"
-	"github.com/rosewrightdev/oryx/core/hashmap"
 	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/core/hashmap"
 	"github.com/rosewrightdev/oryx/core/writer"
 	"github.com/rosewrightdev/oryx/kv"
 	"google.golang.org/grpc/credentials"
@@ -127,6 +127,16 @@ func (s *Syncer) Stop() {
 
 func (s *Syncer) run() {
 	slog.Info("Syncer service started", "interval", s.interval)
+
+	// Reconcile immediately rather than waiting for the first tick, so a
+	// freshly joined node isn't divergent for a whole interval (#63).
+	select {
+	case <-s.stopChan:
+		return
+	default:
+		s.performSync()
+	}
+
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
@@ -272,14 +282,31 @@ func (s *Syncer) buildDeleteRequest(key string, val kv.Value) *pb.DeleteRequest 
 	return req
 }
 
+// excludeSelf removes self from members. Mesher.Members() includes the
+// caller, and syncing against self is a guaranteed no-op.
+func excludeSelf(members []mesh.PeerAddress, self mesh.PeerAddress) []mesh.PeerAddress {
+	peers := members[:0:0]
+	for _, addr := range members {
+		if addr != self {
+			peers = append(peers, addr)
+		}
+	}
+	return peers
+}
+
 func (s *Syncer) performSync() {
 	members := s.mesh.Members()
 	if len(members) == 0 {
 		return
 	}
 
+	peers := excludeSelf(members, s.mesh.AddressForNode(s.nodeID))
+	if len(peers) == 0 {
+		return
+	}
+
 	// #nosec G404
-	target := members[rand.Intn(len(members))]
+	target := peers[rand.Intn(len(peers))]
 	client, err := s.cc.Get(target)
 	if err != nil {
 		slog.Debug("Failed to connect to peer for Syncer sync", "peer", target, "error", err)

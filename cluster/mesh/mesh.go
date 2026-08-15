@@ -22,12 +22,6 @@ type Gossiper interface {
 	OnGossip(b []byte)
 }
 
-// StateExchanger defines the interface for exporting and importing cluster state.
-type StateExchanger interface {
-	ExportState() []byte
-	ImportState(state []byte)
-}
-
 // Mesher defines the interface for distributed node discovery and replication.
 type Mesher interface {
 	Broadcast(msg []byte)
@@ -53,6 +47,10 @@ type Config struct {
 	SingleNode             bool
 	FastTest               bool
 	ReplicationFailureMode ReplicationFailureMode
+	// JoinRetries bounds Start's memberlist.Join retries. Zero uses defaultJoinRetries (#93).
+	JoinRetries int
+	// JoinRetryBaseDelay is the initial backoff, doubling per retry. Zero uses defaultJoinRetryBaseDelay.
+	JoinRetryBaseDelay time.Duration
 }
 
 type ReplicationFailureMode string
@@ -62,10 +60,15 @@ const (
 	Lenient ReplicationFailureMode = "lenient"
 )
 
+const (
+	defaultJoinRetries        = 5
+	defaultJoinRetryBaseDelay = 500 * time.Millisecond
+	maxJoinRetryDelay         = 10 * time.Second
+)
+
 // Mesh provides the implementation for L7 Routing and P2P communication between nodes.
 type Mesh struct {
 	gossip      Gossiper
-	exchanger   StateExchanger
 	memberList  *memberlist.Memberlist
 	broadcasts  *memberlist.TransmitLimitedQueue
 	ring        *HashRing
@@ -76,13 +79,12 @@ type Mesh struct {
 }
 
 // NewMesh initializes a new Mesh instance.
-func NewMesh(gossip Gossiper, exchanger StateExchanger, config Config) (*Mesh, error) {
+func NewMesh(gossip Gossiper, config Config) (*Mesh, error) {
 	ring := NewHashRing()
 	m := &Mesh{
-		gossip:    gossip,
-		exchanger: exchanger,
-		config:    config,
-		ring:      ring,
+		gossip: gossip,
+		config: config,
+		ring:   ring,
 	}
 	m.localWeight.Store(defaultVnodes)
 
@@ -241,16 +243,38 @@ func (m *Mesh) NotifyUpdate(node *memberlist.Node) {
 	m.ring.UpdateNodeWeight(kv.NodeID(node.Name), weight)
 }
 
-// Start joins the node discovery cluster using configured seed nodes.
+// Start joins the cluster, retrying Join with backoff so a peer's DNS lag
+// during Kubernetes pod scheduling isn't treated as fatal (#93).
 func (m *Mesh) Start() error {
-	if len(m.config.SeedNodes) > 0 {
-		count, err := m.memberList.Join(m.config.SeedNodes)
-		if err != nil {
-			return fmt.Errorf("failed to join cluster: %w", err)
-		}
-		slog.Info("Joined cluster successfully", "seeds", len(m.config.SeedNodes), "joined", count)
+	if len(m.config.SeedNodes) == 0 {
+		return nil
 	}
-	return nil
+
+	retries := m.config.JoinRetries
+	if retries <= 0 {
+		retries = defaultJoinRetries
+	}
+	delay := m.config.JoinRetryBaseDelay
+	if delay <= 0 {
+		delay = defaultJoinRetryBaseDelay
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= retries; attempt++ {
+		count, err := m.memberList.Join(m.config.SeedNodes)
+		if err == nil {
+			slog.Info("Joined cluster successfully", "seeds", len(m.config.SeedNodes), "joined", count, "attempt", attempt)
+			return nil
+		}
+		lastErr = err
+
+		if attempt < retries {
+			slog.Warn("Failed to join cluster, retrying", "attempt", attempt, "retries", retries, "delay", delay, "error", err)
+			time.Sleep(delay)
+			delay = min(delay*2, maxJoinRetryDelay)
+		}
+	}
+	return fmt.Errorf("failed to join cluster after %d attempts: %w", retries, lastErr)
 }
 
 // Stop gracefully stops the gossip node membership service.
@@ -296,18 +320,14 @@ func (m *Mesh) GetBroadcasts(overhead, limit int) [][]byte {
 	return m.broadcasts.GetBroadcasts(overhead, limit)
 }
 
-// LocalState returns the local node state for anti-entropy.
+// LocalState no longer carries the database over gossip; entropy.Syncer
+// handles bulk sync via gRPC instead (#63).
 func (m *Mesh) LocalState(_ bool) []byte {
-	if m.stopping.Load() {
-		return nil
-	}
-	return m.exchanger.ExportState()
+	return nil
 }
 
-// MergeRemoteState merges incoming state from a peer.
-func (m *Mesh) MergeRemoteState(buf []byte, _ bool) {
-	m.exchanger.ImportState(buf)
-}
+// MergeRemoteState is a no-op for the same reason LocalState returns nil.
+func (m *Mesh) MergeRemoteState(_ []byte, _ bool) {}
 
 // NopMesh is a non-functional implementation of the Mesh interface used when distribution is disabled.
 type NopMesh struct{}

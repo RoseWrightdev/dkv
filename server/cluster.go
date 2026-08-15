@@ -6,12 +6,17 @@ import (
 	"net"
 	"path/filepath"
 	"sync/atomic"
+	"time"
 
 	"github.com/rosewrightdev/oryx"
 	"github.com/rosewrightdev/oryx/cluster/mesh"
 	"github.com/rosewrightdev/oryx/kv"
 	"google.golang.org/grpc/credentials"
 )
+
+// fastTestGossipInterval speeds up entropy.Syncer for tests; Default() leaves
+// it at 10s, far longer than test convergence windows poll for.
+const fastTestGossipInterval = 200 * time.Millisecond
 
 var nextBasePort int32 = 18000
 
@@ -87,7 +92,7 @@ func newCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 			Default()
 
 		if fastTest {
-			dbBuilder.FastTest()
+			dbBuilder.FastTest().SetGossipInterval(fastTestGossipInterval)
 		}
 
 		dbBuilder.SetNodeID(kv.NodeID(name)).
@@ -165,7 +170,7 @@ func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds cr
 		Default()
 
 	if fastTest {
-		dbBuilder.FastTest()
+		dbBuilder.FastTest().SetGossipInterval(fastTestGossipInterval)
 	}
 
 	dbBuilder.SetNodeID(kv.NodeID(name)).

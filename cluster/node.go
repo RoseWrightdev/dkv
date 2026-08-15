@@ -12,7 +12,6 @@ import (
 	"github.com/rosewrightdev/oryx/cluster/gossip"
 	"github.com/rosewrightdev/oryx/cluster/mesh"
 	"github.com/rosewrightdev/oryx/cluster/stats"
-	"github.com/rosewrightdev/oryx/cluster/trans"
 	"github.com/rosewrightdev/oryx/core"
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/rosewrightdev/oryx/security"
@@ -45,14 +44,12 @@ func NewNode(coreEngine core.Engine, config Config) (*Node, error) {
 		meshConfig: config.MeshConfig,
 	}
 
-	stateTransfer := trans.NewStateTransfer(coreEngine.HM(), coreEngine.Writer())
 	gossipService := gossip.NewGossip(coreEngine.Writer())
 
 	node.mesh = &mesh.NopMesh{}
 	if !config.MeshConfig.SingleNode {
 		meshObj, err := mesh.NewMesh(
 			gossipService,
-			stateTransfer,
 			config.MeshConfig,
 		)
 		if err != nil {

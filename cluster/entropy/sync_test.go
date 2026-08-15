@@ -8,8 +8,8 @@ import (
 
 	pb "github.com/rosewrightdev/oryx/api"
 	"github.com/rosewrightdev/oryx/cluster/gateway"
-	"github.com/rosewrightdev/oryx/core/hashmap"
 	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/core/hashmap"
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/rosewrightdev/oryx/security"
 	"github.com/stretchr/testify/assert"
@@ -185,14 +185,15 @@ func TestSyncer_ExtraEdgeCases(t *testing.T) {
 }
 
 type MockMesher struct {
-	AddrMap map[kv.NodeID]mesh.PeerAddress
-	Owners  []kv.NodeID
+	AddrMap    map[kv.NodeID]mesh.PeerAddress
+	Owners     []kv.NodeID
+	MemberList []mesh.PeerAddress
 }
 
 func (m *MockMesher) Broadcast(_ []byte) {}
 
 func (m *MockMesher) Members() []mesh.PeerAddress {
-	return nil
+	return m.MemberList
 }
 
 func (m *MockMesher) Owner(_ kv.Key) kv.NodeID {
@@ -221,3 +222,15 @@ func (m *MockMesher) Stop() error {
 }
 
 func (m *MockMesher) UpdateLocalWeight(_ int) {}
+
+// TestExcludeSelf pins that performSync never picks itself as a sync target,
+// which would always no-op and waste the attempt.
+func TestExcludeSelf(t *testing.T) {
+	a := mesh.PeerAddress("a:1")
+	b := mesh.PeerAddress("b:1")
+
+	assert.Equal(t, []mesh.PeerAddress{b}, excludeSelf([]mesh.PeerAddress{a, b}, a))
+	assert.Empty(t, excludeSelf([]mesh.PeerAddress{a}, a))
+	assert.Equal(t, []mesh.PeerAddress{a, b}, excludeSelf([]mesh.PeerAddress{a, b}, "c:1"))
+	assert.Empty(t, excludeSelf(nil, a))
+}
