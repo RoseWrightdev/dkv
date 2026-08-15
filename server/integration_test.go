@@ -157,11 +157,19 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		_ = os.RemoveAll(tmpDir)
 	}()
 
+	// Recovery now runs over entropy.Syncer's gRPC Pull (#63), which needs a
+	// real GrpcPort: Members() filters out any peer advertising GrpcPort 0.
+	reservePort := func() int {
+		lis, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+		port := lis.Addr().(*net.TCPAddr).Port
+		_ = lis.Close()
+		return port
+	}
+
 	// Setup Node 1
-	mlLis1, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	mlPort1 := mlLis1.Addr().(*net.TCPAddr).Port
-	_ = mlLis1.Close()
+	mlPort1 := reservePort()
+	grpcPort1 := reservePort()
 
 	eng1, err := oryx.NewDatabaseBuilder().
 		Default().
@@ -170,13 +178,16 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		SetSnpPath(filepath.Join(tmpDir, "n1-snp.gob")).
 		SetNodeID(kv.NodeID("node1")).
 		SetBindPort(mlPort1).
-		SetGrpcPort(0).
+		SetGrpcPort(grpcPort1).
 		SetInsecure().
 		SetReplicationFactor(2).
 		Build()
 	require.NoError(t, err)
 	eng1.Start()
 	defer eng1.Stop()
+
+	server1 := NewServer(eng1)
+	go func() { _ = server1.Run() }()
 
 	// Write data while Node 2 is DOWN (Write to Any)
 	for i := range 20 {
@@ -186,6 +197,8 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	}
 
 	// Setup Node 2 (joins Node 1)
+	grpcPort2 := reservePort()
+
 	eng2, err := oryx.NewDatabaseBuilder().
 		Default().
 		FastTest().
@@ -193,7 +206,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 		SetSnpPath(filepath.Join(tmpDir, "n2-snp.gob")).
 		SetNodeID(kv.NodeID("node2")).
 		SetBindPort(0).
-		SetGrpcPort(0).
+		SetGrpcPort(grpcPort2).
 		SetSeedNodes([]string{fmt.Sprintf("127.0.0.1:%d", mlPort1)}).
 		SetInsecure().
 		SetReplicationFactor(2).
@@ -201,6 +214,9 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	require.NoError(t, err)
 	eng2.Start()
 	defer eng2.Stop()
+
+	server2 := NewServer(eng2)
+	go func() { _ = server2.Run() }()
 
 	// Polling verification: Node 2 should recover all keys (since RF=2 and Nodes=2)
 	for i := range 20 {

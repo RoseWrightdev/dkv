@@ -14,10 +14,8 @@ import (
 
 type mockGossip struct{}
 
-func newMockGossip() *mockGossip            { return &mockGossip{} }
-func (mg *mockGossip) OnGossip(_ []byte)    {}
-func (mg *mockGossip) ExportState() []byte  { return []byte("") }
-func (mg *mockGossip) ImportState(_ []byte) {}
+func newMockGossip() *mockGossip         { return &mockGossip{} }
+func (mg *mockGossip) OnGossip(_ []byte) {}
 
 func TestClusterMembership(t *testing.T) {
 	// Start first node
@@ -27,7 +25,7 @@ func TestClusterMembership(t *testing.T) {
 		GrpcPort: 8001,
 	}
 	mg1 := newMockGossip()
-	s1, err := NewMesh(mg1, mg1, c1)
+	s1, err := NewMesh(mg1, c1)
 	require.NoError(t, err)
 	defer func() {
 		_ = s1.Stop()
@@ -41,7 +39,7 @@ func TestClusterMembership(t *testing.T) {
 		GrpcPort:  8002,
 	}
 	mg2 := newMockGossip()
-	s2, err := NewMesh(mg2, mg2, c2)
+	s2, err := NewMesh(mg2, c2)
 	require.NoError(t, err)
 	defer func() {
 		_ = s2.Stop()
@@ -78,7 +76,7 @@ func TestMesher_ConcurrentStop(t *testing.T) {
 	}
 
 	mg := newMockGossip()
-	s1, err := NewMesh(mg, mg, c1)
+	s1, err := NewMesh(mg, c1)
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -102,20 +100,6 @@ func TestMesher_ConcurrentStop(t *testing.T) {
 	wg.Wait()
 }
 
-type trackingExchanger struct {
-	imported []byte
-	exported bool
-}
-
-func (te *trackingExchanger) ExportState() []byte {
-	te.exported = true
-	return []byte("exported-state")
-}
-
-func (te *trackingExchanger) ImportState(b []byte) {
-	te.imported = b
-}
-
 type trackingGossiper struct {
 	received []byte
 }
@@ -130,10 +114,9 @@ func TestMesh_DelegateCallbacks(t *testing.T) {
 		BindPort: 7005,
 		GrpcPort: 8005,
 	}
-	ex := &trackingExchanger{}
 	gs := &trackingGossiper{}
 
-	m, err := NewMesh(gs, ex, cfg)
+	m, err := NewMesh(gs, cfg)
 	require.NoError(t, err)
 	defer func() {
 		_ = m.Stop()
@@ -151,14 +134,12 @@ func TestMesh_DelegateCallbacks(t *testing.T) {
 	m.NotifyMsg([]byte("gossip-payload"))
 	assert.Equal(t, []byte("gossip-payload"), gs.received)
 
-	// 3. LocalState
-	state := m.LocalState(false)
-	assert.Equal(t, []byte("exported-state"), state)
-	assert.True(t, ex.exported)
+	// 3. LocalState no longer carries the database (#63): it must stay nil so
+	// memberlist's push/pull gossip never serializes the full key space.
+	assert.Nil(t, m.LocalState(false))
 
-	// 4. MergeRemoteState
-	m.MergeRemoteState([]byte("incoming-state"), false)
-	assert.Equal(t, []byte("incoming-state"), ex.imported)
+	// 4. MergeRemoteState is a no-op for the same reason; it must not panic.
+	assert.NotPanics(t, func() { m.MergeRemoteState([]byte("incoming-state"), false) })
 
 	// 5. NotifyUpdate
 	m.NotifyUpdate(nil) // should be no-op
@@ -194,7 +175,7 @@ func TestMesh_ExtraEdgeCases(t *testing.T) {
 		BindPort: -100,
 	}
 	mg := newMockGossip()
-	m, err := NewMesh(mg, mg, cfg)
+	m, err := NewMesh(mg, cfg)
 	assert.Error(t, err)
 	assert.Nil(t, m)
 
@@ -202,13 +183,15 @@ func TestMesh_ExtraEdgeCases(t *testing.T) {
 	mNil := &Mesh{}
 	assert.NoError(t, mNil.Stop())
 
-	// 3. start join failure
+	// 3. start join failure. JoinRetries pinned to 1: retry/backoff is
+	// covered separately in TestMesh_StartRetriesJoinOnFailure.
 	cfgJoin := Config{
-		NodeID:    "test-join-fail",
-		BindPort:  7099,
-		SeedNodes: []string{"0.0.0.0:0"}, // invalid / unreachable seed
+		NodeID:      "test-join-fail",
+		BindPort:    7099,
+		SeedNodes:   []string{"0.0.0.0:0"}, // invalid / unreachable seed
+		JoinRetries: 1,
 	}
-	mJoin, err := NewMesh(mg, mg, cfgJoin)
+	mJoin, err := NewMesh(mg, cfgJoin)
 	require.NoError(t, err)
 	defer func() {
 		_ = mJoin.Stop()
@@ -220,4 +203,56 @@ func TestMesh_ExtraEdgeCases(t *testing.T) {
 	assert.Empty(t, mNil.AddressForNode("some-node"))
 	assert.Empty(t, mNil.Members())
 	assert.Nil(t, mNil.LocalState(false))
+}
+
+// TestMesh_StartRetriesJoinOnFailure covers #93: a peer's DNS record not
+// yet published when this node starts joining must not be treated as fatal.
+func TestMesh_StartRetriesJoinOnFailure(t *testing.T) {
+	mg := newMockGossip()
+
+	t.Run("succeeds once the seed becomes reachable mid-retry", func(t *testing.T) {
+		joiner, err := NewMesh(mg, Config{
+			NodeID:             "retry-joiner",
+			BindPort:           7101,
+			SeedNodes:          []string{"127.0.0.1:7100"},
+			JoinRetries:        6,
+			JoinRetryBaseDelay: 40 * time.Millisecond,
+		})
+		require.NoError(t, err)
+		defer func() { _ = joiner.Stop() }()
+
+		startErr := make(chan error, 1)
+		go func() { startErr <- joiner.Start() }()
+
+		// Let a couple of retries fail against the not-yet-listening seed
+		// before it comes up, mirroring a peer pod scheduled a beat late.
+		time.Sleep(90 * time.Millisecond)
+
+		seed, err := NewMesh(mg, Config{NodeID: "retry-seed", BindPort: 7100})
+		require.NoError(t, err)
+		defer func() { _ = seed.Stop() }()
+
+		select {
+		case err := <-startErr:
+			assert.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("Start did not return after the seed became reachable")
+		}
+	})
+
+	t.Run("gives up after exhausting retries against an unreachable seed", func(t *testing.T) {
+		m, err := NewMesh(mg, Config{
+			NodeID:             "retry-exhausted",
+			BindPort:           7102,
+			SeedNodes:          []string{"0.0.0.0:0"},
+			JoinRetries:        3,
+			JoinRetryBaseDelay: 10 * time.Millisecond,
+		})
+		require.NoError(t, err)
+		defer func() { _ = m.Stop() }()
+
+		err = m.Start()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "after 3 attempts")
+	})
 }
