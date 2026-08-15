@@ -1,3 +1,4 @@
+import time
 from typing import Optional
 
 import grpc
@@ -115,7 +116,11 @@ class OryxClient:
             timeout: Optional override for the request timeout in seconds.
         """
         t = timeout if timeout is not None else self.timeout
-        request = pb.SetRequest(key=key, value=value, timestamp=0, node_id="")
+        # Use the current wall-clock time in nanoseconds as the LWW timestamp.
+        # A hardcoded 0 causes every mutation to be treated as "older than any
+        # existing value", making all writes from this client silently dropped
+        # by the LWW merge function (#110).
+        request = pb.SetRequest(key=key, value=value, timestamp=time.time_ns(), node_id="")
         try:
             self.stub.Set(request, timeout=t)
         except grpc.RpcError as e:
@@ -132,7 +137,8 @@ class OryxClient:
             True if the key existed and was deleted, False otherwise.
         """
         t = timeout if timeout is not None else self.timeout
-        request = pb.DeleteRequest(key=key, timestamp=0, node_id="")
+        # Same LWW timestamp fix as in set(): use current nanosecond time (#110).
+        request = pb.DeleteRequest(key=key, timestamp=time.time_ns(), node_id="")
         try:
             response = self.stub.Delete(request, timeout=t)
             return response.existed
