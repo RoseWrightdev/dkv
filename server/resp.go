@@ -33,6 +33,13 @@ var (
 	_ = newGnetServer
 )
 
+const (
+	// maxArgs caps the number of RESP array arguments to prevent DoS memory exhaustion.
+	maxArgs = 1024
+	// maxInt is the maximum value of a signed integer on this platform.
+	maxInt = int(^uint(0) >> 1)
+)
+
 type connState struct {
 	argBuf [][]byte
 	outBuf []byte
@@ -248,6 +255,9 @@ func parseRESPFrame(data []byte, argBuf [][]byte) ([][]byte, int, bool) {
 	if err != nil || numArgs < 0 {
 		return nil, 0, false
 	}
+	if numArgs > maxArgs {
+		return nil, 0, false
+	}
 
 	read := idx + 1
 	argBuf = argBuf[:0]
@@ -292,7 +302,12 @@ func parseFastInt(b []byte) (int, error) {
 		if c < '0' || c > '9' {
 			return 0, errors.New("invalid digit")
 		}
-		n = n*10 + int(c-'0')
+		// Guard against integer overflow before accumulating.
+		digit := int(c - '0')
+		if n > (maxInt-digit)/10 {
+			return 0, errors.New("integer overflow")
+		}
+		n = n*10 + digit
 	}
 	return n, nil
 }
