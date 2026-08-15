@@ -33,10 +33,12 @@ type walSegment struct {
 	file         *os.File
 	path         string
 	syncInterval time.Duration
+	wg           sync.WaitGroup
 	mu           sync.Mutex
 }
 
 func (s *walSegment) backgroundSync() {
+	defer s.wg.Done()
 	ticker := time.NewTicker(s.syncInterval)
 	defer ticker.Stop()
 
@@ -102,6 +104,13 @@ func NewWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segme
 
 		if _, err := file.Seek(0, io.SeekEnd); err != nil {
 			_ = file.Close()
+			// Close all segments opened so far to avoid fd leaks (#87).
+			for j := 0; j < i; j++ {
+				if wal.segments[j] != nil {
+					wal.segments[j].cancel()
+					_ = wal.segments[j].file.Close()
+				}
+			}
 			return nil, err
 		}
 
@@ -124,6 +133,7 @@ func NewWal(dirPath string, syncInterval time.Duration, bufferSize uint32, segme
 // Start spawns background sync goroutines for all log segments.
 func (w *Wal) Start() {
 	for _, seg := range w.segments {
+		seg.wg.Add(1)
 		go seg.backgroundSync()
 	}
 }
@@ -131,8 +141,13 @@ func (w *Wal) Start() {
 // Stop flushes buffers and closes all segment files.
 func (w *Wal) Stop() {
 	for _, seg := range w.segments {
-		seg.mu.Lock()
+		// Cancel the context so backgroundSync exits its select loop.
 		seg.cancel()
+		// Wait for backgroundSync to finish before touching the file.
+		// Without this wait, a queued ticker event fires after we close
+		// the file, calling Flush/Sync on a closed descriptor (#88).
+		seg.wg.Wait()
+		seg.mu.Lock()
 		_ = seg.wrt.Flush()
 		_ = seg.file.Sync()
 		_ = seg.file.Close()
@@ -201,11 +216,13 @@ func (w *Wal) Publish(_ kv.Key, hash kv.HashKey, msg proto.Message) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
 
-	if _, err := seg.wrt.Write(header); err != nil {
-		return err
-	}
-
-	if _, err := seg.wrt.Write(data); err != nil {
+	// Combine the 4-byte length header and the payload into a single write.
+	// Two separate writes risk leaving a partial header in the buffer if the
+	// second write fails, permanently corrupting the WAL framing (#96).
+	combined := make([]byte, 4+dataLen)
+	binary.BigEndian.PutUint32(combined[:4], dataLenU)
+	copy(combined[4:], data)
+	if _, err := seg.wrt.Write(combined); err != nil {
 		return err
 	}
 
@@ -298,8 +315,13 @@ func (w *Wal) setResults(payload []byte, results map[kv.Key]kv.Value, resultsMu 
 		k := kv.Key(op.Set.Key)
 		existing, exists := results[k]
 		if !exists || op.Set.Timestamp > existing.Timestamp {
+			// Clone op.Set.Value: it points into the reusable payload buffer
+			// which is overwritten on the next iteration, corrupting any
+			// kv.Value.Data slice that aliases it (#60).
+			valCopy := make([]byte, len(op.Set.Value))
+			copy(valCopy, op.Set.Value)
 			results[k] = kv.Value{
-				Data:      op.Set.Value,
+				Data:      valCopy,
 				Timestamp: op.Set.Timestamp,
 				Tombstone: false,
 			}
