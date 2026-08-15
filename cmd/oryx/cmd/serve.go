@@ -19,26 +19,26 @@ import (
 )
 
 var (
-	serveNodeID            string
-	serveBindAddr          string
-	serveBindPort          int
-	serveGRPCPort          int
-	serveRESPPort          string
-	serveAdvertiseAddr     string
-	serveSeeds             string
-	serveReplicationFactor int
-	serveWALPath           string
-	serveSNPPath           string
-	serveWALInterval       string
-	serveSNPInterval       string
-	serveWALBufferSize     uint32
-	serveWALSegments       int
-	serveGossipInterval    string
-	serveSingleNode        bool
-	serveTLSCert           string
-	serveTLSKey            string
-	serveInsecure          bool
-	serveVolatile          bool
+	serveNodeID                 string
+	serveBindAddr               string
+	serveBindPort               int
+	serveGRPCPort               int
+	serveRESPPort               string
+	serveAdvertiseAddr          string
+	serveSeeds                  string
+	serveReplicationFactor      int
+	serveWALPath                string
+	serveSNPPath                string
+	serveWALInterval            string
+	serveSNPInterval            string
+	serveWALBufferSize          uint32
+	serveWALSegments            int
+	serveGossipInterval         string
+	serveSingleNode             bool
+	serveTLSCert                string
+	serveTLSKey                 string
+	serveInsecure               bool
+	serveVolatile               bool
 	serveReplicationFailureMode string
 )
 

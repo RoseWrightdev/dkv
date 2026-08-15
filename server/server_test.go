@@ -6,15 +6,30 @@ import (
 
 	pb "github.com/rosewrightdev/oryx/api"
 	"github.com/rosewrightdev/oryx/cluster/entropy"
-	"github.com/rosewrightdev/oryx/core/hashmap"
 	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/core/hashmap"
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type mockDatabase struct {
 	mock.Mock
+}
+
+func (m *mockDatabase) Creds() credentials.TransportCredentials {
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "Creds" {
+			args := m.Called()
+			if v := args.Get(0); v != nil {
+				return v.(credentials.TransportCredentials)
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 func (m *mockDatabase) Get(key kv.Key) ([]byte, bool) {
@@ -219,5 +234,13 @@ func TestServer_ExtraEdgeCases(t *testing.T) {
 	gServer.Stop()
 	gServer.HardStop()
 
+	me.AssertExpectations(t)
+}
+
+func TestServer_WithCredentials(t *testing.T) {
+	me := new(mockDatabase)
+	me.On("Creds").Return(insecure.NewCredentials()).Once()
+	srv := NewServer(me)
+	assert.NotNil(t, srv)
 	me.AssertExpectations(t)
 }

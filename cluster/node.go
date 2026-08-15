@@ -27,6 +27,7 @@ type Node struct {
 	gw         *gateway.Gateway
 	syncer     *entropy.Syncer
 	monitor    *stats.Monitor
+	creds      credentials.TransportCredentials
 	startOnce  sync.Once
 	stopOnce   sync.Once
 }
@@ -43,6 +44,7 @@ func NewNode(coreEngine core.Engine, config Config) (*Node, error) {
 	node := &Node{
 		core:       coreEngine,
 		meshConfig: config.MeshConfig,
+		creds:      config.Creds,
 	}
 
 	gossipService := gossip.NewGossip(coreEngine.Writer())
@@ -233,4 +235,9 @@ func (n *Node) GossipAddr() string {
 // Mesh returns the underlying cluster Mesher.
 func (n *Node) Mesh() mesh.Mesher {
 	return n.mesh
+}
+
+// Creds returns the transport credentials configured on the node.
+func (n *Node) Creds() credentials.TransportCredentials {
+	return n.creds
 }
