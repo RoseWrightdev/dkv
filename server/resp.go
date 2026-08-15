@@ -167,7 +167,13 @@ func (s *RESPServer) dispatchToBuffer(args [][]byte, out []byte) []byte {
 			if len(args) != 3 {
 				return append(out, respErrArgs...)
 			}
-			if err := s.eng.Set(kv.Key(stringFromBytes(args[1])), args[2]); err != nil {
+			// Clone both the key and value out of the gnet socket buffer before
+			// storing them. The buffer is reused by the event loop for new packets,
+			// which would silently corrupt any stored slices/strings that alias it.
+			key := string(args[1]) // safe heap copy
+			val := make([]byte, len(args[2]))
+			copy(val, args[2])
+			if err := s.eng.Set(kv.Key(key), val); err != nil {
 				return append(out, fmt.Sprintf("-ERR %v\r\n", err)...)
 			}
 			return append(out, respOK...)
@@ -178,7 +184,9 @@ func (s *RESPServer) dispatchToBuffer(args [][]byte, out []byte) []byte {
 			}
 			count := 0
 			for _, keyBytes := range args[1:] {
-				existed, err := s.eng.Delete(kv.Key(stringFromBytes(keyBytes)))
+				// Use string(keyBytes) for a safe heap-allocated copy so the
+				// key is not aliasing the volatile gnet socket buffer.
+				existed, err := s.eng.Delete(kv.Key(string(keyBytes)))
 				if err != nil {
 					return append(out, fmt.Sprintf("-ERR %v\r\n", err)...)
 				}
