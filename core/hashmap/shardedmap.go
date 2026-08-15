@@ -136,22 +136,29 @@ func getItemHash(hash kv.HashKey, val kv.Value) uint64 {
 
 // Store updates the value in the correct shard and maintains the rolling digest.
 func (sm *ShardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
+	// 1. Locate the correct shard and acquire its write lock.
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 
+	// 2. Identify the sub-bucket and load the active Radix Tree.
 	subIndex := (hash >> 16) % SubBucketCount
 	tree := shard.buckets[subIndex]
 
+	// 3. Query the tree to check if the key already exists.
+	// We use stringToBytes for zero-allocation lookup since Get is read-only.
 	rawVal, ok := tree.Get(stringToBytes(key))
 	if ok {
+		// Key exists: perform in-place update.
 		wrapper := rawVal.(*valWrapper)
 		existing := wrapper.ptr.Load()
 		if existing != nil {
+			// Remove the old item's hash from the rolling digests using XOR.
 			oldItemHash := existing.ItemHash
 			shard.subDigests[subIndex] ^= oldItemHash
 			shard.shardDigest ^= oldItemHash
 		}
+		// Add the new item's hash to the rolling digests.
 		val.ItemHash = getItemHash(hash, val)
 		shard.subDigests[subIndex] ^= val.ItemHash
 		shard.shardDigest ^= val.ItemHash
@@ -161,14 +168,16 @@ func (sm *ShardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
 		return
 	}
 
-	// New key insertion
+	// 4. Key does not exist: Perform new key insertion.
 	val.ItemHash = getItemHash(hash, val)
 	shard.subDigests[subIndex] ^= val.ItemHash
 	shard.shardDigest ^= val.ItemHash
 
+	// Wrap the value in an atomic pointer wrapper.
 	wrapper := &valWrapper{}
 	wrapper.ptr.Store(&val)
 
+	// Insert the key into the tree (triggers path copying) and publish the new tree root.
 	newTree, _, _ := tree.Insert([]byte(key), wrapper)
 	shard.buckets[subIndex] = newTree
 	shard.readBuckets[subIndex].Store(newTree)
@@ -177,29 +186,36 @@ func (sm *ShardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
 // StoreLWW updates the value in the correct shard using LWW conflict resolution under a single write lock.
 // It returns true if the value was stored, and false if ignored as stale.
 func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
+	// 1. Locate the correct shard and acquire its write lock.
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 
+	// 2. Identify the sub-bucket and load the active Radix Tree.
 	subIndex := (hash >> 16) % SubBucketCount
 	tree := shard.buckets[subIndex]
 
+	// 3. Query the tree to check if the key already exists.
 	rawVal, ok := tree.Get(stringToBytes(key))
 	if ok {
+		// Key exists: perform conflict resolution and update in-place.
 		wrapper := rawVal.(*valWrapper)
 		existing := wrapper.ptr.Load()
 		if existing != nil {
+			// LWW (Last-Write-Wins) conflict resolution.
 			if existing.Timestamp > val.Timestamp {
 				return false
 			}
 			if existing.Timestamp == val.Timestamp && existing.NodeID >= val.NodeID {
 				return false
 			}
+			// Remove the old item's hash from the rolling digests using XOR.
 			oldItemHash := existing.ItemHash
 			shard.subDigests[subIndex] ^= oldItemHash
 			shard.shardDigest ^= oldItemHash
 		}
 
+		// Add the new item's hash to the rolling digests.
 		val.ItemHash = getItemHash(hash, val)
 		shard.subDigests[subIndex] ^= val.ItemHash
 		shard.shardDigest ^= val.ItemHash
@@ -209,14 +225,16 @@ func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 		return true
 	}
 
-	// New key insertion
+	// 4. Key does not exist: Perform new key insertion.
 	val.ItemHash = getItemHash(hash, val)
 	shard.subDigests[subIndex] ^= val.ItemHash
 	shard.shardDigest ^= val.ItemHash
 
+	// Wrap the value in an atomic pointer wrapper.
 	wrapper := &valWrapper{}
 	wrapper.ptr.Store(&val)
 
+	// Insert the key into the tree (triggers path copying) and publish the new tree root.
 	newTree, _, _ := tree.Insert([]byte(key), wrapper)
 	shard.buckets[subIndex] = newTree
 	shard.readBuckets[subIndex].Store(newTree)
