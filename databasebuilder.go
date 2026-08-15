@@ -19,17 +19,19 @@ import (
 
 // DatabaseBuilder provides a fluent API for constructing and configuring a oryx database.
 type DatabaseBuilder struct {
-	evt            evict.Evictor
-	clock          clock.Clocker
-	creds          credentials.TransportCredentials
-	meshBuilder    *mesh.ConfigBuilder
-	walPath        string
-	snpPath        string
-	walInterval    time.Duration
-	snpInterval    time.Duration
-	walSegments    int
-	gossipInterval time.Duration
-	walBufferSize  uint32
+	evt             evict.Evictor
+	clock           clock.Clocker
+	creds           credentials.TransportCredentials
+	meshBuilder     *mesh.ConfigBuilder
+	walPath         string
+	snpPath         string
+	walInterval     time.Duration
+	snpInterval     time.Duration
+	walSegments     int
+	gossipInterval  time.Duration
+	walBufferSize   uint32
+	disableWal      bool
+	disableSnapshot bool
 }
 
 // NewDatabaseBuilder initializes a new DatabaseBuilder instance with default sub-builders.
@@ -74,6 +76,27 @@ func (eb *DatabaseBuilder) Default() *DatabaseBuilder {
 
 	eb.walPath = "data/wal"
 	eb.snpPath = "data/snapshot.bin"
+	return eb
+}
+
+// DisableWal disables the Write-Ahead Log for volatile in-memory operation.
+func (eb *DatabaseBuilder) DisableWal(disabled bool) *DatabaseBuilder {
+	eb.disableWal = disabled
+	return eb
+}
+
+// DisableSnapshot disables background binary snapshotting.
+func (eb *DatabaseBuilder) DisableSnapshot(disabled bool) *DatabaseBuilder {
+	eb.disableSnapshot = disabled
+	return eb
+}
+
+// VolatileMode enables 100% volatile in-memory operation with 0 disk I/O.
+func (eb *DatabaseBuilder) VolatileMode() *DatabaseBuilder {
+	eb.disableWal = true
+	eb.disableSnapshot = true
+	eb.walPath = "nop"
+	eb.snpPath = "nop"
 	return eb
 }
 
@@ -250,17 +273,19 @@ func (eb *DatabaseBuilder) Build() (Database, error) {
 	}
 
 	config := DatabaseConfig{
-		walPath:        eb.walPath,
-		snpPath:        eb.snpPath,
-		walInterval:    eb.walInterval,
-		snpInterval:    eb.snpInterval,
-		walBufferSize:  eb.walBufferSize,
-		walSegments:    eb.walSegments,
-		evt:            eb.evt,
-		clock:          eb.clock,
-		meshConfig:     meshConfig,
-		gossipInterval: eb.gossipInterval,
-		creds:          eb.creds,
+		walPath:         eb.walPath,
+		snpPath:         eb.snpPath,
+		walInterval:     eb.walInterval,
+		snpInterval:     eb.snpInterval,
+		walBufferSize:   eb.walBufferSize,
+		walSegments:     eb.walSegments,
+		evt:             eb.evt,
+		clock:           eb.clock,
+		meshConfig:      meshConfig,
+		gossipInterval:  eb.gossipInterval,
+		creds:           eb.creds,
+		disableWal:      eb.disableWal,
+		disableSnapshot: eb.disableSnapshot,
 	}
 
 	return newDatabase(config)
