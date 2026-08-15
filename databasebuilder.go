@@ -271,6 +271,12 @@ func (eb *DatabaseBuilder) Build() (Database, error) {
 
 	meshConfig := eb.meshBuilder.Build()
 
+	// Addr()/GossipAddr() panic on an empty BindAddr regardless of mode, so
+	// validate it here rather than at first use (#76).
+	if meshConfig.BindAddr == "" {
+		return nil, fmt.Errorf("required BindAddr is unset; configure it via SetBindAddr(addr string)")
+	}
+
 	if !meshConfig.SingleNode {
 		// GrpcPort 0 is allowed for dynamic allocation (e.g., in tests)
 		if isUnit(eb.gossipInterval) {
@@ -305,7 +311,14 @@ func isUnit[T comparable](val T) bool {
 	return zero == val
 }
 
+// nextAvailablePort asks the OS for a free port via :0 instead of probing a
+// fixed range, so concurrent callers no longer land on the same port (#75).
 func nextAvailablePort(addr string, startPort int) int {
+	if lis, err := net.Listen("tcp", fmt.Sprintf("%s:0", addr)); err == nil {
+		port := lis.Addr().(*net.TCPAddr).Port
+		_ = lis.Close()
+		return port
+	}
 	for port := startPort; port < startPort+1000; port++ {
 		lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", addr, port))
 		if err == nil {

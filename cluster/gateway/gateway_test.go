@@ -72,6 +72,8 @@ func (m *MockMesher) Stop() error {
 
 func (m *MockMesher) UpdateLocalWeight(_ int) {}
 
+func (m *MockMesher) LocalGossipPort() int { return 0 }
+
 // MockGrpcServer implements pb.OryxServiceServer
 type MockGrpcServer struct {
 	pb.UnimplementedOryxServiceServer
@@ -394,4 +396,3 @@ func TestGateway_StrictReplication(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "direct delete replication failed on replicas")
 }
-

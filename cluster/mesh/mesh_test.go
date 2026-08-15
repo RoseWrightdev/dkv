@@ -166,6 +166,21 @@ func TestNopMesh(t *testing.T) {
 	assert.Equal(t, PeerAddress(""), n.AddressForNode(kv.NodeID("node")))
 	assert.NoError(t, n.Start())
 	assert.NoError(t, n.Stop())
+	assert.Equal(t, 0, n.LocalGossipPort())
+}
+
+// TestMesh_LocalGossipPortResolvesDynamicPort pins #91: BindPort=0 must
+// resolve to the real bound port, not report 0.
+func TestMesh_LocalGossipPortResolvesDynamicPort(t *testing.T) {
+	mg := newMockGossip()
+	m, err := NewMesh(mg, Config{NodeID: "dynamic-port-node", BindPort: 0})
+	require.NoError(t, err)
+	defer func() { _ = m.Stop() }()
+
+	assert.Positive(t, m.LocalGossipPort(), "a real port must be resolved even though BindPort was 0")
+
+	// A Mesh not yet backed by a memberlist instance reports 0 rather than panicking.
+	assert.Zero(t, (&Mesh{}).LocalGossipPort())
 }
 
 func TestMesh_ExtraEdgeCases(t *testing.T) {

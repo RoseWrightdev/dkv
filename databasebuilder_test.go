@@ -2,6 +2,7 @@ package oryx
 
 import (
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,6 +46,7 @@ func TestEngineBuilder(t *testing.T) {
 	eb.SetClock(clock.NewClock()).SetInsecure()
 	eb.SingleNode()
 	eb.SetInsecure()
+	eb.SetBindAddr("127.0.0.1")
 
 	eng, err := eb.Build()
 	assert.Nil(t, err)
@@ -104,6 +106,45 @@ func TestEngineBuilder_Validation(t *testing.T) {
 		_, err := eb.Build()
 		assert.ErrorContains(t, err, "required eb.gossipInterval is unset")
 	})
+
+	// MissingBindAddr pins #76: Build() must reject an empty BindAddr rather
+	// than let it through to panic later in Addr()/GossipAddr(), in both modes.
+	t.Run("MissingBindAddr_SingleNode", func(t *testing.T) {
+		eb := NewDatabaseBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure().SingleNode()
+		eb.meshBuilder.SetBindAddr("")
+		_, err := eb.Build()
+		assert.ErrorContains(t, err, "required BindAddr is unset")
+	})
+
+	t.Run("MissingBindAddr_Distributed", func(t *testing.T) {
+		eb := NewDatabaseBuilder().Default().SetWalPath("tmp").SetSnpPath("tmp").SetClock(clock.NewClock()).SetInsecure()
+		eb.meshBuilder.SetBindAddr("")
+		_, err := eb.Build()
+		assert.ErrorContains(t, err, "required BindAddr is unset")
+	})
+}
+
+// TestNextAvailablePort_DistinctAcrossConcurrentCallers pins #75: scanning a
+// fixed range used to make concurrent callers deterministically collide.
+func TestNextAvailablePort_DistinctAcrossConcurrentCallers(t *testing.T) {
+	const n = 50
+	ports := make([]int, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := range n {
+		go func(i int) {
+			defer wg.Done()
+			ports[i] = nextAvailablePort("127.0.0.1", 7946)
+		}(i)
+	}
+	wg.Wait()
+
+	seen := make(map[int]bool, n)
+	for _, p := range ports {
+		assert.Positive(t, p)
+		seen[p] = true
+	}
+	assert.Greater(t, len(seen), n/2, "concurrent callers should overwhelmingly land on distinct ports")
 }
 
 func TestEngineBuilder_ProxyMethods(t *testing.T) {

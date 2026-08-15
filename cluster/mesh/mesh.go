@@ -33,6 +33,9 @@ type Mesher interface {
 	Start() error
 	Stop() error
 	UpdateLocalWeight(weight int)
+	// LocalGossipPort returns the actual port bound for gossip, which can
+	// differ from the configured port when it was 0 (dynamic allocation).
+	LocalGossipPort() int
 }
 
 // Config holds configuration for decentralized node discovery and membership.
@@ -192,6 +195,15 @@ func (m *Mesh) UpdateLocalWeight(weight int) {
 	if m.memberList != nil {
 		_ = m.memberList.UpdateNode(time.Second)
 	}
+}
+
+// LocalGossipPort returns the port memberlist actually bound to, resolving
+// what Config.BindPort=0 (dynamic allocation) becomes at runtime (#91).
+func (m *Mesh) LocalGossipPort() int {
+	if m.memberList == nil {
+		return 0
+	}
+	return int(m.memberList.LocalNode().Port)
 }
 
 // NotifyJoin is called by memberlist when a new node joins.
@@ -365,6 +377,9 @@ func (n *NopMesh) Stop() error { return nil }
 
 // UpdateLocalWeight does nothing in a NopMesh.
 func (n *NopMesh) UpdateLocalWeight(_ int) {}
+
+// LocalGossipPort always returns 0 in a NopMesh: nothing gossips.
+func (n *NopMesh) LocalGossipPort() int { return 0 }
 
 type broadcast struct {
 	msg []byte
