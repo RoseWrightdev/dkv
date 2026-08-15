@@ -79,8 +79,8 @@ func (s *RESPServer) OnBoot(eng gnet.Engine) gnet.Action {
 
 func (s *RESPServer) OnOpen(c gnet.Conn) (out []byte, action gnet.Action) {
 	c.SetContext(&connState{
-		argBuf: make([][]byte, 0, 8),
-		outBuf: make([]byte, 0, 16384),
+		argBuf: make([][]byte, 0, 32),
+		outBuf: make([]byte, 0, 65536),
 	})
 	return
 }
@@ -93,8 +93,8 @@ func (s *RESPServer) OnTraffic(c gnet.Conn) gnet.Action {
 	state, _ := c.Context().(*connState)
 	if state == nil {
 		state = &connState{
-			argBuf: make([][]byte, 0, 8),
-			outBuf: make([]byte, 0, 16384),
+			argBuf: make([][]byte, 0, 32),
+			outBuf: make([]byte, 0, 65536),
 		}
 		c.SetContext(state)
 	}
