@@ -195,13 +195,18 @@ func (n *Node) Addr() string {
 	return fmt.Sprintf("%s:%d", addr, n.meshConfig.GrpcPort)
 }
 
-// GossipAddr returns the formatted gossip bind address.
+// GossipAddr returns the formatted gossip bind address, using the actual
+// bound port rather than the configured one when BindPort was 0 (#91).
 func (n *Node) GossipAddr() string {
 	addr := n.meshConfig.BindAddr
 	if addr == "" {
 		panic("oryx: bind address not configured")
 	}
-	return fmt.Sprintf("%s:%d", addr, n.meshConfig.BindPort)
+	port := n.meshConfig.BindPort
+	if actual := n.mesh.LocalGossipPort(); actual > 0 {
+		port = actual
+	}
+	return fmt.Sprintf("%s:%d", addr, port)
 }
 
 // Mesh returns the underlying cluster Mesher.

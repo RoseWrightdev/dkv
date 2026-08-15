@@ -224,6 +224,8 @@ func (m *MockMesher) Stop() error {
 
 func (m *MockMesher) UpdateLocalWeight(_ int) {}
 
+func (m *MockMesher) LocalGossipPort() int { return 0 }
+
 // TestSyncer_PullResultsAreIndependent guards against reintroducing pooling
 // for Pull's results: they're gRPC response payload nothing ever Puts back (#66).
 func TestSyncer_PullResultsAreIndependent(t *testing.T) {
