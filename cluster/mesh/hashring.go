@@ -93,17 +93,13 @@ func (r *HashRing) rebuildVnodes() {
 		totalVnodes += w
 	}
 
+	// Lease scratch space for the new ring. An undersized lease is dropped for
+	// the GC rather than returned to the pool: putting it back would leave the
+	// pool holding slices that can never satisfy a grown ring, so every later
+	// Get would hand one out, fail the capacity check, and allocate anyway.
 	var newVnodes []vnode
-	var sPtr *[]vnode
-	if v := vnodeSlicePool.Get(); v != nil {
-		sPtr = v.(*[]vnode)
-		if cap(*sPtr) >= totalVnodes {
-			newVnodes = (*sPtr)[:totalVnodes]
-		} else {
-			vnodeSlicePool.Put(sPtr)
-			sPtr = nil
-			newVnodes = make([]vnode, totalVnodes)
-		}
+	if sPtr, ok := vnodeSlicePool.Get().(*[]vnode); ok && cap(*sPtr) >= totalVnodes {
+		newVnodes = (*sPtr)[:totalVnodes]
 	} else {
 		newVnodes = make([]vnode, totalVnodes)
 	}
@@ -133,16 +129,15 @@ func (r *HashRing) rebuildVnodes() {
 
 	oldVnodes := r.vnodes
 	r.vnodes = newVnodes
+
+	// Recycle the ring we just retired, never the one we just published.
+	// Readers only touch r.vnodes under the read lock and this runs under the
+	// write lock, so the retired array has no live observers once we return;
+	// newVnodes, by contrast, is the live ring and must never enter the pool.
+	// Exactly one slice goes in per rebuild, so the pool cannot accumulate.
 	if cap(oldVnodes) > 0 {
-		oldVnodes = oldVnodes[:0]
-		if sPtr != nil {
-			*sPtr = oldVnodes
-			vnodeSlicePool.Put(sPtr)
-		} else {
-			heapPtr := new([]vnode)
-			*heapPtr = oldVnodes
-			vnodeSlicePool.Put(heapPtr)
-		}
+		recycled := oldVnodes[:0]
+		vnodeSlicePool.Put(&recycled)
 	}
 }
 
@@ -235,6 +230,19 @@ func (r *HashRing) GetOwners(key kv.Key, replicationFactor int) []kv.NodeID {
 		return nil
 	}
 
+	// The ring can hold fewer physical nodes than the configured replication
+	// factor — routinely so during startup, when a 2-node cluster is still
+	// forming under replicationFactor=3. Without this cap the walk below can
+	// never reach replicationFactor and instead scans every virtual node on the
+	// ring, running thousands of slices.Contains checks on every read and write.
+	target := replicationFactor
+	if target > len(r.nodeList) {
+		target = len(r.nodeList)
+	}
+	if target <= 0 {
+		return nil
+	}
+
 	hash := security.HashFuncSecure(key)
 
 	// Locate the starting index clockwise from the key's hash with binary search
@@ -242,10 +250,10 @@ func (r *HashRing) GetOwners(key kv.Key, replicationFactor int) []kv.NodeID {
 		return r.vnodes[i].hash >= hash
 	})
 
-	owners := make([]kv.NodeID, 0, replicationFactor)
+	owners := make([]kv.NodeID, 0, target)
 
 	// Walk the circle clockwise modulo the ring length to gather N distinct physical nodes
-	for i := 0; i < len(r.vnodes) && len(owners) < replicationFactor; i++ {
+	for i := 0; i < len(r.vnodes) && len(owners) < target; i++ {
 		vnodeIdx := (idx + i) % len(r.vnodes)
 		node := r.nodeList[r.vnodes[vnodeIdx].nodeIdx]
 
