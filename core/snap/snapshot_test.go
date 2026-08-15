@@ -3,11 +3,13 @@ package snap
 import (
 	"encoding/gob"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -102,6 +104,46 @@ func TestPeriodicSnapshots(t *testing.T) {
 
 	_, err = os.Stat(mockSnpPath)
 	assert.NoError(t, err, "Snapshot file should have been created by background task")
+}
+
+// TestSnapshotter_NoBackToBackDuringSlowCreate pins #70: the gap between
+// releasing Create and the next one starting should be close to interval.
+func TestSnapshotter_NoBackToBackDuringSlowCreate(t *testing.T) {
+	defer cleanupSnp(t)
+
+	mw := &mockWal{}
+	starts := make(chan struct{}, 8)
+	release := make(chan struct{})
+	var calls atomic.Int32
+	callBack := func(_ *gob.Encoder) error {
+		starts <- struct{}{}
+		if calls.Add(1) == 1 {
+			<-release // block only the first call
+		}
+		return nil
+	}
+
+	interval := 30 * time.Millisecond
+	snp, err := NewSnapshotter(mockSnpPath, interval, mw, callBack)
+	require.NoError(t, err)
+
+	snp.Start()
+	defer snp.Stop()
+
+	<-starts // first Create started
+
+	// Let several ticks elapse while still blocked. The buggy queueSnapShot
+	// would let one land in the buffered channel during this window.
+	time.Sleep(interval * 5)
+
+	releasedAt := time.Now()
+	close(release)
+
+	<-starts // second Create started
+	gap := time.Since(releasedAt)
+
+	assert.Greater(t, gap, interval/2,
+		"second snapshot started too soon after the first finished; a tick must have been queued during the blocked Create (#70)")
 }
 
 type errorWal struct {
