@@ -134,6 +134,29 @@ func getItemHash(hash kv.HashKey, val kv.Value) uint64 {
 	return h
 }
 
+// lwwWins reports whether incoming should replace existing under last-write-wins.
+//
+// Ordering is the tuple (Timestamp, NodeID, ItemHash). The first two are the
+// usual LWW keys; ItemHash breaks the remaining tie so that two writes carrying
+// the same timestamp and the same NodeID — rapid consecutive writes from one
+// node, or any client that supplies its own timestamp — still resolve instead
+// of the newer one being unconditionally discarded.
+//
+// The third key has to be a deterministic function of the value rather than
+// arrival order. Preferring whichever write landed last would let two replicas
+// that saw the pair in different orders keep accepting each other's version
+// forever; ranking by ItemHash makes every replica pick the same winner. Two
+// byte-identical writes compare equal and are correctly a no-op.
+func lwwWins(existing, incoming kv.Value) bool {
+	if existing.Timestamp != incoming.Timestamp {
+		return incoming.Timestamp > existing.Timestamp
+	}
+	if existing.NodeID != incoming.NodeID {
+		return incoming.NodeID > existing.NodeID
+	}
+	return incoming.ItemHash > existing.ItemHash
+}
+
 // Store updates the value in the correct shard and maintains the rolling digest.
 func (sm *ShardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
 	// 1. Locate the correct shard and acquire its write lock.
@@ -195,6 +218,10 @@ func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 	subIndex := (hash >> 16) % SubBucketCount
 	tree := shard.buckets[subIndex]
 
+	// The item hash doubles as the final LWW tie-breaker, so compute it before
+	// conflict resolution rather than after.
+	val.ItemHash = getItemHash(hash, val)
+
 	// 3. Query the tree to check if the key already exists.
 	rawVal, ok := tree.Get(stringToBytes(key))
 	if ok {
@@ -203,10 +230,7 @@ func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 		existing := wrapper.ptr.Load()
 		if existing != nil {
 			// LWW (Last-Write-Wins) conflict resolution.
-			if existing.Timestamp > val.Timestamp {
-				return false
-			}
-			if existing.Timestamp == val.Timestamp && existing.NodeID >= val.NodeID {
+			if !lwwWins(*existing, val) {
 				return false
 			}
 			// Remove the old item's hash from the rolling digests using XOR.
@@ -216,7 +240,6 @@ func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 		}
 
 		// Add the new item's hash to the rolling digests.
-		val.ItemHash = getItemHash(hash, val)
 		shard.subDigests[subIndex] ^= val.ItemHash
 		shard.shardDigest ^= val.ItemHash
 
@@ -226,7 +249,6 @@ func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 	}
 
 	// 4. Key does not exist: Perform new key insertion.
-	val.ItemHash = getItemHash(hash, val)
 	shard.subDigests[subIndex] ^= val.ItemHash
 	shard.shardDigest ^= val.ItemHash
 
@@ -288,36 +310,67 @@ func (sm *ShardedMap) RootDigest() RootDigest {
 }
 
 // FillDigests populates the provided map with all shard IDs and their current sub-bucket hashes.
+//
+// Entries that are missing or too short are allocated. Callers that recycle a
+// destination map still avoid the allocation, but a plain make(map[...]) no
+// longer copies into nil slices and comes back silently empty.
 func (sm *ShardedMap) FillDigests(dst map[ShardID]ShardDigest) {
+	if dst == nil {
+		return
+	}
 	for i := range ShardCount {
+		id := ShardID(i)
+		buf := dst[id]
+		if len(buf) < SubBucketCount {
+			buf = make(ShardDigest, SubBucketCount)
+			dst[id] = buf
+		}
+
 		shard := sm[i]
 		shard.mu.RLock()
-		copy(dst[ShardID(i)], shard.subDigests[:])
+		copy(buf, shard.subDigests[:])
 		shard.mu.RUnlock()
 	}
 }
 
 // Range invokes the callback for each key-value pair in the map.
-// It locks shards one by one during iteration to minimize write contention.
+//
+// The callback runs without any shard lock held. Range's callers encode each
+// entry to disk (snapshotting) or to the network (state transfer), so holding
+// shard.mu across those calls blocked every Store, StoreLWW and Delete on the
+// shard for the full duration of that I/O. Instead each shard's radix tree
+// roots are copied under a momentary read lock; the trees are persistent and
+// immutable, so iterating the copies afterwards is safe and lock-free.
+//
+// The trade-off is that Range is weakly consistent, which it already was across
+// shard boundaries: a key updated after its shard's roots were copied may be
+// reported with either the old or the new value, and a key inserted or deleted
+// afterwards may be missed or still reported. Callers reconcile snapshots
+// against the WAL, which is what makes that acceptable here.
 func (sm *ShardedMap) Range(callback func(key kv.Key, val kv.Value) bool) {
+	var roots [SubBucketCount]*iradix.Tree
+
 	for i := range ShardCount {
 		shard := sm[i]
 		shard.mu.RLock()
+		copy(roots[:], shard.buckets[:])
+		shard.mu.RUnlock()
+
 		for b := range SubBucketCount {
-			tree := shard.buckets[b]
-			it := tree.Root().Iterator()
+			if roots[b] == nil {
+				continue
+			}
+			it := roots[b].Root().Iterator()
 			for k, v, ok := it.Next(); ok; k, v, ok = it.Next() {
 				wrapper := v.(*valWrapper)
 				val := wrapper.ptr.Load()
 				if val != nil {
 					if !callback(kv.Key(k), *val) {
-						shard.mu.RUnlock()
 						return
 					}
 				}
 			}
 		}
-		shard.mu.RUnlock()
 	}
 }
 
