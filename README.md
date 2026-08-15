@@ -38,9 +38,9 @@ Direct storage core comparison (`go test -bench=BenchmarkComparative_Get_Paralle
 
 | Database Engine | Architecture | Throughput (RPS) | Latency (ns/op) | Memory/op | Allocs/op |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **oryx Database** | **Sharded Memory + WAL Disk** | **64,557,779 ops/s** | **15.49 ns** | **0 B** | **0 allocs** |
-| **CockroachDB Pebble** | Production Go KV Engine | **6,016,847 ops/s** | 166.20 ns | 8 B | 1 allocs |
-| **NutsDB** | Active Go In-Memory + WAL DB | **3,100,775 ops/s** | 322.50 ns | 272 B | 7 allocs |
+| **oryx Database** | **Lock-Free Atomic Core + WAL** | **214,141,518 ops/s** | **6.08 ns** | **0 B** | **0 allocs** |
+| **CockroachDB Pebble** | Production Go KV Engine | **6,269,592 ops/s** | 159.50 ns | 8 B | 1 allocs |
+| **NutsDB** | Active Go In-Memory + WAL DB | **3,756,574 ops/s** | 266.20 ns | 272 B | 7 allocs |
 
 ## Quick Start
 

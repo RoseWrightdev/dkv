@@ -4,6 +4,7 @@ package hashmap
 import (
 	"math/bits"
 	"sync"
+	"sync/atomic"
 
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/rosewrightdev/oryx/security"
@@ -30,6 +31,7 @@ const ShardCount = 128
 // shard is a single thread-safe bucket within the ShardedMap.
 type shard struct {
 	buckets     [SubBucketCount]map[kv.Key]kv.Value
+	readBuckets [SubBucketCount]atomic.Pointer[map[kv.Key]kv.Value]
 	subDigests  [SubBucketCount]Digest
 	shardDigest Digest
 	mu          sync.RWMutex
@@ -44,7 +46,9 @@ func NewShardedMap() *ShardedMap {
 	for i := range ShardCount {
 		s := &shard{}
 		for b := range SubBucketCount {
-			s.buckets[b] = make(map[kv.Key]kv.Value)
+			m := make(map[kv.Key]kv.Value)
+			s.buckets[b] = m
+			s.readBuckets[b].Store(&m)
 		}
 		sm[i] = s
 	}
@@ -59,20 +63,24 @@ func (sm *ShardedMap) getShardByHash(hash kv.HashKey) *shard {
 func (sm *ShardedMap) Load(key kv.Key, hash kv.HashKey) (kv.Value, bool) {
 	shard := sm.getShardByHash(hash)
 	subIndex := (hash >> 16) % SubBucketCount
-	shard.mu.RLock()
-	val, ok := shard.buckets[subIndex][key]
-	shard.mu.RUnlock()
+	mPtr := shard.readBuckets[subIndex].Load()
+	if mPtr == nil {
+		return kv.Value{}, false
+	}
+	val, ok := (*mPtr)[key]
 	val.ItemHash = 0 // Clear internal-only ItemHash to preserve DeepEqual assertions in tests
 	return val, ok
 }
 
-// LoadData retrieves just the raw byte payload from the shard, skipping struct mutation on the read path.
+// LoadData retrieves just the raw byte payload from the shard in a 100% lock-free read path.
 func (sm *ShardedMap) LoadData(key kv.Key, hash kv.HashKey) ([]byte, bool) {
 	shard := sm.getShardByHash(hash)
 	subIndex := (hash >> 16) % SubBucketCount
-	shard.mu.RLock()
-	val, ok := shard.buckets[subIndex][key]
-	shard.mu.RUnlock()
+	mPtr := shard.readBuckets[subIndex].Load()
+	if mPtr == nil {
+		return nil, false
+	}
+	val, ok := (*mPtr)[key]
 	if !ok || val.Tombstone {
 		return nil, false
 	}
@@ -98,6 +106,15 @@ func getItemHash(hash kv.HashKey, val kv.Value) uint64 {
 	return h
 }
 
+func (s *shard) publishReadBucket(subIndex kv.HashKey) {
+	src := s.buckets[subIndex]
+	cp := make(map[kv.Key]kv.Value, len(src))
+	for k, v := range src {
+		cp[k] = v
+	}
+	s.readBuckets[subIndex].Store(&cp)
+}
+
 // Store updates the value in the correct shard and maintains the rolling digest.
 func (sm *ShardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
 	shard := sm.getShardByHash(hash)
@@ -116,6 +133,7 @@ func (sm *ShardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
 	shard.subDigests[subIndex] ^= val.ItemHash
 	shard.shardDigest ^= val.ItemHash
 	shard.buckets[subIndex][key] = val
+	shard.publishReadBucket(subIndex)
 }
 
 // StoreLWW updates the value in the correct shard using LWW conflict resolution under a single write lock.
@@ -143,6 +161,7 @@ func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 	shard.subDigests[subIndex] ^= val.ItemHash
 	shard.shardDigest ^= val.ItemHash
 	shard.buckets[subIndex][key] = val
+	shard.publishReadBucket(subIndex)
 	return true
 }
 
@@ -158,6 +177,7 @@ func (sm *ShardedMap) Delete(key kv.Key, hash kv.HashKey) {
 		shard.subDigests[subIndex] ^= itemHash
 		shard.shardDigest ^= itemHash
 		delete(shard.buckets[subIndex], key)
+		shard.publishReadBucket(subIndex)
 	}
 }
 
