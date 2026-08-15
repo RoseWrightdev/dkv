@@ -17,7 +17,7 @@ oryx is a partitioned, state-replicated key-value database implemented in Go. In
 
 ## Performance & Benchmarks
 
-All benchmarks conducted locally on an Apple M4 Max (14 cores, 64GB RAM, Go 1.26.3) and LinuxKit Kernel 6.12.
+All benchmarks conducted locally on an Apple M4 Max (14 cores, 64GB RAM, Go 1.26.6) and LinuxKit Kernel 6.12.
 
 ### 1. Storage Core Benchmark vs Production Go DBs
 ```bash
