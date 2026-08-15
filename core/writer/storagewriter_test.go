@@ -7,6 +7,7 @@ import (
 	pb "github.com/rosewrightdev/oryx/api"
 	"github.com/rosewrightdev/oryx/core/hashmap"
 	"github.com/rosewrightdev/oryx/kv"
+	"github.com/rosewrightdev/oryx/security"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )
@@ -110,4 +111,43 @@ func TestStorageWriter_All(t *testing.T) {
 		NodeId:    "node-1",
 	}
 	assert.NoError(t, sw.ApplyDelete(reqStaleDel))
+}
+
+// TestStorageWriter_ApplySetCopiesValue pins the invariant that a stored record
+// never aliases the caller's buffer. Callers lease pb.SetRequest from a
+// sync.Pool and reuse the value slice, so retaining it would let a later write
+// mutate an already-stored value.
+func TestStorageWriter_ApplySetCopiesValue(t *testing.T) {
+	hm := hashmap.NewShardedMap()
+	sw := NewStorageWriter(hm, &mockStorageWal{}, &mockStorageClock{})
+
+	buf := []byte("original")
+	req := &pb.SetRequest{Key: "k", Value: buf, Timestamp: 100, NodeId: "node-1"}
+	assert.NoError(t, sw.ApplySet(req))
+
+	// Simulate the pooled request being reset and its buffer reused in place.
+	req.Reset()
+	copy(buf, []byte("CORRUPTED"))
+
+	stored, ok := hm.Load("k", security.HashFunc("k"))
+	assert.True(t, ok)
+	assert.Equal(t, []byte("original"), stored.Data)
+}
+
+// TestStorageWriter_ApplySetPreservesNilAndEmpty checks the copy does not
+// conflate an unset value with an explicitly empty one.
+func TestStorageWriter_ApplySetPreservesNilAndEmpty(t *testing.T) {
+	hm := hashmap.NewShardedMap()
+	sw := NewStorageWriter(hm, &mockStorageWal{}, &mockStorageClock{})
+
+	assert.NoError(t, sw.ApplySet(&pb.SetRequest{Key: "nil", Timestamp: 1, NodeId: "n"}))
+	stored, ok := hm.Load("nil", security.HashFunc("nil"))
+	assert.True(t, ok)
+	assert.Nil(t, stored.Data)
+
+	assert.NoError(t, sw.ApplySet(&pb.SetRequest{Key: "empty", Value: []byte{}, Timestamp: 1, NodeId: "n"}))
+	stored, ok = hm.Load("empty", security.HashFunc("empty"))
+	assert.True(t, ok)
+	assert.NotNil(t, stored.Data)
+	assert.Empty(t, stored.Data)
 }
