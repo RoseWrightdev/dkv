@@ -66,6 +66,19 @@ func (sm *ShardedMap) Load(key kv.Key, hash kv.HashKey) (kv.Value, bool) {
 	return val, ok
 }
 
+// LoadData retrieves just the raw byte payload from the shard, skipping struct mutation on the read path.
+func (sm *ShardedMap) LoadData(key kv.Key, hash kv.HashKey) ([]byte, bool) {
+	shard := sm.getShardByHash(hash)
+	subIndex := (hash >> 16) % SubBucketCount
+	shard.mu.RLock()
+	val, ok := shard.buckets[subIndex][key]
+	shard.mu.RUnlock()
+	if !ok || val.Tombstone {
+		return nil, false
+	}
+	return val.Data, true
+}
+
 func getItemHash(hash kv.HashKey, val kv.Value) uint64 {
 	// #nosec G115
 	h := hash ^ bits.RotateLeft64(uint64(val.Timestamp), 17)

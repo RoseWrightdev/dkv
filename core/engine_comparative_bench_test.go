@@ -1,0 +1,124 @@
+package core_test
+
+import (
+	"fmt"
+	"math/rand"
+	"testing"
+
+	pebble "github.com/cockroachdb/pebble"
+	nutsdb "github.com/nutsdb/nutsdb"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/kv"
+)
+
+func BenchmarkComparative_Get_Parallel(b *testing.B) {
+	keys := make([]kv.Key, 1000)
+	for i := range keys {
+		keys[i] = kv.Key(fmt.Sprintf("key_%d", i))
+	}
+
+	// 1. Setup Oryx Database (Sharded Core + WAL)
+	oryxEng, err := oryx.NewDatabaseBuilder().Default().
+		SetWalPath(b.TempDir() + "/wal").
+		SetSnpPath(b.TempDir() + "/snapshot.bin").
+		SetInsecure().
+		SingleNode().
+		Build()
+	if err != nil {
+		b.Fatalf("failed to build Oryx DB: %v", err)
+	}
+	oryxEng.Start()
+	defer oryxEng.Stop()
+
+	for i := range keys {
+		_ = oryxEng.Set(keys[i], []byte(fmt.Sprintf("val_%d", i)))
+	}
+
+	// 2. Setup NutsDB (Actively Maintained Go In-Memory + WAL DB)
+	nutsOpts := nutsdb.DefaultOptions
+	nutsOpts.Dir = b.TempDir() + "/nuts"
+	nutsDB, err := nutsdb.Open(nutsOpts)
+	if err != nil {
+		b.Fatalf("failed to open NutsDB: %v", err)
+	}
+	defer nutsDB.Close()
+
+	_ = nutsDB.Update(func(tx *nutsdb.Tx) error {
+		return tx.NewBucket(nutsdb.DataStructureBTree, "bucket")
+	})
+
+	err = nutsDB.Update(func(tx *nutsdb.Tx) error {
+		for i := range keys {
+			if err := tx.Put("bucket", []byte(keys[i]), []byte(fmt.Sprintf("val_%d", i)), 0); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		b.Fatalf("failed to populate NutsDB: %v", err)
+	}
+
+	// 3. Setup CockroachDB Pebble (Actively Maintained Go Engine)
+	pebbleDB, err := pebble.Open(b.TempDir()+"/pebble", &pebble.Options{})
+	if err != nil {
+		b.Fatalf("failed to open Pebble: %v", err)
+	}
+	defer pebbleDB.Close()
+
+	batch := pebbleDB.NewBatch()
+	for i := range keys {
+		if err := batch.Set([]byte(keys[i]), []byte(fmt.Sprintf("val_%d", i)), pebble.Sync); err != nil {
+			b.Fatalf("failed to set pebble batch: %v", err)
+		}
+	}
+	if err := batch.Commit(pebble.Sync); err != nil {
+		b.Fatalf("failed to commit pebble batch: %v", err)
+	}
+
+	// Benchmark Oryx
+	b.Run("Oryx_Database", func(b *testing.B) {
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			idx := rand.Intn(1000)
+			for pb.Next() {
+				k := keys[idx%1000]
+				_, _ = oryxEng.Get(k)
+				idx++
+			}
+		})
+	})
+
+	// Benchmark NutsDB
+	b.Run("NutsDB_Active_GoDB", func(b *testing.B) {
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			idx := rand.Intn(1000)
+			for pb.Next() {
+				k := []byte(keys[idx%1000])
+				_ = nutsDB.View(func(tx *nutsdb.Tx) error {
+					_, err := tx.Get("bucket", k)
+					return err
+				})
+				idx++
+			}
+		})
+	})
+
+	// Benchmark CockroachDB Pebble
+	b.Run("CockroachDB_Pebble_GoDB", func(b *testing.B) {
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			idx := rand.Intn(1000)
+			for pb.Next() {
+				k := []byte(keys[idx%1000])
+				val, closer, err := pebbleDB.Get(k)
+				if err == nil {
+					_ = val
+					_ = closer.Close()
+				}
+				idx++
+			}
+		})
+	})
+}

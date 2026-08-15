@@ -61,9 +61,56 @@ func BenchmarkServer_Get_gRPC(b *testing.B) {
 	_ = eng.Set("key", []byte("val"))
 
 	b.ResetTimer()
+	b.ReportAllocs()
 	for b.Loop() {
 		_, _, _ = client.Get("key")
 	}
+}
+
+func BenchmarkServer_Set_gRPC(b *testing.B) {
+	eng, cleanup := setupBenchmarkDatabase(b, false)
+	defer cleanup()
+	s := NewServer(eng)
+	go func() {
+		_ = s.Run()
+	}()
+	defer s.Stop()
+
+	client, _ := gateway.NewInsecureClient(eng.Addr(), time.Second)
+	defer func() {
+		_ = client.Close()
+	}()
+	val := []byte("val")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = client.Set("key", val)
+	}
+}
+
+func BenchmarkServer_Get_gRPC_Parallel(b *testing.B) {
+	eng, cleanup := setupBenchmarkDatabase(b, false)
+	defer cleanup()
+	s := NewServer(eng)
+	go func() {
+		_ = s.Run()
+	}()
+	defer s.Stop()
+
+	_ = eng.Set("key", []byte("val"))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		client, _ := gateway.NewInsecureClient(eng.Addr(), time.Second)
+		defer func() {
+			_ = client.Close()
+		}()
+		for pb.Next() {
+			_, _, _ = client.Get("key")
+		}
+	})
 }
 
 func BenchmarkServer_Delete_gRPC(b *testing.B) {

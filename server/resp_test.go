@@ -2,7 +2,9 @@ package server
 
 import (
 	"bufio"
+	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"strconv"
 	"testing"
@@ -32,16 +34,13 @@ func TestRESPServer_GetSetDeletePing(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if srv.listener != nil {
+		if srv.Addr() != "" && srv.Addr() != "127.0.0.1:0" {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if srv.listener == nil {
-		t.Fatal("RESP server did not bind")
-	}
 
-	addr := srv.listener.Addr().String()
+	addr := srv.Addr()
 	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
 	if err != nil {
 		t.Fatalf("dial RESP server: %v", err)
@@ -187,13 +186,13 @@ func BenchmarkRESPServer_Get(b *testing.B) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if srv.listener != nil {
+		if srv.Addr() != "" && srv.Addr() != "127.0.0.1:0" {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	conn, err := net.Dial("tcp", srv.listener.Addr().String())
+	conn, err := net.Dial("tcp", srv.Addr())
 	if err != nil {
 		b.Fatalf("dial: %v", err)
 	}
@@ -235,13 +234,13 @@ func BenchmarkRESPServer_Set(b *testing.B) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if srv.listener != nil {
+		if srv.Addr() != "" && srv.Addr() != "127.0.0.1:0" {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	conn, err := net.Dial("tcp", srv.listener.Addr().String())
+	conn, err := net.Dial("tcp", srv.Addr())
 	if err != nil {
 		b.Fatalf("dial: %v", err)
 	}
@@ -260,4 +259,106 @@ func BenchmarkRESPServer_Set(b *testing.B) {
 			b.Fatalf("read: %v", err)
 		}
 	}
+}
+
+func BenchmarkRESPServer_Get_Parallel(b *testing.B) {
+	eng, err := oryx.NewDatabaseBuilder().Default().
+		SetWalPath(b.TempDir() + "/wal").
+		SetSnpPath(b.TempDir() + "/snapshot.bin").
+		SetInsecure().
+		SingleNode().
+		Build()
+	if err != nil {
+		b.Fatalf("build database: %v", err)
+	}
+	eng.Start()
+	defer eng.Stop()
+
+	_ = eng.Set("benchkey", []byte("benchvalue"))
+
+	addr := fmt.Sprintf("127.0.0.1:%d", 20000+rand.Intn(10000))
+	srv := NewRESPServer(eng, addr)
+	go func() {
+		_ = srv.Run()
+	}()
+	defer srv.Stop()
+	cmd := []byte("*2\r\n$3\r\nGET\r\n$8\r\nbenchkey\r\n")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		var conn net.Conn
+		var err error
+		for i := 0; i < 100; i++ {
+			conn, err = net.Dial("tcp", addr)
+			if err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err != nil {
+			b.Fatalf("dial: %v", err)
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+
+		for pb.Next() {
+			if _, err := conn.Write(cmd); err != nil {
+				return
+			}
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+		}
+	})
+}
+
+func BenchmarkRESPServer_Set_Parallel(b *testing.B) {
+	eng, err := oryx.NewDatabaseBuilder().Default().
+		SetWalPath(b.TempDir() + "/wal").
+		SetSnpPath(b.TempDir() + "/snapshot.bin").
+		SetInsecure().
+		SingleNode().
+		Build()
+	if err != nil {
+		b.Fatalf("build database: %v", err)
+	}
+	eng.Start()
+	defer eng.Stop()
+
+	addr := fmt.Sprintf("127.0.0.1:%d", 30000+rand.Intn(10000))
+	srv := NewRESPServer(eng, addr)
+	go func() {
+		_ = srv.Run()
+	}()
+	defer srv.Stop()
+	cmd := []byte("*3\r\n$3\r\nSET\r\n$8\r\nbenchkey\r\n$10\r\nbenchvalue\r\n")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		var conn net.Conn
+		var err error
+		for i := 0; i < 100; i++ {
+			conn, err = net.Dial("tcp", addr)
+			if err == nil {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err != nil {
+			b.Fatalf("dial: %v", err)
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+
+		for pb.Next() {
+			if _, err := conn.Write(cmd); err != nil {
+				return
+			}
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+		}
+	})
 }
