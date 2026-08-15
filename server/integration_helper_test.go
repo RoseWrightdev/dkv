@@ -10,6 +10,7 @@ import (
 
 	"github.com/rosewrightdev/oryx"
 	"github.com/rosewrightdev/oryx/cluster/gateway"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +29,8 @@ func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds 
 		SetBindPort(mlPort).
 		SetGrpcPort(grpcPort).
 		SetInsecure().
-		SetReplicationFactor(rf)
+		SetReplicationFactor(rf).
+		SetReplicationFailureMode(mesh.Lenient)
 
 	if len(seeds) > 0 {
 		eb.SetSeedNodes(seeds)

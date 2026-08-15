@@ -111,18 +111,19 @@ func TestGateway_AllBranches(t *testing.T) {
 	addr := lis.Addr().String()
 
 	// 1. Test Gateway getReplicationFactor edge cases
-	mcZero := &mesh.Config{NodeID: "local-node", ReplicationFactor: 0}
+	mcZero := &mesh.Config{NodeID: "local-node", ReplicationFactor: 0, ReplicationFailureMode: mesh.Lenient}
 	gwZero := NewGateway(&mesh.NopMesh{}, mcZero, insecure.NewCredentials())
 	assert.Equal(t, 1, gwZero.getReplicationFactor())
 
-	mcNeg := &mesh.Config{NodeID: "local-node", ReplicationFactor: -5}
+	mcNeg := &mesh.Config{NodeID: "local-node", ReplicationFactor: -5, ReplicationFailureMode: mesh.Lenient}
 	gwNeg := NewGateway(&mesh.NopMesh{}, mcNeg, insecure.NewCredentials())
 	assert.Equal(t, 1, gwNeg.getReplicationFactor())
 
 	// 2. Gateway setup with custom mocks
 	mc := &mesh.Config{
-		NodeID:            "local-node",
-		ReplicationFactor: 3,
+		NodeID:                 "local-node",
+		ReplicationFactor:      3,
+		ReplicationFailureMode: mesh.Lenient,
 	}
 	meshObj := &MockMesher{
 		Owners: []kv.NodeID{"local-node", "remote-node"},
@@ -235,3 +236,72 @@ func TestGateway_AllBranches(t *testing.T) {
 	err = gw.applyDeleteRemote("remote-node", "test-key", 0)
 	assert.Error(t, err)
 }
+
+func TestGateway_StrictReplication(t *testing.T) {
+	// Start a local gRPC server for testing remote proxying
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = lis.Close() }()
+
+	grpcServer := grpc.NewServer()
+	mockSrv := &MockGrpcServer{}
+	pb.RegisterOryxServiceServer(grpcServer, mockSrv)
+
+	go func() {
+		_ = grpcServer.Serve(lis)
+	}()
+	defer grpcServer.Stop()
+
+	addr := lis.Addr().String()
+
+	mc := &mesh.Config{
+		NodeID:                 "local-node",
+		ReplicationFactor:      2,
+		ReplicationFailureMode: mesh.Strict,
+	}
+	meshObj := &MockMesher{
+		Owners: []kv.NodeID{"local-node", "remote-node"},
+		AddrMap: map[kv.NodeID]mesh.PeerAddress{
+			"remote-node": mesh.PeerAddress(addr),
+		},
+	}
+	sw := &MockStateWriter{}
+
+	gw := NewGateway(meshObj, mc, insecure.NewCredentials())
+	gw.sw = sw
+	defer gw.Close()
+
+	// 1. Set succeeds when all replicas succeed
+	mockSrv.PushFunc = func(_ *pb.PushRequest) (*pb.PushResponse, error) {
+		return &pb.PushResponse{}, nil
+	}
+	err = gw.Set("strict-key", []byte("val"), time.Now().UnixNano())
+	assert.NoError(t, err)
+
+	// 2. Set fails if one replica fails (e.g., local succeeds, remote fails)
+	sw.SetErr = nil
+	mockSrv.PushFunc = func(_ *pb.PushRequest) (*pb.PushResponse, error) {
+		return nil, errors.New("remote set error")
+	}
+	err = gw.Set("strict-key", []byte("val"), time.Now().UnixNano())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "direct write replication failed on replicas")
+
+	// 3. Delete succeeds when all replicas succeed
+	sw.DeleteErr = nil
+	mockSrv.PushFunc = func(_ *pb.PushRequest) (*pb.PushResponse, error) {
+		return &pb.PushResponse{}, nil
+	}
+	_, err = gw.Delete("strict-key", time.Now().UnixNano())
+	assert.NoError(t, err)
+
+	// 4. Delete fails if one replica fails (e.g., local succeeds, remote fails)
+	sw.DeleteErr = nil
+	mockSrv.PushFunc = func(_ *pb.PushRequest) (*pb.PushResponse, error) {
+		return nil, errors.New("remote delete error")
+	}
+	_, err = gw.Delete("strict-key", time.Now().UnixNano())
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "direct delete replication failed on replicas")
+}
+

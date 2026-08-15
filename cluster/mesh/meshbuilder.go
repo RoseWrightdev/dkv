@@ -15,9 +15,11 @@ type ConfigBuilder struct {
 func NewConfigBuilder() *ConfigBuilder {
 	return &ConfigBuilder{
 		config: Config{
-			SingleNode: false, // Distributed by default
-			BindPort:   0,     // Auto-port by default
-			GrpcPort:   0,     // Auto-port by default
+			SingleNode:             false, // Distributed by default
+			BindPort:               0,     // Auto-port by default
+			GrpcPort:               0,     // Auto-port by default
+			ReplicationFactor:      3,
+			ReplicationFailureMode: Strict,
 		},
 	}
 }
@@ -78,7 +80,16 @@ func (mb *ConfigBuilder) EnableFastTest() *ConfigBuilder {
 
 // SetReplicationFactor determines how many copies of each key are stored in the cluster.
 func (mb *ConfigBuilder) SetReplicationFactor(n int) *ConfigBuilder {
+	if n < 1 {
+		n = 1
+	}
 	mb.config.ReplicationFactor = n
+	return mb
+}
+
+// SetReplicationFailureMode sets the behavior of the system when replication fails.
+func (mb *ConfigBuilder) SetReplicationFailureMode(m ReplicationFailureMode) *ConfigBuilder {
+	mb.config.ReplicationFailureMode = m
 	return mb
 }
 

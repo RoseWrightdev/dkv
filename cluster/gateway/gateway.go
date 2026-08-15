@@ -102,9 +102,18 @@ func (g *Gateway) Set(key kv.Key, value []byte, ts int64) error {
 	wg.Wait()
 	close(errChan)
 
-	if len(errChan) == len(owners) {
-		return fmt.Errorf("direct write replication failed on all replicas: %v", <-errChan)
-	}
+	switch g.meshConfig.ReplicationFailureMode {
+	case mesh.Lenient:
+		if len(errChan) == len(owners) {
+			return fmt.Errorf("direct write replication failed on all replicas: %v", <-errChan)
+		}
+	case mesh.Strict:
+		if len(errChan) != 0 {
+			return fmt.Errorf("direct write replication failed on replicas: %v", <-errChan)
+		}
+	default:
+		return fmt.Errorf("unknown meshConfig.ReplicationFailureMode: %v", g.meshConfig.ReplicationFailureMode)
+	}	
 	return nil
 }
 
@@ -150,9 +159,18 @@ func (g *Gateway) Delete(key kv.Key, ts int64) (bool, error) {
 	wg.Wait()
 	close(errChan)
 
-	if len(errChan) == len(owners) {
-		return false, fmt.Errorf("direct delete replication failed on all replicas: %v", <-errChan)
-	}
+	switch g.meshConfig.ReplicationFailureMode {
+	case mesh.Lenient:
+		if len(errChan) == len(owners) {
+			return false, fmt.Errorf("direct delete replication failed on all replicas: %v", <-errChan)
+		}
+	case mesh.Strict:
+		if len(errChan) != 0 {
+			return false, fmt.Errorf("direct delete replication failed on replicas: %v", <-errChan)
+		}
+	default:
+		return false, fmt.Errorf("unknown meshConfig.ReplicationFailureMode: %v", g.meshConfig.ReplicationFailureMode)
+	}	
 	return true, nil
 }
 

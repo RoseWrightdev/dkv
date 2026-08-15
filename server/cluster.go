@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
 	"github.com/rosewrightdev/oryx/kv"
 	"google.golang.org/grpc/credentials"
 )
@@ -92,7 +93,8 @@ func newCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 		dbBuilder.SetNodeID(kv.NodeID(name)).
 			SetCreds(creds).
 			SetBindPort(basePort + i*2).
-			SetGrpcPort(basePort + i*2 + 1)
+			SetGrpcPort(basePort + i*2 + 1).
+			SetReplicationFailureMode(mesh.Lenient)
 
 		if dataDir != "" {
 			dbBuilder.SetWalPath(filepath.Join(dataDir, name, "wal")).
@@ -170,7 +172,8 @@ func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds cr
 		SetCreds(creds).
 		SetBindPort(basePort).
 		SetGrpcPort(basePort + 1).
-		SetSeedNodes([]string{seedAddr})
+		SetSeedNodes([]string{seedAddr}).
+		SetReplicationFailureMode(mesh.Lenient)
 
 	if dataDir != "" {
 		dbBuilder.SetWalPath(filepath.Join(dataDir, name, "wal")).
