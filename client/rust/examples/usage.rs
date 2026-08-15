@@ -20,7 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Deleting key...");
-    client.delete(key).await?;
+    let existed = client.delete(key).await?;
+    println!("Deleted key (existed: {})", existed);
 
     println!("Verifying deletion...");
     let check = client.get(key).await?;

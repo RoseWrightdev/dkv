@@ -14,6 +14,7 @@ import * as grpc from "@grpc/grpc-js";
 import {
   OryxServiceClient as GrpcClient,
   GetResponse,
+  DeleteResponse,
 } from "./gen/api/oryx";
 
 export interface ClientOptions {
@@ -105,16 +106,16 @@ export class Client {
    * Remove `key` and its associated value from the store.
    *
    * @param key The unique identifier string to remove.
-   * @returns A promise that resolves once deleted. Resolves even if the key did not exist in the store.
+   * @returns A promise that resolves to true if key existed and was deleted, false otherwise.
    */
-  delete(key: string): Promise<void> {
+  delete(key: string): Promise<boolean> {
     return new Promise((resolve, reject) => {
       const meta = new grpc.Metadata();
       this.stub.delete(
         { key, timestamp: 0, nodeId: "" },
         meta,
         { deadline: this.deadline() },
-        (err) => { if (err) reject(err); else resolve(); }
+        (err, response: DeleteResponse) => { if (err) reject(err); else resolve(response.existed); }
       );
     });
   }
