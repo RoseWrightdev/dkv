@@ -24,7 +24,7 @@ Direct parallel read workload comparison (`go test -bench=BenchmarkComparative_G
 
 | Database Engine | Storage Architecture | Throughput (RPS) | Latency (ns/op) | Memory/op | Allocs/op |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| oryx Database | Lock-Free Atomic Core + WAL | 192,609,751 ops/s | 7.15 ns | 0 B | 0 allocs |
+| oryx | Lock-Free Atomic Core + WAL | 192,609,751 ops/s | 7.15 ns | 0 B | 0 allocs |
 | CockroachDB Pebble | Production Go LSM-Tree | 7,579,868 ops/s | 155.60 ns | 8 B | 1 allocs |
 | NutsDB | In-Memory B-Tree + WAL | 3,774,739 ops/s | 316.10 ns | 272 B | 7 allocs |
 | BadgerDB (Dgraph) | Pure-Go LSM-Tree + Value Log | 1,757,354 ops/s | 681.20 ns | 360 B | 7 allocs |
