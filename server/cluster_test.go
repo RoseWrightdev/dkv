@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -25,6 +26,20 @@ func TestNewCluster(t *testing.T) {
 	assert.Equal(t, 10, len(cluster.Servers))
 
 	cluster.Stop()
+}
+
+func TestCluster_Start_ImmediateDial(t *testing.T) {
+	cluster, err := newCluster(3, "", insecure.NewCredentials(), true)
+	require.NoError(t, err)
+	defer cluster.Stop()
+
+	require.NoError(t, cluster.Start())
+
+	for _, db := range cluster.Databases {
+		conn, err := net.DialTimeout("tcp", db.Addr(), 100*time.Millisecond)
+		require.NoError(t, err, "listener should be immediately connectable on %s", db.Addr())
+		_ = conn.Close()
+	}
 }
 
 func TestClusterScaleAndDurability(t *testing.T) {

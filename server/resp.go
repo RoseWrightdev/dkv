@@ -285,10 +285,10 @@ func parseRESPFrame(data []byte, argBuf [][]byte) ([][]byte, int, bool) {
 		}
 
 		bulkStart := read + crlfIdx + 1
-		bulkEnd := bulkStart + bulkLen
-		if bulkEnd+2 > len(data) {
+		if len(data)-bulkStart < 2 || bulkLen > len(data)-bulkStart-2 {
 			return nil, 0, false
 		}
+		bulkEnd := bulkStart + bulkLen
 
 		if data[bulkEnd] != '\r' || data[bulkEnd+1] != '\n' {
 			return nil, 0, false

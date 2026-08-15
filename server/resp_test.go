@@ -15,8 +15,8 @@ import (
 
 func TestRESPServer_GetSetDeletePing(t *testing.T) {
 	eng, err := oryx.NewDatabaseBuilder().Default().
-		SetWalPath(t.TempDir()+"/wal").
-		SetSnpPath(t.TempDir()+"/snapshot.bin").
+		SetWalPath(t.TempDir() + "/wal").
+		SetSnpPath(t.TempDir() + "/snapshot.bin").
 		SetInsecure().
 		SingleNode().
 		Build()
@@ -70,6 +70,40 @@ func TestRESPServer_GetSetDeletePing(t *testing.T) {
 		if got != tc.want {
 			t.Fatalf("unexpected response for %q: got %q want %q", tc.cmd, got, tc.want)
 		}
+	}
+}
+
+func TestParseRESPFrame_Malformed(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"truncated array header", "*1\r"},
+		{"invalid array length", "*-5\r\n"},
+		{"missing bulk prefix", "*1\r\nfoo\r\n"},
+		{"truncated bulk header", "*1\r\n$5\r"},
+		{"negative bulk length", "*1\r\n$-2\r\n"},
+		{"huge bulk length overflow", "*1\r\n$9223372036854775807\r\nfoo\r\n"},
+		{"bulk length larger than remaining data", "*1\r\n$10\r\nfoo\r\n"},
+		{"missing bulk CRLF terminator", "*1\r\n$3\r\nfoo"},
+		{"bad bulk CRLF terminator", "*1\r\n$3\r\nfooxx"},
+		{"truncated multi-arg frame", "*2\r\n$3\r\nGET\r\n"},
+		{"empty input", ""},
+	}
+
+	buf := make([][]byte, 0, 8)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Fatalf("unexpected panic on %s: %v", tc.name, r)
+				}
+			}()
+			args, read, ok := parseRESPFrame([]byte(tc.input), buf)
+			if ok {
+				t.Fatalf("expected malformed input to fail, but got args=%v read=%d", args, read)
+			}
+		})
 	}
 }
 
