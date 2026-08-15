@@ -253,29 +253,29 @@ describe("Client#set", () => {
 
 // delete()
 describe("Client#delete", () => {
-  it("resolves on success", async () => {
+  it("resolves with true when key existed and was deleted", async () => {
     const client = makeClient();
     const promise = client.delete("key-to-remove");
-    resolveStubCall(mockStubInstance.delete, {});
-    await expect(promise).resolves.toBeUndefined();
+    resolveStubCall(mockStubInstance.delete, { existed: true });
+    await expect(promise).resolves.toBe(true);
   });
 
   it("forwards the correct key in the request", async () => {
     const client = makeClient();
     const promise = client.delete("delete-me");
-    resolveStubCall(mockStubInstance.delete, {});
+    resolveStubCall(mockStubInstance.delete, { existed: true });
     await promise;
 
     const request = mockStubInstance.delete.mock.calls[0]![0];
     expect(request.key).toBe("delete-me");
   });
 
-  it("resolves even when the key did not exist (server still succeeds)", async () => {
+  it("resolves with false when the key did not exist", async () => {
     const client = makeClient();
     const promise = client.delete("phantom-key");
-    // Server sends success for absent keys per the API contract.
-    resolveStubCall(mockStubInstance.delete, {});
-    await expect(promise).resolves.toBeUndefined();
+    // Server sends success for absent keys per the API contract with existed: false.
+    resolveStubCall(mockStubInstance.delete, { existed: false });
+    await expect(promise).resolves.toBe(false);
   });
 
   it("rejects when the gRPC call returns an error", async () => {
@@ -292,7 +292,7 @@ describe("Client#delete", () => {
   it("passes a Metadata object and deadline to the stub", async () => {
     const client = makeClient();
     const promise = client.delete("k");
-    resolveStubCall(mockStubInstance.delete, {});
+    resolveStubCall(mockStubInstance.delete, { existed: true });
     await promise;
 
     const [, meta, callOpts] = mockStubInstance.delete.mock.calls[0]!;

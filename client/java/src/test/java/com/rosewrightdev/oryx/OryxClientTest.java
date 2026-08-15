@@ -41,7 +41,7 @@ public class OryxClientTest {
                 // Check that the returned futures are not null and compile correctly
                 CompletableFuture<Optional<byte[]>> getFuture = client.getAsync("test");
                 CompletableFuture<Void> setFuture = client.setAsync("test", new byte[0]);
-                CompletableFuture<Void> deleteFuture = client.deleteAsync("test");
+                CompletableFuture<Boolean> deleteFuture = client.deleteAsync("test");
 
                 assertNotNull(getFuture);
                 assertNotNull(setFuture);

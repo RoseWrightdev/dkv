@@ -86,6 +86,7 @@ export interface DeleteRequest {
 }
 
 export interface DeleteResponse {
+  existed: boolean;
 }
 
 export interface NodeMetadata {
@@ -1170,11 +1171,14 @@ export const DeleteRequest: MessageFns<DeleteRequest> = {
 };
 
 function createBaseDeleteResponse(): DeleteResponse {
-  return {};
+  return { existed: false };
 }
 
 export const DeleteResponse: MessageFns<DeleteResponse> = {
-  encode(_: DeleteResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+  encode(message: DeleteResponse, writer: BinaryWriter = new BinaryWriter()): BinaryWriter {
+    if (message.existed !== false) {
+      writer.uint32(8).bool(message.existed);
+    }
     return writer;
   },
 
@@ -1185,6 +1189,14 @@ export const DeleteResponse: MessageFns<DeleteResponse> = {
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
+        case 1: {
+          if (tag !== 8) {
+            break;
+          }
+
+          message.existed = reader.bool();
+          continue;
+        }
       }
       if ((tag & 7) === 4 || tag === 0) {
         break;
@@ -1194,20 +1206,24 @@ export const DeleteResponse: MessageFns<DeleteResponse> = {
     return message;
   },
 
-  fromJSON(_: any): DeleteResponse {
-    return {};
+  fromJSON(object: any): DeleteResponse {
+    return { existed: isSet(object.existed) ? globalThis.Boolean(object.existed) : false };
   },
 
-  toJSON(_: DeleteResponse): unknown {
+  toJSON(message: DeleteResponse): unknown {
     const obj: any = {};
+    if (message.existed !== false) {
+      obj.existed = message.existed;
+    }
     return obj;
   },
 
   create<I extends Exact<DeepPartial<DeleteResponse>, I>>(base?: I): DeleteResponse {
     return DeleteResponse.fromPartial(base ?? ({} as any));
   },
-  fromPartial<I extends Exact<DeepPartial<DeleteResponse>, I>>(_: I): DeleteResponse {
+  fromPartial<I extends Exact<DeepPartial<DeleteResponse>, I>>(object: I): DeleteResponse {
     const message = createBaseDeleteResponse();
+    message.existed = object.existed ?? false;
     return message;
   },
 };

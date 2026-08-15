@@ -174,7 +174,7 @@ func TestGateway_AllBranches(t *testing.T) {
 	mockSrv.PushFunc = func(_ *pb.PushRequest) (*pb.PushResponse, error) {
 		return &pb.PushResponse{}, nil
 	}
-	err = gw.Delete("test-key", time.Now().UnixNano())
+	_, err = gw.Delete("test-key", time.Now().UnixNano())
 	assert.NoError(t, err)
 
 	// 8. Test Delete all replicas fail
@@ -182,13 +182,13 @@ func TestGateway_AllBranches(t *testing.T) {
 	mockSrv.PushFunc = func(_ *pb.PushRequest) (*pb.PushResponse, error) {
 		return nil, errors.New("remote delete error")
 	}
-	err = gw.Delete("test-key", time.Now().UnixNano())
+	_, err = gw.Delete("test-key", time.Now().UnixNano())
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "direct delete replication failed on all replicas")
 
 	// 9. Test Delete empty owners
 	meshObj.Owners = nil
-	err = gw.Delete("test-key", time.Now().UnixNano())
+	_, err = gw.Delete("test-key", time.Now().UnixNano())
 	assert.Error(t, err)
 	meshObj.Owners = []kv.NodeID{"local-node", "remote-node"} // restore
 

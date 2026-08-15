@@ -144,15 +144,15 @@ public class OryxClient implements AutoCloseable {
 
     /**
      * Removes the key-value pair from the store (blocking).
-     * Resolves successfully even if the key did not exist.
      *
      * @param key The key string to delete.
+     * @return true if key existed and was deleted, false otherwise.
      */
-    public void delete(String key) {
+    public boolean delete(String key) {
         DeleteRequest request = DeleteRequest.newBuilder()
                 .setKey(key)
                 .build();
-        blockingStub.delete(request);
+        return blockingStub.delete(request).getExisted();
     }
 
     /**
@@ -216,19 +216,19 @@ public class OryxClient implements AutoCloseable {
      * Removes the key-value pair from the store asynchronously.
      *
      * @param key The key string to delete.
-     * @return A CompletableFuture representing completion of the delete operation.
+     * @return A CompletableFuture resolving to true if key existed and was deleted, false otherwise.
      */
-    public CompletableFuture<Void> deleteAsync(String key) {
+    public CompletableFuture<Boolean> deleteAsync(String key) {
         DeleteRequest request = DeleteRequest.newBuilder()
                 .setKey(key)
                 .build();
-        CompletableFuture<Void> cf = new CompletableFuture<>();
+        CompletableFuture<Boolean> cf = new CompletableFuture<>();
 
         ListenableFuture<DeleteResponse> lf = futureStub.delete(request);
         lf.addListener(() -> {
             try {
-                lf.get();
-                cf.complete(null);
+                DeleteResponse response = lf.get();
+                cf.complete(response.getExisted());
             } catch (Exception e) {
                 cf.completeExceptionally(e.getCause() != null ? e.getCause() : e);
             }

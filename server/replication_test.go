@@ -46,7 +46,7 @@ func TestGossipReplication(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond, "Data should have replicated to node 2")
 
 	// Delete on Node 1 (the owner)
-	err = e1.Delete(kv.Key(key))
+	_, err = e1.Delete(kv.Key(key))
 	require.NoError(t, err)
 
 	// Verify deletion replicates to node 2
@@ -89,7 +89,8 @@ func TestTombstoneResurrectionPrevention(t *testing.T) {
 	}, 5*time.Second, 50*time.Millisecond, "key should replicate to node-1")
 
 	// Delete from node-0 (owner) — tombstone propagates
-	require.NoError(t, eng0.Delete(kv.Key(key)))
+	_, err := eng0.Delete(kv.Key(key))
+	require.NoError(t, err)
 
 	// Confirm deletion propagated to node-1
 	require.Eventually(t, func() bool {
@@ -205,7 +206,7 @@ func TestConcurrentDeleteSetRace(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			if id%3 == 0 {
-				if err := eng0.Delete(key); err == nil {
+				if _, err := eng0.Delete(key); err == nil {
 					delWins.Add(1)
 				}
 			} else {

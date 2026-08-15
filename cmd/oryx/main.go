@@ -136,11 +136,25 @@ func main() {
 	eng.Start()
 	s := server.NewServer(eng)
 
+	respPort := os.Getenv("ORYX_RESP_PORT")
+	if respPort == "" {
+		respPort = "6379"
+	}
+	respAddr := "0.0.0.0:" + respPort
+	respSrv := server.NewRESPServer(eng, respAddr)
+
 	go func() {
-		slog.Info("Starting ORYX server", "addr", eng.Addr())
+		slog.Info("Starting ORYX gRPC server", "addr", eng.Addr())
 		if err := s.Run(); err != nil {
-			slog.Error("server failed", "error", err)
+			slog.Error("gRPC server failed", "error", err)
 			os.Exit(1)
+		}
+	}()
+
+	go func() {
+		slog.Info("Starting ORYX RESP server", "addr", respAddr)
+		if err := respSrv.Run(); err != nil {
+			slog.Error("RESP server failed", "error", err)
 		}
 	}()
 
@@ -149,5 +163,6 @@ func main() {
 	<-sigChan
 
 	slog.Info("Shutting down gracefully...")
+	respSrv.Stop()
 	s.Stop()
 }

@@ -617,6 +617,7 @@ func (x *DeleteRequest) GetNodeId() string {
 
 type DeleteResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	Existed       bool                   `protobuf:"varint,1,opt,name=existed,proto3" json:"existed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -649,6 +650,13 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
 	return file_api_oryx_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *DeleteResponse) GetExisted() bool {
+	if x != nil {
+		return x.Existed
+	}
+	return false
 }
 
 type NodeMetadata struct {
@@ -751,8 +759,9 @@ const file_api_oryx_proto_rawDesc = "" +
 	"\rDeleteRequest\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1c\n" +
 	"\ttimestamp\x18\x02 \x01(\x03R\ttimestamp\x12\x17\n" +
-	"\anode_id\x18\x03 \x01(\tR\x06nodeId\"\x10\n" +
-	"\x0eDeleteResponse\"C\n" +
+	"\anode_id\x18\x03 \x01(\tR\x06nodeId\"*\n" +
+	"\x0eDeleteResponse\x12\x18\n" +
+	"\aexisted\x18\x01 \x01(\bR\aexisted\"C\n" +
 	"\fNodeMetadata\x12\x1b\n" +
 	"\tgrpc_port\x18\x01 \x01(\x05R\bgrpcPort\x12\x16\n" +
 	"\x06weight\x18\x02 \x01(\x05R\x06weight2\x82\x02\n" +

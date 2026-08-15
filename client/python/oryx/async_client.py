@@ -92,17 +92,21 @@ class OryxAsyncClient:
         except grpc.RpcError as e:
             raise e
 
-    async def delete(self, key: str, timeout: Optional[float] = None) -> None:
+    async def delete(self, key: str, timeout: Optional[float] = None) -> bool:
         """Remove a key and its associated value from the store asynchronously.
 
         Args:
             key: The unique string identifier to delete.
             timeout: Optional override for the request timeout in seconds.
+
+        Returns:
+            True if the key existed and was deleted, False otherwise.
         """
         t = timeout if timeout is not None else self.timeout
         request = pb.DeleteRequest(key=key, timestamp=0, node_id="")
         try:
-            await self.stub.Delete(request, timeout=t)
+            response = await self.stub.Delete(request, timeout=t)
+            return response.existed
         except grpc.RpcError as e:
             raise e
 

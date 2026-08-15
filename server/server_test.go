@@ -30,9 +30,9 @@ func (m *mockDatabase) Set(key kv.Key, value []byte) error {
 	return args.Error(0)
 }
 
-func (m *mockDatabase) Delete(key kv.Key) error {
+func (m *mockDatabase) Delete(key kv.Key) (bool, error) {
 	args := m.Called(key)
-	return args.Error(0)
+	return args.Bool(0), args.Error(1)
 }
 
 func (m *mockDatabase) Owner(key kv.Key) kv.NodeID {
@@ -198,12 +198,12 @@ func TestServer_ExtraEdgeCases(t *testing.T) {
 	assert.NoError(t, err)
 
 	// 3. Delete error
-	me.On("Delete", kv.Key("k-del")).Return(assert.AnError).Once()
+	me.On("Delete", kv.Key("k-del")).Return(false, assert.AnError).Once()
 	_, err = srv.Delete(context.Background(), &pb.DeleteRequest{Key: "k-del"})
 	assert.Error(t, err)
 
 	// Delete success
-	me.On("Delete", kv.Key("k-del")).Return(nil).Once()
+	me.On("Delete", kv.Key("k-del")).Return(true, nil).Once()
 	_, err = srv.Delete(context.Background(), &pb.DeleteRequest{Key: "k-del"})
 	assert.NoError(t, err)
 

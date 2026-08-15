@@ -80,21 +80,21 @@ impl OryxClient {
     }
 
     /// Remove a `key` and its associated value from the store.
-    /// Resolves successfully even if the key did not exist.
+    /// Returns `Ok(true)` if the key existed and was deleted, or `Ok(false)` if it did not exist.
     ///
     /// ## Arguments
     /// * `key` - The string slice representing the key to delete.
     ///
     /// ## Errors
     /// Returns a `tonic::Status` if the gRPC invocation fails.
-    pub async fn delete(&self, key: &str) -> Result<(), tonic::Status> {
+    pub async fn delete(&self, key: &str) -> Result<bool, tonic::Status> {
         let mut client = self.client.clone();
         let request = tonic::Request::new(proto::DeleteRequest {
             key: key.to_string(),
             timestamp: 0,
             node_id: String::new(),
         });
-        client.delete(request).await?;
-        Ok(())
+        let response = client.delete(request).await?.into_inner();
+        Ok(response.existed)
     }
 }

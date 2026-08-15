@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-from . import oryx_pb2 as oryx__pb2
+import oryx_pb2 as oryx__pb2
 
-GRPC_GENERATED_VERSION = '1.80.0'
+GRPC_GENERATED_VERSION = '1.83.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -25,7 +25,7 @@ if _version_not_supported:
     )
 
 
-class OryxServiceStub(object):
+class OryxServiceStub:
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -61,7 +61,7 @@ class OryxServiceStub(object):
                 _registered_method=True)
 
 
-class OryxServiceServicer(object):
+class OryxServiceServicer:
     """Missing associated documentation comment in .proto file."""
 
     def Get(self, request, context):
@@ -131,7 +131,7 @@ def add_OryxServiceServicer_to_server(servicer, server):
 
 
  # This class is part of an EXPERIMENTAL API.
-class OryxService(object):
+class OryxService:
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod

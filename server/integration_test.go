@@ -48,7 +48,7 @@ func TestEngineOperations(t *testing.T) {
 	assert.Equal(t, val, got)
 
 	// Delete
-	err = eng.Delete(key)
+	_, err = eng.Delete(key)
 	assert.NoError(t, err)
 	_, ok = eng.Get(kv.Key(key))
 	assert.False(t, ok)

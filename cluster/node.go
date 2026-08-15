@@ -122,6 +122,9 @@ func (n *Node) Stop() {
 // Get retrieves the value for a key locally, respects local tombstones, or proxies to an owner node.
 func (n *Node) Get(key kv.Key) ([]byte, bool) {
 	hash := kv.HashKey(security.HashFunc(key))
+	if n.meshConfig.SingleNode {
+		return n.core.HM().LoadData(key, hash)
+	}
 	iv, ok := n.core.HM().Load(key, hash)
 	if ok && !iv.Tombstone {
 		if n.core.Evt() != nil {
@@ -130,10 +133,6 @@ func (n *Node) Get(key kv.Key) ([]byte, bool) {
 		return iv.Data, true
 	} else if ok && iv.Tombstone {
 		// Local tombstone exists; key is known to be deleted
-		return nil, false
-	}
-
-	if n.meshConfig.SingleNode {
 		return nil, false
 	}
 
@@ -149,7 +148,7 @@ func (n *Node) Set(key kv.Key, value []byte) error {
 }
 
 // Delete marks a key as deleted locally or forwards through the gateway to replica nodes.
-func (n *Node) Delete(key kv.Key) error {
+func (n *Node) Delete(key kv.Key) (bool, error) {
 	if n.meshConfig.SingleNode {
 		return n.core.Delete(key)
 	}
