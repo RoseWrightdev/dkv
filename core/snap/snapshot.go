@@ -22,6 +22,7 @@ type Snapshotter struct {
 	encCallBack func(*gob.Encoder) error
 	path        string
 	wg          sync.WaitGroup
+	startOnce   sync.Once
 	Interval    time.Duration
 }
 
@@ -53,10 +54,13 @@ func NewSnapshotter(path string, interval time.Duration, wal wal.Waler, encCallB
 }
 
 // Start begins the periodic snapshotting loop.
+// It is idempotent: subsequent calls after the first are no-ops.
 func (snp *Snapshotter) Start() {
-	snp.wg.Add(2)
-	go snp.producer(snp.ctx)
-	go snp.consumer(snp.ctx)
+	snp.startOnce.Do(func() {
+		snp.wg.Add(2)
+		go snp.producer(snp.ctx)
+		go snp.consumer(snp.ctx)
+	})
 }
 
 // Stop gracefully shuts down the snapshotting service.
@@ -119,8 +123,14 @@ func (snp *Snapshotter) Create() error {
 	if err != nil {
 		return err
 	}
+
+	// Track success so the deferred cleanup only removes tmpPath on failure.
+	var success bool
 	defer func() {
 		_ = file.Close()
+		if !success {
+			_ = os.Remove(tmpPath)
+		}
 	}()
 
 	// Stream the data directly from the engine to the encoder
@@ -129,18 +139,18 @@ func (snp *Snapshotter) Create() error {
 		return err
 	}
 
-	err = file.Sync()
-	if err != nil {
+	if err := file.Sync(); err != nil {
 		return err
 	}
-	err = file.Close()
-	if err != nil {
+	if err := file.Close(); err != nil {
 		return err
 	}
 
 	if err := os.Rename(tmpPath, snp.path); err != nil {
 		return err
 	}
+
+	success = true
 
 	if err := snp.wal.Clear(offsets); err != nil {
 		return err
