@@ -133,7 +133,7 @@ func BenchmarkServer_Delete_gRPC(b *testing.B) {
 
 	b.ResetTimer()
 	for b.Loop() {
-		_ = client.Delete("key")
+		_, _ = client.Delete("key")
 	}
 }
 

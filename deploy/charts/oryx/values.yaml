@@ -40,6 +40,7 @@ engine:
     keyFile: ""
   
   replicationFactor: 3
+  replicationFailureMode: "strict"
   singleNode: false
 
   # Write-ahead log configurations

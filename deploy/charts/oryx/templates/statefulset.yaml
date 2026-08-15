@@ -19,6 +19,8 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "serve"
           ports:
             - name: grpc
               containerPort: {{ .Values.service.port }}
@@ -59,6 +61,8 @@ spec:
               value: "{{ .Values.resp.port }}"
             - name: ORYX_REPLICATION_FACTOR
               value: "{{ .Values.engine.replicationFactor }}"
+            - name: ORYX_REPLICATION_FAILURE_MODE
+              value: "{{ .Values.engine.replicationFailureMode }}"
             - name: ORYX_SEED_NODES
               value: '{{- $replicaCount := int .Values.replicaCount }}{{- $fullName := include "oryx.fullname" . }}{{- $namespace := .Release.Namespace }}{{- $seeds := list }}{{- range $i := until $replicaCount }}{{- $seeds = append $seeds (printf "%s-%d.%s-headless.%s.svc.cluster.local:%d" $fullName $i $fullName $namespace (int $.Values.gossip.port)) }}{{- end }}{{- join "," $seeds }}'
             - name: ORYX_WAL_PATH

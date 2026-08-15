@@ -166,7 +166,8 @@ func TestDeleteProxying(t *testing.T) {
 	require.True(t, ok)
 
 	// Delete through node-2 (non-owner) — must be proxied
-	require.NoError(t, client2.Delete(key), "delete through non-owner must succeed via gateway proxying")
+	_, err := client2.Delete(key)
+	require.NoError(t, err, "delete through non-owner must succeed via gateway proxying")
 
 	// Owner should no longer have the key
 	require.Eventually(t, func() bool {

@@ -41,12 +41,13 @@ type connState struct {
 
 type RESPServer struct {
 	*gnet.BuiltinEventEngine
-	eng      oryx.Database
-	addr     string
-	stopOnce sync.Once
-	mu       sync.Mutex
-	bound    string
-	gnetEng  *gnet.Engine
+	eng          oryx.Database
+	addr         string
+	stopOnce     sync.Once
+	mu           sync.Mutex
+	bound        string
+	resolvedAddr string
+	gnetEng      *gnet.Engine
 }
 
 func NewRESPServer(eng oryx.Database, addr string) *RESPServer {
@@ -72,7 +73,7 @@ func (s *RESPServer) Addr() string {
 func (s *RESPServer) OnBoot(eng gnet.Engine) gnet.Action {
 	runtime.LockOSThread()
 	s.mu.Lock()
-	s.bound = s.addr
+	s.bound = s.resolvedAddr
 	s.gnetEng = &eng
 	s.mu.Unlock()
 	return gnet.None
@@ -310,7 +311,7 @@ func (s *RESPServer) Run() error {
 	}
 
 	s.mu.Lock()
-	s.bound = addr
+	s.resolvedAddr = addr
 	s.mu.Unlock()
 
 	protoAddr := "tcp://" + addr

@@ -73,6 +73,7 @@ func (eb *DatabaseBuilder) Default() *DatabaseBuilder {
 	eb.meshBuilder.SetBindPort(gossipPort)
 	eb.meshBuilder.SetGrpcPort(grpcPort)
 	eb.meshBuilder.SetReplicationFactor(3)
+	eb.meshBuilder.SetReplicationFailureMode(mesh.Strict)
 
 	eb.walPath = "data/wal"
 	eb.snpPath = "data/snapshot.bin"
@@ -166,6 +167,11 @@ func (eb *DatabaseBuilder) SetNodeID(id kv.NodeID) *DatabaseBuilder {
 // SetReplicationFactor sets the replication factor for the cluster.
 func (eb *DatabaseBuilder) SetReplicationFactor(n int) *DatabaseBuilder {
 	eb.meshBuilder.SetReplicationFactor(n)
+	return eb
+}
+
+func (eb *DatabaseBuilder) SetReplicationFailureMode(m mesh.ReplicationFailureMode) *DatabaseBuilder {
+	eb.meshBuilder.SetReplicationFailureMode(m)
 	return eb
 }
 
@@ -269,6 +275,9 @@ func (eb *DatabaseBuilder) Build() (Database, error) {
 		// GrpcPort 0 is allowed for dynamic allocation (e.g., in tests)
 		if isUnit(eb.gossipInterval) {
 			return nil, fmt.Errorf("required eb.gossipInterval is unset for distributed mode; configure it via SetGossipInterval")
+		}
+		if meshConfig.ReplicationFailureMode == "" {
+			return nil, fmt.Errorf("required ReplicationFailureMode is unset for distributed mode; configure it via SetReplicationFailureMode")
 		}
 	}
 

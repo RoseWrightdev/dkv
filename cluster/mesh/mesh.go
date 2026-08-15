@@ -43,16 +43,24 @@ type Mesher interface {
 
 // Config holds configuration for decentralized node discovery and membership.
 type Config struct {
-	NodeID            kv.NodeID
-	BindAddr          string
-	AdvertiseAddr     string
-	SeedNodes         []string
-	ReplicationFactor int
-	BindPort          int
-	GrpcPort          int
-	SingleNode        bool
-	FastTest          bool
+	NodeID                 kv.NodeID
+	BindAddr               string
+	AdvertiseAddr          string
+	SeedNodes              []string
+	ReplicationFactor      int
+	BindPort               int
+	GrpcPort               int
+	SingleNode             bool
+	FastTest               bool
+	ReplicationFailureMode ReplicationFailureMode
 }
+
+type ReplicationFailureMode string
+
+const (
+	Strict  ReplicationFailureMode = "strict"
+	Lenient ReplicationFailureMode = "lenient"
+)
 
 // Mesh provides the implementation for L7 Routing and P2P communication between nodes.
 type Mesh struct {

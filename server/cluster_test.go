@@ -155,7 +155,7 @@ func TestClusterFullRestartDurability(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			k := fmt.Sprintf("heavy-key-%d", id)
-			if err := client.Delete(k); err != nil {
+			if _, err := client.Delete(k); err != nil {
 				errsDel <- err
 			}
 		}(i)

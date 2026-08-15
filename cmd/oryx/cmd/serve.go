@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	oryx "github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/rosewrightdev/oryx/server"
 )
@@ -38,6 +39,7 @@ var (
 	serveTLSKey            string
 	serveInsecure          bool
 	serveVolatile          bool
+	serveReplicationFailureMode string
 )
 
 var serveCmd = &cobra.Command{
@@ -67,6 +69,7 @@ func init() {
 	f.StringVar(&serveAdvertiseAddr, "advertise-addr", "", "address advertised to peer nodes [ORYX_ADVERTISE_ADDR]")
 	f.StringVar(&serveSeeds, "seeds", "", "comma-separated list of seed node addresses [ORYX_SEED_NODES]")
 	f.IntVar(&serveReplicationFactor, "replication", 3, "replication factor [ORYX_REPLICATION_FACTOR]")
+	f.StringVar(&serveReplicationFailureMode, "replication-failure-mode", "strict", "replication failure mode (strict or lenient) [ORYX_REPLICATION_FAILURE_MODE]")
 	f.StringVar(&serveWALPath, "wal-path", "data/wal", "write-ahead log directory [ORYX_WAL_PATH]")
 	f.StringVar(&serveSNPPath, "snp-path", "data/snapshot.bin", "snapshot file path [ORYX_SNP_PATH]")
 	f.StringVar(&serveWALInterval, "wal-interval", "500ms", "WAL sync interval [ORYX_WAL_INTERVAL]")
@@ -109,6 +112,7 @@ func applyServeEnv(cmd *cobra.Command, _ []string) error {
 	strEnv("advertise-addr", "ORYX_ADVERTISE_ADDR")
 	strEnv("seeds", "ORYX_SEED_NODES")
 	strEnv("replication", "ORYX_REPLICATION_FACTOR")
+	strEnv("replication-failure-mode", "ORYX_REPLICATION_FAILURE_MODE")
 	strEnv("wal-path", "ORYX_WAL_PATH")
 	strEnv("snp-path", "ORYX_SNP_PATH")
 	strEnv("wal-interval", "ORYX_WAL_INTERVAL")
@@ -161,6 +165,7 @@ func runServe(_ *cobra.Command, _ []string) error {
 		builder.SetSeedNodes(strings.Split(serveSeeds, ","))
 	}
 	builder.SetReplicationFactor(serveReplicationFactor)
+	builder.SetReplicationFailureMode(mesh.ReplicationFailureMode(serveReplicationFailureMode))
 
 	// --- Storage paths ---
 	if serveVolatile {
