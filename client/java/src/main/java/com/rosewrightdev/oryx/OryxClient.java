@@ -1,9 +1,9 @@
-package com.rosewrightdev.dkv;
+package com.rosewrightdev.oryx;
 
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.protobuf.ByteString;
-import com.rosewrightdev.dkv.proto.*;
+import com.rosewrightdev.oryx.proto.*;
 import io.grpc.ChannelCredentials;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
@@ -16,49 +16,49 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * A Java client for interacting with dkv.
+ * A Java client for interacting with oryx.
  * Supports both blocking (synchronous) and non-blocking (asynchronous
  * CompletableFuture) APIs.
  */
-public class DKVClient implements AutoCloseable {
+public class OryxClient implements AutoCloseable {
     private final ManagedChannel channel;
-    private final DkvServiceGrpc.DkvServiceBlockingStub blockingStub;
-    private final DkvServiceGrpc.DkvServiceFutureStub futureStub;
+    private final OryxServiceGrpc.OryxServiceBlockingStub blockingStub;
+    private final OryxServiceGrpc.OryxServiceFutureStub futureStub;
 
     /**
-     * Initializes a new DKVClient with an already configured gRPC channel.
+     * Initializes a new OryxClient with an already configured gRPC channel.
      *
      * @param channel The gRPC ManagedChannel to use.
      */
-    public DKVClient(ManagedChannel channel) {
+    public OryxClient(ManagedChannel channel) {
         this.channel = channel;
-        this.blockingStub = DkvServiceGrpc.newBlockingStub(channel);
-        this.futureStub = DkvServiceGrpc.newFutureStub(channel);
+        this.blockingStub = OryxServiceGrpc.newBlockingStub(channel);
+        this.futureStub = OryxServiceGrpc.newFutureStub(channel);
     }
 
     /**
-     * Connects to a DKV node using the specified address and credentials.
+     * Connects to a Oryx node using the specified address and credentials.
      *
      * @param address     The target node address (e.g. "localhost:50051").
      * @param credentials The gRPC ChannelCredentials to use.
-     * @return A connected DKVClient instance.
+     * @return A connected OryxClient instance.
      */
-    public static DKVClient connect(String address, ChannelCredentials credentials) {
+    public static OryxClient connect(String address, ChannelCredentials credentials) {
         String[] parts = address.split(":");
         String host = parts[0];
         int port = parts.length > 1 ? Integer.parseInt(parts[1]) : 50051;
 
         ManagedChannel channel = Grpc.newChannelBuilderForAddress(host, port, credentials).build();
-        return new DKVClient(channel);
+        return new OryxClient(channel);
     }
 
     /**
-     * Connects to a DKV node in insecure plaintext mode.
+     * Connects to a Oryx node in insecure plaintext mode.
      *
      * @param address The target node address (e.g. "localhost:50051").
-     * @return A connected DKVClient instance.
+     * @return A connected OryxClient instance.
      */
-    public static DKVClient connectInsecure(String address) {
+    public static OryxClient connectInsecure(String address) {
         return connect(address, insecureCredentials());
     }
 
@@ -250,7 +250,7 @@ public class DKVClient implements AutoCloseable {
      *
      * @return The blocking stub.
      */
-    public DkvServiceGrpc.DkvServiceBlockingStub getBlockingStub() {
+    public OryxServiceGrpc.OryxServiceBlockingStub getBlockingStub() {
         return blockingStub;
     }
 
@@ -259,7 +259,7 @@ public class DKVClient implements AutoCloseable {
      *
      * @return The future stub.
      */
-    public DkvServiceGrpc.DkvServiceFutureStub getFutureStub() {
+    public OryxServiceGrpc.OryxServiceFutureStub getFutureStub() {
         return futureStub;
     }
 

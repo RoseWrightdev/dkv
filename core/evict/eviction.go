@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/kv"
 )
 
 // Reason defines the category/reason for cache eviction (e.g. TTL or Capacity).
@@ -81,7 +81,7 @@ type LRUConfig struct {
 func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 	shardCount := config.ShardCount
 	if shardCount <= 0 {
-		panic("dkv: LRU ShardCount must be greater than 0")
+		panic("oryx: LRU ShardCount must be greater than 0")
 	}
 	shards := make([]*lruShard, shardCount)
 
@@ -91,7 +91,7 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 	// Distribute capacity across shards
 	shardCap := config.Capacity / shardCountU
 	if shardCap == 0 {
-		panic("dkv: LRU Capacity must be at least equal to ShardCount")
+		panic("oryx: LRU Capacity must be at least equal to ShardCount")
 	}
 
 	pool := &sync.Pool{

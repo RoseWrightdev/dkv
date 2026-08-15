@@ -1,16 +1,16 @@
-// Package main provides a simple example of starting a dkv server instance.
+// Package main provides a simple example of starting a oryx server instance.
 package main
 
 import (
 	"fmt"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/server"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/server"
 )
 
 func main() {
 	// Initialize the Database using the flat fluent API with sensible defaults
-	db, err := dkv.NewDatabaseBuilder().
+	db, err := oryx.NewDatabaseBuilder().
 		Default().
 		SetInsecure().
 		Build()
@@ -25,7 +25,7 @@ func main() {
 
 	// Run the gRPC Server using the address/port configured from the database
 	s := server.NewServer(db)
-	fmt.Printf("Starting DKV server on %s...\n", db.Addr())
+	fmt.Printf("Starting ORYX server on %s...\n", db.Addr())
 	if err := s.Run(); err != nil {
 		panic(err)
 	}

@@ -1,4 +1,4 @@
-package dkv
+package oryx
 
 import (
 	"crypto/rand"
@@ -11,13 +11,13 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/rosewrightdev/dkv/cluster/mesh"
-	"github.com/rosewrightdev/dkv/core/clock"
-	"github.com/rosewrightdev/dkv/core/evict"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/core/clock"
+	"github.com/rosewrightdev/oryx/core/evict"
+	"github.com/rosewrightdev/oryx/kv"
 )
 
-// DatabaseBuilder provides a fluent API for constructing and configuring a dkv database.
+// DatabaseBuilder provides a fluent API for constructing and configuring a oryx database.
 type DatabaseBuilder struct {
 	evt            evict.Evictor
 	clock          clock.Clocker
@@ -39,7 +39,7 @@ func NewDatabaseBuilder() *DatabaseBuilder {
 	}
 }
 
-// NewDefaultDatabase constructs a default dkv database configuration.
+// NewDefaultDatabase constructs a default oryx database configuration.
 func NewDefaultDatabase(walPath, snpPath string) (Database, error) {
 	return NewDatabaseBuilder().Default().SetWalPath(walPath).SetSnpPath(snpPath).Build()
 }

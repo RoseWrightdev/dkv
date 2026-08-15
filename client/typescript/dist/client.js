@@ -1,14 +1,14 @@
 "use strict";
 /**
- * DkvClient — a typed TypeScript wrapper around the DKV gRPC service.
+ * Client — a typed TypeScript wrapper around the ORYX gRPC service.
  *
  * Usage (insecure):
  *   import { insecureCredentials } from "./server";
- *   const client = DkvClient.connect("localhost:50051", insecureCredentials());
+ *   const client = Client.connect("localhost:50051", insecureCredentials());
  *
  * Usage (TLS):
  *   import { tlsCredentials } from "./server";
- *   const client = DkvClient.connect("my-host:50051", tlsCredentials());
+ *   const client = Client.connect("my-host:50051", tlsCredentials());
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -44,33 +44,32 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DkvClient = void 0;
+exports.Client = void 0;
 const grpc = __importStar(require("@grpc/grpc-js"));
-const dkv_1 = require("./gen/api/dkv");
-class DkvClient {
+const oryx_1 = require("./gen/api/oryx");
+class Client {
     constructor(stub, timeoutMs) {
         this.stub = stub;
         this.timeoutMs = timeoutMs;
     }
     /**
-     * Open a connection to a DKV node.
+     * Open a connection to a ORYX node.
      *
-     * @param address      Host and port, e.g. `"localhost:50051"`.
-     * @param credentials  Channel credentials — use `insecureCredentials()` or `tlsCredentials()`.
-     * @param options      Optional timeout and channel settings.
+     * @param address      Host and port of the target ORYX node, e.g. `"localhost:50051"`.
+     * @param credentials  Channel credentials — use `insecureCredentials()` for plaintext or `tlsCredentials()` for secure channels.
+     * @param options      Optional configuration details including per-call timeoutMs and custom gRPC channelOptions.
+     * @returns A connected `Client` instance.
      */
     static connect(address, credentials, options = {}) {
         const { timeoutMs = 5000, channelOptions = {} } = options;
-        const stub = new dkv_1.DkvServiceClient(address, credentials, channelOptions);
-        return new DkvClient(stub, timeoutMs);
+        const stub = new oryx_1.OryxServiceClient(address, credentials, channelOptions);
+        return new Client(stub, timeoutMs);
     }
-    // -------------------------------------------------------------------------
-    // Public API
-    // -------------------------------------------------------------------------
     /**
      * Retrieve the value associated with `key`.
      *
-     * @returns `{ value, exists }` — `value` is `null` when the key is absent.
+     * @param key The unique identifier string whose value to retrieve.
+     * @returns A promise resolving to a `GetResult` containing `{ value: Buffer | null, exists: boolean }`.
      */
     get(key) {
         return new Promise((resolve, reject) => {
@@ -87,7 +86,11 @@ class DkvClient {
         });
     }
     /**
-     * Store `value` under `key`.  Accepts a `Buffer` or `Uint8Array`.
+     * Store `value` under `key`.
+     *
+     * @param key   The unique identifier string under which to store the value.
+     * @param value The raw data payload to store, passed as a Node.js `Buffer` or `Uint8Array`.
+     * @returns A promise that resolves when the operation is successfully completed.
      */
     set(key, value) {
         return new Promise((resolve, reject) => {
@@ -99,7 +102,10 @@ class DkvClient {
         });
     }
     /**
-     * Remove `key` from the store.  Resolves even when the key did not exist.
+     * Remove `key` and its associated value from the store.
+     *
+     * @param key The unique identifier string to remove.
+     * @returns A promise that resolves once deleted. Resolves even if the key did not exist in the store.
      */
     delete(key) {
         return new Promise((resolve, reject) => {
@@ -111,19 +117,16 @@ class DkvClient {
         });
     }
     /**
-     * Close the underlying gRPC channel.  The client must not be used after
-     * this call.
+     * Close the underlying gRPC channel.
+     * The client instance must not be used for any further operations after this call.
      */
     close() {
         this.stub.close();
     }
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
     /** Returns a deadline `Date` based on the configured per-call timeout. */
     deadline() {
         return new Date(Date.now() + this.timeoutMs);
     }
 }
-exports.DkvClient = DkvClient;
+exports.Client = Client;
 //# sourceMappingURL=client.js.map

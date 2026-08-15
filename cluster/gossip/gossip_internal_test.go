@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	pb "github.com/rosewrightdev/dkv/api"
+	pb "github.com/rosewrightdev/oryx/api"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )

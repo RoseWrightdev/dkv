@@ -1,4 +1,4 @@
-package dkv
+package oryx
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 )
 
 func setupBenchmarkDatabase(b *testing.B, distributed bool) (Database, func()) {
-	tmpDir, err := os.MkdirTemp("", "dkv-bench-*")
+	tmpDir, err := os.MkdirTemp("", "oryx-bench-*")
 	if err != nil {
 		b.Fatal(err)
 	}

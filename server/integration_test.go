@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/cluster/gateway"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/cluster/gateway"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestEngineOperations(t *testing.T) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-test-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-test-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
@@ -24,7 +24,7 @@ func TestEngineOperations(t *testing.T) {
 	walPath := filepath.Join(tmpDir, "wal")
 	snpPath := filepath.Join(tmpDir, "snapshot.bin")
 
-	eng, err := dkv.NewDatabaseBuilder().
+	eng, err := oryx.NewDatabaseBuilder().
 		Default().
 		SetWalPath(walPath).
 		SetSnpPath(snpPath).
@@ -59,13 +59,13 @@ func TestClusterScale(t *testing.T) {
 		t.Skip("skipping scale test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-scale-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-scale-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
 
 	count := 3
-	var databases []dkv.Database
+	var databases []oryx.Database
 	var clients []*gateway.Client
 	var seedAddr string
 
@@ -84,7 +84,7 @@ func TestClusterScale(t *testing.T) {
 		grpcPort := gLis.Addr().(*net.TCPAddr).Port
 		_ = gLis.Close()
 
-		eb := dkv.NewDatabaseBuilder().
+		eb := oryx.NewDatabaseBuilder().
 			Default().
 			FastTest().
 			SetWalPath(filepath.Join(nodeDir, "wal")).
@@ -152,7 +152,7 @@ func TestClusterScale(t *testing.T) {
 }
 
 func TestAntiEntropyRecovery(t *testing.T) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-recovery-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-recovery-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
@@ -163,7 +163,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	mlPort1 := mlLis1.Addr().(*net.TCPAddr).Port
 	_ = mlLis1.Close()
 
-	eng1, err := dkv.NewDatabaseBuilder().
+	eng1, err := oryx.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
@@ -186,7 +186,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 	}
 
 	// Setup Node 2 (joins Node 1)
-	eng2, err := dkv.NewDatabaseBuilder().
+	eng2, err := oryx.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n2-wal")).
@@ -213,7 +213,7 @@ func TestAntiEntropyRecovery(t *testing.T) {
 }
 
 func TestCluster_ConcurrentShutdown(t *testing.T) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-shutdown-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-shutdown-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
@@ -229,7 +229,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 	grpcPort1 := gLis1.Addr().(*net.TCPAddr).Port
 	_ = gLis1.Close()
 
-	eng1, err := dkv.NewDatabaseBuilder().
+	eng1, err := oryx.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n1-wal")).
@@ -252,7 +252,7 @@ func TestCluster_ConcurrentShutdown(t *testing.T) {
 	grpcPort2 := gLis2.Addr().(*net.TCPAddr).Port
 	_ = gLis2.Close()
 
-	eng2, err := dkv.NewDatabaseBuilder().
+	eng2, err := oryx.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(tmpDir, "n2-wal")).

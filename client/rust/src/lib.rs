@@ -2,23 +2,23 @@ use tonic::transport::Channel;
 
 pub mod proto {
     // Incorporate the generated code compiled by build.rs
-    tonic::include_proto!("dkv");
+    tonic::include_proto!("oryx");
 }
 
-use proto::dkv_service_client::DkvServiceClient;
+use proto::oryx_service_client::OryxServiceClient;
 use std::boxed::Box;
 use std::convert::TryInto;
 use std::error;
 use tonic::transport;
 
-/// A client for communicating with a dkv (distributed key-value) store node.
+/// A client for communicating with a oryx (distributed key-value) store node.
 #[derive(Debug, Clone)]
-pub struct DkvClient {
-    client: DkvServiceClient<Channel>,
+pub struct OryxClient {
+    client: OryxServiceClient<Channel>,
 }
 
-impl DkvClient {
-    /// Open a connection to a dkv node.
+impl OryxClient {
+    /// Open a connection to a oryx node.
     ///
     /// ## Arguments
     /// * `dst` - The endpoint destination, e.g. `"http://localhost:50051"`.
@@ -30,7 +30,7 @@ impl DkvClient {
         D: TryInto<transport::Endpoint>,
         D::Error: Into<Box<dyn error::Error + Send + Sync>>,
     {
-        let client = DkvServiceClient::connect(dst).await?;
+        let client = OryxServiceClient::connect(dst).await?;
         Ok(Self { client })
     }
 

@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import dkv_pb2 as dkv__pb2
+from . import oryx_pb2 as oryx__pb2
 
 GRPC_GENERATED_VERSION = '1.80.0'
 GRPC_VERSION = grpc.__version__
@@ -18,14 +18,14 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in dkv_pb2_grpc.py depends on'
+        + ' but the generated code in oryx_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
     )
 
 
-class DkvServiceStub(object):
+class OryxServiceStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -35,33 +35,33 @@ class DkvServiceStub(object):
             channel: A grpc.Channel.
         """
         self.Get = channel.unary_unary(
-                '/dkv.DkvService/Get',
-                request_serializer=dkv__pb2.GetRequest.SerializeToString,
-                response_deserializer=dkv__pb2.GetResponse.FromString,
+                '/oryx.OryxService/Get',
+                request_serializer=oryx__pb2.GetRequest.SerializeToString,
+                response_deserializer=oryx__pb2.GetResponse.FromString,
                 _registered_method=True)
         self.Set = channel.unary_unary(
-                '/dkv.DkvService/Set',
-                request_serializer=dkv__pb2.SetRequest.SerializeToString,
-                response_deserializer=dkv__pb2.SetResponse.FromString,
+                '/oryx.OryxService/Set',
+                request_serializer=oryx__pb2.SetRequest.SerializeToString,
+                response_deserializer=oryx__pb2.SetResponse.FromString,
                 _registered_method=True)
         self.Delete = channel.unary_unary(
-                '/dkv.DkvService/Delete',
-                request_serializer=dkv__pb2.DeleteRequest.SerializeToString,
-                response_deserializer=dkv__pb2.DeleteResponse.FromString,
+                '/oryx.OryxService/Delete',
+                request_serializer=oryx__pb2.DeleteRequest.SerializeToString,
+                response_deserializer=oryx__pb2.DeleteResponse.FromString,
                 _registered_method=True)
         self.Pull = channel.unary_unary(
-                '/dkv.DkvService/Pull',
-                request_serializer=dkv__pb2.PullRequest.SerializeToString,
-                response_deserializer=dkv__pb2.PullResponse.FromString,
+                '/oryx.OryxService/Pull',
+                request_serializer=oryx__pb2.PullRequest.SerializeToString,
+                response_deserializer=oryx__pb2.PullResponse.FromString,
                 _registered_method=True)
         self.Push = channel.unary_unary(
-                '/dkv.DkvService/Push',
-                request_serializer=dkv__pb2.PushRequest.SerializeToString,
-                response_deserializer=dkv__pb2.PushResponse.FromString,
+                '/oryx.OryxService/Push',
+                request_serializer=oryx__pb2.PushRequest.SerializeToString,
+                response_deserializer=oryx__pb2.PushResponse.FromString,
                 _registered_method=True)
 
 
-class DkvServiceServicer(object):
+class OryxServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def Get(self, request, context):
@@ -96,42 +96,42 @@ class DkvServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
 
-def add_DkvServiceServicer_to_server(servicer, server):
+def add_OryxServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Get': grpc.unary_unary_rpc_method_handler(
                     servicer.Get,
-                    request_deserializer=dkv__pb2.GetRequest.FromString,
-                    response_serializer=dkv__pb2.GetResponse.SerializeToString,
+                    request_deserializer=oryx__pb2.GetRequest.FromString,
+                    response_serializer=oryx__pb2.GetResponse.SerializeToString,
             ),
             'Set': grpc.unary_unary_rpc_method_handler(
                     servicer.Set,
-                    request_deserializer=dkv__pb2.SetRequest.FromString,
-                    response_serializer=dkv__pb2.SetResponse.SerializeToString,
+                    request_deserializer=oryx__pb2.SetRequest.FromString,
+                    response_serializer=oryx__pb2.SetResponse.SerializeToString,
             ),
             'Delete': grpc.unary_unary_rpc_method_handler(
                     servicer.Delete,
-                    request_deserializer=dkv__pb2.DeleteRequest.FromString,
-                    response_serializer=dkv__pb2.DeleteResponse.SerializeToString,
+                    request_deserializer=oryx__pb2.DeleteRequest.FromString,
+                    response_serializer=oryx__pb2.DeleteResponse.SerializeToString,
             ),
             'Pull': grpc.unary_unary_rpc_method_handler(
                     servicer.Pull,
-                    request_deserializer=dkv__pb2.PullRequest.FromString,
-                    response_serializer=dkv__pb2.PullResponse.SerializeToString,
+                    request_deserializer=oryx__pb2.PullRequest.FromString,
+                    response_serializer=oryx__pb2.PullResponse.SerializeToString,
             ),
             'Push': grpc.unary_unary_rpc_method_handler(
                     servicer.Push,
-                    request_deserializer=dkv__pb2.PushRequest.FromString,
-                    response_serializer=dkv__pb2.PushResponse.SerializeToString,
+                    request_deserializer=oryx__pb2.PushRequest.FromString,
+                    response_serializer=oryx__pb2.PushResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'dkv.DkvService', rpc_method_handlers)
+            'oryx.OryxService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('dkv.DkvService', rpc_method_handlers)
+    server.add_registered_method_handlers('oryx.OryxService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class DkvService(object):
+class OryxService(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
@@ -148,9 +148,9 @@ class DkvService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/dkv.DkvService/Get',
-            dkv__pb2.GetRequest.SerializeToString,
-            dkv__pb2.GetResponse.FromString,
+            '/oryx.OryxService/Get',
+            oryx__pb2.GetRequest.SerializeToString,
+            oryx__pb2.GetResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -175,9 +175,9 @@ class DkvService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/dkv.DkvService/Set',
-            dkv__pb2.SetRequest.SerializeToString,
-            dkv__pb2.SetResponse.FromString,
+            '/oryx.OryxService/Set',
+            oryx__pb2.SetRequest.SerializeToString,
+            oryx__pb2.SetResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -202,9 +202,9 @@ class DkvService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/dkv.DkvService/Delete',
-            dkv__pb2.DeleteRequest.SerializeToString,
-            dkv__pb2.DeleteResponse.FromString,
+            '/oryx.OryxService/Delete',
+            oryx__pb2.DeleteRequest.SerializeToString,
+            oryx__pb2.DeleteResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -229,9 +229,9 @@ class DkvService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/dkv.DkvService/Pull',
-            dkv__pb2.PullRequest.SerializeToString,
-            dkv__pb2.PullResponse.FromString,
+            '/oryx.OryxService/Pull',
+            oryx__pb2.PullRequest.SerializeToString,
+            oryx__pb2.PullResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -256,9 +256,9 @@ class DkvService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/dkv.DkvService/Push',
-            dkv__pb2.PushRequest.SerializeToString,
-            dkv__pb2.PushResponse.FromString,
+            '/oryx.OryxService/Push',
+            oryx__pb2.PushRequest.SerializeToString,
+            oryx__pb2.PushResponse.FromString,
             options,
             channel_credentials,
             insecure,

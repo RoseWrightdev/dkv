@@ -1,11 +1,11 @@
 {
-  "name": "dkv-ts",
+  "name": "oryx-ts",
   "version": "1.0.0",
-  "description": "TypeScript client for the dkv distributed key-value store",
+  "description": "TypeScript client for the oryx distributed key-value store",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "gen": "protoc --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/gen --ts_proto_opt=outputServices=grpc-js,esModuleInterop=true,env=node -I ../.. ../../api/dkv.proto",
+    "gen": "protoc --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/gen --ts_proto_opt=outputServices=grpc-js,esModuleInterop=true,env=node -I ../.. ../../api/oryx.proto",
     "build": "tsc",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -40,7 +40,7 @@
     }
   },
   "keywords": [
-    "dkv"
+    "oryx"
   ],
   "author": "",
   "license": "ISC",

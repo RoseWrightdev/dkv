@@ -1,4 +1,4 @@
-module github.com/rosewrightdev/dkv
+module github.com/rosewrightdev/oryx
 
 go 1.26.3
 

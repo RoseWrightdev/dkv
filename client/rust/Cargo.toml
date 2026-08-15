@@ -1,8 +1,8 @@
 [package]
-name = "dkv"
+name = "oryx"
 version = "0.1.0"
 edition = "2024"
-description = "Rust client for the dkv distributed key-value store"
+description = "Rust client for the oryx distributed key-value store"
 
 [dependencies]
 tonic = "0.10"

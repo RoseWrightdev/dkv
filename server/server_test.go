@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/cluster/entropy"
-	"github.com/rosewrightdev/dkv/core/hashmap"
-	"github.com/rosewrightdev/dkv/cluster/mesh"
-	"github.com/rosewrightdev/dkv/kv"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/cluster/entropy"
+	"github.com/rosewrightdev/oryx/core/hashmap"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )

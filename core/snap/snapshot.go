@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rosewrightdev/dkv/core/wal"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/core/wal"
+	"github.com/rosewrightdev/oryx/kv"
 )
 
 // Snapshotter manages the background persistence of the engine state to disk.

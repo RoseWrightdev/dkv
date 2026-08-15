@@ -1,12 +1,12 @@
-use dkv::DkvClient;
+use oryx::OryxClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Connecting to DKV server...");
-    let client = DkvClient::connect("http://127.0.0.1:50051").await?;
+    println!("Connecting to ORYX server...");
+    let client = OryxClient::connect("http://127.0.0.1:50051").await?;
 
     let key = "rust-example-key";
-    let val = b"Hello DKV from robust Async Rust!".to_vec();
+    let val = b"Hello ORYX from robust Async Rust!".to_vec();
 
     println!("Storing value under key...");
     client.set(key, val.clone()).await?;

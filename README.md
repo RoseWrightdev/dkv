@@ -1,6 +1,6 @@
 # Distributed Key-Value Store
 
-dkv is a partitioned, state-replicated key-value database implemented in Go. In CAP theorem, dkv is AP in the style of Cassandra or ScyhllaDB. 
+oryx is a partitioned, state-replicated key-value database implemented in Go. In CAP theorem, oryx is AP in the style of Cassandra or ScyhllaDB. 
 
 ## Features
 
@@ -122,7 +122,7 @@ flowchart LR
 
 ## Quick Start
 
-Start a dkv server node:
+Start a oryx server node:
 ```bash
 go run examples/server/main.go
 ```
@@ -134,7 +134,7 @@ go run examples/client/main.go
 
 ## Performance & Benchmarks
 
-The dkv engine is benchmarked locally using Go's built-in testing framework on an Apple M4 Max (darwin/arm64, 14 cores, Go 1.26.3):
+The oryx engine is benchmarked locally using Go's built-in testing framework on an Apple M4 Max (darwin/arm64, 14 cores, Go 1.26.3):
 
 ### 1. Core Storage Engine (Direct CRUD)
 Micro-benchmarks measuring direct storage interaction with the 128-sharded memory store and active Write-Ahead Logging (WAL):

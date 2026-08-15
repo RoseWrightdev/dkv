@@ -6,16 +6,16 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/cluster/entropy"
-	"github.com/rosewrightdev/dkv/cluster/gateway"
-	"github.com/rosewrightdev/dkv/cluster/gossip"
-	"github.com/rosewrightdev/dkv/cluster/mesh"
-	"github.com/rosewrightdev/dkv/cluster/stats"
-	"github.com/rosewrightdev/dkv/cluster/trans"
-	"github.com/rosewrightdev/dkv/core"
-	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/security"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/cluster/entropy"
+	"github.com/rosewrightdev/oryx/cluster/gateway"
+	"github.com/rosewrightdev/oryx/cluster/gossip"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/cluster/stats"
+	"github.com/rosewrightdev/oryx/cluster/trans"
+	"github.com/rosewrightdev/oryx/core"
+	"github.com/rosewrightdev/oryx/kv"
+	"github.com/rosewrightdev/oryx/security"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -194,7 +194,7 @@ func (n *Node) NodeID() kv.NodeID {
 func (n *Node) Addr() string {
 	addr := n.meshConfig.BindAddr
 	if addr == "" {
-		panic("dkv: bind address not configured")
+		panic("oryx: bind address not configured")
 	}
 	return fmt.Sprintf("%s:%d", addr, n.meshConfig.GrpcPort)
 }
@@ -203,7 +203,7 @@ func (n *Node) Addr() string {
 func (n *Node) GossipAddr() string {
 	addr := n.meshConfig.BindAddr
 	if addr == "" {
-		panic("dkv: bind address not configured")
+		panic("oryx: bind address not configured")
 	}
 	return fmt.Sprintf("%s:%d", addr, n.meshConfig.BindPort)
 }

@@ -3,7 +3,7 @@ package gossip
 import (
 	"testing"
 
-	pb "github.com/rosewrightdev/dkv/api"
+	pb "github.com/rosewrightdev/oryx/api"
 	"google.golang.org/protobuf/proto"
 )
 

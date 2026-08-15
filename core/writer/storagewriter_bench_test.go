@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/core/hashmap"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/core/hashmap"
 )
 
 func BenchmarkStorageWriter_ApplySet(b *testing.B) {

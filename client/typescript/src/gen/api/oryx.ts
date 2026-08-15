@@ -2,7 +2,7 @@
 // versions:
 //   protoc-gen-ts_proto  v2.11.8
 //   protoc               v7.34.1
-// source: api/dkv.proto
+// source: api/oryx.proto
 
 /* eslint-disable */
 import { BinaryReader, BinaryWriter } from "@bufbuild/protobuf/wire";
@@ -19,7 +19,7 @@ import {
   type UntypedServiceImplementation,
 } from "@grpc/grpc-js";
 
-export const protobufPackage = "dkv";
+export const protobufPackage = "oryx";
 
 export interface PushRequest {
   entries: SetRequest[];
@@ -1207,10 +1207,10 @@ export const DeleteResponse: MessageFns<DeleteResponse> = {
   },
 };
 
-export type DkvServiceService = typeof DkvServiceService;
-export const DkvServiceService = {
+export type OryxServiceService = typeof OryxServiceService;
+export const OryxServiceService = {
   get: {
-    path: "/dkv.DkvService/Get" as const,
+    path: "/oryx.OryxService/Get" as const,
     requestStream: false as const,
     responseStream: false as const,
     requestSerialize: (value: GetRequest): Buffer => Buffer.from(GetRequest.encode(value).finish()),
@@ -1219,7 +1219,7 @@ export const DkvServiceService = {
     responseDeserialize: (value: Buffer): GetResponse => GetResponse.decode(value),
   },
   set: {
-    path: "/dkv.DkvService/Set" as const,
+    path: "/oryx.OryxService/Set" as const,
     requestStream: false as const,
     responseStream: false as const,
     requestSerialize: (value: SetRequest): Buffer => Buffer.from(SetRequest.encode(value).finish()),
@@ -1228,7 +1228,7 @@ export const DkvServiceService = {
     responseDeserialize: (value: Buffer): SetResponse => SetResponse.decode(value),
   },
   delete: {
-    path: "/dkv.DkvService/Delete" as const,
+    path: "/oryx.OryxService/Delete" as const,
     requestStream: false as const,
     responseStream: false as const,
     requestSerialize: (value: DeleteRequest): Buffer => Buffer.from(DeleteRequest.encode(value).finish()),
@@ -1238,7 +1238,7 @@ export const DkvServiceService = {
   },
   /** Anti-Entropy Sync */
   pull: {
-    path: "/dkv.DkvService/Pull" as const,
+    path: "/oryx.OryxService/Pull" as const,
     requestStream: false as const,
     responseStream: false as const,
     requestSerialize: (value: PullRequest): Buffer => Buffer.from(PullRequest.encode(value).finish()),
@@ -1247,7 +1247,7 @@ export const DkvServiceService = {
     responseDeserialize: (value: Buffer): PullResponse => PullResponse.decode(value),
   },
   push: {
-    path: "/dkv.DkvService/Push" as const,
+    path: "/oryx.OryxService/Push" as const,
     requestStream: false as const,
     responseStream: false as const,
     requestSerialize: (value: PushRequest): Buffer => Buffer.from(PushRequest.encode(value).finish()),
@@ -1257,7 +1257,7 @@ export const DkvServiceService = {
   },
 } as const;
 
-export interface DkvServiceServer extends UntypedServiceImplementation {
+export interface OryxServiceServer extends UntypedServiceImplementation {
   get: handleUnaryCall<GetRequest, GetResponse>;
   set: handleUnaryCall<SetRequest, SetResponse>;
   delete: handleUnaryCall<DeleteRequest, DeleteResponse>;
@@ -1266,7 +1266,7 @@ export interface DkvServiceServer extends UntypedServiceImplementation {
   push: handleUnaryCall<PushRequest, PushResponse>;
 }
 
-export interface DkvServiceClient extends Client {
+export interface OryxServiceClient extends Client {
   get(request: GetRequest, callback: (error: ServiceError | null, response: GetResponse) => void): ClientUnaryCall;
   get(
     request: GetRequest,
@@ -1333,9 +1333,9 @@ export interface DkvServiceClient extends Client {
   ): ClientUnaryCall;
 }
 
-export const DkvServiceClient = makeGenericClientConstructor(DkvServiceService, "dkv.DkvService") as unknown as {
-  new (address: string, credentials: ChannelCredentials, options?: Partial<ClientOptions>): DkvServiceClient;
-  service: typeof DkvServiceService;
+export const OryxServiceClient = makeGenericClientConstructor(OryxServiceService, "oryx.OryxService") as unknown as {
+  new (address: string, credentials: ChannelCredentials, options?: Partial<ClientOptions>): OryxServiceClient;
+  service: typeof OryxServiceService;
   serviceName: string;
 };
 

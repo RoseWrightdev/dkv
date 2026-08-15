@@ -1,7 +1,7 @@
-// Package kv defines the core key-value types and structures for dkv.
+// Package kv defines the core key-value types and structures for oryx.
 package kv
 
-// Key represents a unique identifier for a value in the dkv store.
+// Key represents a unique identifier for a value in the oryx store.
 type Key = string
 
 // HashKey represents the hashed key value

@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/kv"
 )
 
 func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-bench-int-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-bench-int-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
@@ -30,7 +30,7 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 	grpcPort1 := gLis1.Addr().(*net.TCPAddr).Port
 	_ = gLis1.Close()
 
-	e1, _ := dkv.NewDatabaseBuilder().
+	e1, _ := oryx.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
@@ -56,7 +56,7 @@ func BenchmarkClusterIntegration_ReadProxy(b *testing.B) {
 	grpcPort2 := gLis2.Addr().(*net.TCPAddr).Port
 	_ = gLis2.Close()
 
-	e2, _ := dkv.NewDatabaseBuilder().
+	e2, _ := oryx.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(n2Dir, "wal")).

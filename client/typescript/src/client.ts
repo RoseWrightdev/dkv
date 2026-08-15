@@ -1,5 +1,5 @@
 /**
- * Client — a typed TypeScript wrapper around the DKV gRPC service.
+ * Client — a typed TypeScript wrapper around the ORYX gRPC service.
  *
  * Usage (insecure):
  *   import { insecureCredentials } from "./server";
@@ -12,9 +12,9 @@
 
 import * as grpc from "@grpc/grpc-js";
 import {
-  DkvServiceClient as GrpcClient,
+  OryxServiceClient as GrpcClient,
   GetResponse,
-} from "./gen/api/dkv";
+} from "./gen/api/oryx";
 
 export interface ClientOptions {
   /** Per-call timeout in milliseconds.  Defaults to 5 000 ms. */
@@ -40,9 +40,9 @@ export class Client {
   }
 
   /**
-   * Open a connection to a DKV node.
+   * Open a connection to a ORYX node.
    *
-   * @param address      Host and port of the target DKV node, e.g. `"localhost:50051"`.
+   * @param address      Host and port of the target ORYX node, e.g. `"localhost:50051"`.
    * @param credentials  Channel credentials — use `insecureCredentials()` for plaintext or `tlsCredentials()` for secure channels.
    * @param options      Optional configuration details including per-call timeoutMs and custom gRPC channelOptions.
    * @returns A connected `Client` instance.

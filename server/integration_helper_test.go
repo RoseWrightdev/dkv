@@ -8,18 +8,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/cluster/gateway"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/cluster/gateway"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds []string, rf int) (dkv.Database, *gateway.Client) {
+func newTestNode(t *testing.T, tmpDir, name string, mlPort, grpcPort int, seeds []string, rf int) (oryx.Database, *gateway.Client) {
 	t.Helper()
 	nodeDir := filepath.Join(tmpDir, name)
 	require.NoError(t, os.MkdirAll(nodeDir, 0750))
 
-	eb := dkv.NewDatabaseBuilder().
+	eb := oryx.NewDatabaseBuilder().
 		Default().
 		FastTest().
 		SetWalPath(filepath.Join(nodeDir, "wal")).
@@ -62,7 +62,7 @@ func freePort(t *testing.T) int {
 	return port
 }
 
-func FindKeyForNode(e dkv.Database, nodeID string) string {
+func FindKeyForNode(e oryx.Database, nodeID string) string {
 	for i := range 1000 {
 		k := fmt.Sprintf("test-key-%d", i)
 		if e.Owner(kv.Key(k)) == kv.NodeID(nodeID) {

@@ -1,7 +1,7 @@
-"""A complete, production-grade example of a FastAPI microservice backed by the DKVAsyncClient.
+"""A complete, production-grade example of a FastAPI microservice backed by the OryxAsyncClient.
 
 To run this example:
-1. Ensure your DKV server is running (e.g. at 127.0.0.1:50051).
+1. Ensure your ORYX server is running (e.g. at 127.0.0.1:50051).
 2. Install fastapi and uvicorn:
    $ pip install fastapi uvicorn
 3. Run this app:
@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 
-from dkv import DKVAsyncClient, insecure_credentials
+from oryx import OryxAsyncClient, insecure_credentials
 
 
 class KeyValueItem(BaseModel):
@@ -22,16 +22,16 @@ class KeyValueItem(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Connecting to DKV distributed database...")
-    app.state.dkv = DKVAsyncClient.connect("127.0.0.1:50051", insecure_credentials())
+    print("Connecting to ORYX distributed database...")
+    app.state.oryx = OryxAsyncClient.connect("127.0.0.1:50051", insecure_credentials())
     yield
-    print("Closing DKV database connection...")
-    await app.state.dkv.close()
+    print("Closing ORYX database connection...")
+    await app.state.oryx.close()
 
 
 app = FastAPI(
-    title="dkv-py FastAPI Microservice",
-    description="High-concurrency API demonstration using dkv-py",
+    title="oryx-py FastAPI Microservice",
+    description="High-concurrency API demonstration using oryx-py",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -39,15 +39,15 @@ app = FastAPI(
 
 @app.get("/keys/{key}", status_code=status.HTTP_200_OK)
 async def get_key(key: str):
-    """Retrieve a value asynchronously from the DKV cluster."""
-    dkv: DKVAsyncClient = app.state.dkv
+    """Retrieve a value asynchronously from the ORYX cluster."""
+    oryx: OryxAsyncClient = app.state.oryx
     try:
         # Non-blocking async get call
-        raw_val = await dkv.get(key)
+        raw_val = await oryx.get(key)
         if raw_val is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Key '{key}' not found in DKV",
+                detail=f"Key '{key}' not found in ORYX",
             )
         return {"key": key, "value": raw_val.decode("utf-8")}
     except HTTPException:
@@ -61,13 +61,13 @@ async def get_key(key: str):
 
 @app.post("/keys/{key}", status_code=status.HTTP_201_CREATED)
 async def set_key(key: str, item: KeyValueItem):
-    """Store a value asynchronously in the DKV cluster."""
-    dkv: DKVAsyncClient = app.state.dkv
+    """Store a value asynchronously in the ORYX cluster."""
+    oryx: OryxAsyncClient = app.state.oryx
     try:
         # Convert string to bytes payload
         bytes_val = item.value.encode("utf-8")
         # Non-blocking async set call
-        await dkv.set(key, bytes_val)
+        await oryx.set(key, bytes_val)
         return {"status": "success", "message": f"Stored '{key}' successfully"}
     except Exception as e:
         raise HTTPException(
@@ -78,11 +78,11 @@ async def set_key(key: str, item: KeyValueItem):
 
 @app.delete("/keys/{key}", status_code=status.HTTP_200_OK)
 async def delete_key(key: str):
-    """Remove a key asynchronously from the DKV cluster."""
-    dkv: DKVAsyncClient = app.state.dkv
+    """Remove a key asynchronously from the ORYX cluster."""
+    oryx: OryxAsyncClient = app.state.oryx
     try:
         # Check if the key exists before deleting
-        raw_val = await dkv.get(key)
+        raw_val = await oryx.get(key)
         if raw_val is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -90,7 +90,7 @@ async def delete_key(key: str):
             )
 
         # Non-blocking async delete call
-        await dkv.delete(key)
+        await oryx.delete(key)
         return {"status": "success", "message": f"Deleted '{key}' successfully"}
     except HTTPException:
         raise

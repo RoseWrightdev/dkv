@@ -1,7 +1,7 @@
 /**
- * Unit tests for the dkv TypeScript client.
+ * Unit tests for the oryx TypeScript client.
  *
- * The gRPC-generated stub (DkvServiceClient) is replaced with a Jest
+ * The gRPC-generated stub (OryxServiceClient) is replaced with a Jest
  * mock so that no real network connection is required.  Each test drives the
  * mock's callback directly, letting us verify:
  *   - correct request payloads are forwarded to the stub
@@ -15,7 +15,7 @@ import * as grpc from "@grpc/grpc-js";
 import { describe, expect, it, jest } from '@jest/globals';
 import type { Mocked, MockInstance } from 'jest-mock';
 import { Client, ClientOptions } from "../client";
-import type { DkvServiceClient as GrpcClient } from "../gen/api/dkv";
+import type { OryxServiceClient as GrpcClient } from "../gen/api/oryx";
 
 // Mock the generated gRPC client constructor
 
@@ -23,11 +23,11 @@ import type { DkvServiceClient as GrpcClient } from "../gen/api/dkv";
 // inspect / drive its methods from individual tests.
 let mockStubInstance: Mocked<Pick<GrpcClient, "get" | "set" | "delete" | "close">>;
 
-jest.mock("../gen/api/dkv", () => {
-  const original = jest.requireActual("../gen/api/dkv");
+jest.mock("../gen/api/oryx", () => {
+  const original = jest.requireActual("../gen/api/oryx");
 
   // Factory that builds a fresh stub mock and stores it for test access.
-  const MockDkvServiceClient = jest.fn().mockImplementation(() => {
+  const MockOryxServiceClient = jest.fn().mockImplementation(() => {
     mockStubInstance = {
       get: jest.fn(),
       set: jest.fn(),
@@ -39,7 +39,7 @@ jest.mock("../gen/api/dkv", () => {
 
   return {
     ...(original as Record<string, unknown>),
-    DkvServiceClient: MockDkvServiceClient,
+    OryxServiceClient: MockOryxServiceClient,
   };
 });
 

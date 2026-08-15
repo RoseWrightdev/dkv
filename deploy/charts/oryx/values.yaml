@@ -1,7 +1,7 @@
 replicaCount: 3
 
 image:
-  repository: dkv
+  repository: oryx
   pullPolicy: IfNotPresent
   tag: "latest"
 

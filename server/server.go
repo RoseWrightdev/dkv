@@ -7,17 +7,17 @@ import (
 	"net"
 	"sync"
 
-	"github.com/rosewrightdev/dkv"
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/cluster/entropy"
-	"github.com/rosewrightdev/dkv/core/hashmap"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/cluster/entropy"
+	"github.com/rosewrightdev/oryx/core/hashmap"
+	"github.com/rosewrightdev/oryx/kv"
 	"google.golang.org/grpc"
 )
 
 type server struct {
-	pb.UnimplementedDkvServiceServer
-	eng   dkv.Database
+	pb.UnimplementedOryxServiceServer
+	eng   oryx.Database
 	pools *serverPools
 }
 
@@ -116,21 +116,21 @@ func (s *server) Push(_ context.Context, in *pb.PushRequest) (*pb.PushResponse, 
 	return &pb.PushResponse{}, nil
 }
 
-// Grpc represents the gRPC server wrapper for the dkv service.
+// Grpc represents the gRPC server wrapper for the oryx service.
 type Grpc struct {
 	inner    *grpc.Server
 	handlers *server
-	eng      dkv.Database
+	eng      oryx.Database
 }
 
-// NewServer creates a new Grpc server instance around a dkv Database.
-func NewServer(eng dkv.Database) *Grpc {
+// NewServer creates a new Grpc server instance around a oryx Database.
+func NewServer(eng oryx.Database) *Grpc {
 	s := grpc.NewServer()
 	h := &server{
 		eng:   eng,
 		pools: newServerPools(),
 	}
-	pb.RegisterDkvServiceServer(s, h)
+	pb.RegisterOryxServiceServer(s, h)
 	return &Grpc{inner: s, handlers: h, eng: eng}
 }
 
@@ -139,7 +139,7 @@ func (s *Grpc) Run() error {
 	addr := s.eng.Addr()
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("dkv: failed to create listener on %s: %w", addr, err)
+		return fmt.Errorf("oryx: failed to create listener on %s: %w", addr, err)
 	}
 	slog.Info("Grpc server running on " + listener.Addr().String())
 	return s.inner.Serve(listener)

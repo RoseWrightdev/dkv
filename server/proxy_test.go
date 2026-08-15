@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,7 +16,7 @@ func TestReadProxying(t *testing.T) {
 		t.Skip("skipping proxy test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-proxy-read-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-proxy-read-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	ml0, ml1, ml2 := freePort(t), freePort(t), freePort(t)
@@ -69,7 +69,7 @@ func TestWriteProxying(t *testing.T) {
 		t.Skip("skipping proxy test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-proxy-write-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-proxy-write-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	ml0, ml1, ml2 := freePort(t), freePort(t), freePort(t)
@@ -105,7 +105,7 @@ func TestWriteProxying(t *testing.T) {
 
 	// Verify the owning node actually has the key.
 	ownerID := eng0.Owner(kv.Key(key))
-	var ownerEng dkv.Database
+	var ownerEng oryx.Database
 	switch ownerID {
 	case "node-0":
 		ownerEng = eng0
@@ -125,7 +125,7 @@ func TestDeleteProxying(t *testing.T) {
 		t.Skip("skipping proxy test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-proxy-delete-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-proxy-delete-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	ml0, ml1, ml2 := freePort(t), freePort(t), freePort(t)
@@ -139,7 +139,7 @@ func TestDeleteProxying(t *testing.T) {
 
 	// Find a key owned by node-0 or node-1 (not node-2, so delete is proxied)
 	var key string
-	var ownerEng dkv.Database
+	var ownerEng oryx.Database
 	require.Eventually(t, func() bool {
 		for i := range 5000 {
 			k := fmt.Sprintf("proxy-del-key-%d", i)

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,7 +18,7 @@ func TestGossipReplication(t *testing.T) {
 		t.Skip("skipping gossip test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-replication-gossip-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-replication-gossip-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	ml0, ml1 := freePort(t), freePort(t)
@@ -61,7 +61,7 @@ func TestTombstoneResurrectionPrevention(t *testing.T) {
 		t.Skip("skipping resurrection prevention test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-replication-tombstone-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-replication-tombstone-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	ml0, ml1 := freePort(t), freePort(t)
@@ -119,7 +119,7 @@ func TestLWWCrossNodeConflict(t *testing.T) {
 		t.Skip("skipping LWW cross node conflict test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-replication-lww-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-replication-lww-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	ml0, ml1, ml2 := freePort(t), freePort(t), freePort(t)
@@ -175,7 +175,7 @@ func TestConcurrentDeleteSetRace(t *testing.T) {
 		t.Skip("skipping concurrent delete set race test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-replication-race-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-replication-race-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	ml0, ml1 := freePort(t), freePort(t)

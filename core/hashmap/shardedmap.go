@@ -5,8 +5,8 @@ import (
 	"math/bits"
 	"sync"
 
-	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/security"
+	"github.com/rosewrightdev/oryx/kv"
+	"github.com/rosewrightdev/oryx/security"
 )
 
 // ShardID represents the identifier of a shard within the ShardedMap.

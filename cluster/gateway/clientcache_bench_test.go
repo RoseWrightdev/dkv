@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rosewrightdev/dkv/cluster/mesh"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
 	"google.golang.org/grpc/credentials/insecure"
 )
 

@@ -1,4 +1,4 @@
-package dkv
+package oryx
 
 import (
 	"log/slog"
@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/core/clock"
-	"github.com/rosewrightdev/dkv/core/evict"
-	"github.com/rosewrightdev/dkv/cluster/mesh"
+	"github.com/rosewrightdev/oryx/core/clock"
+	"github.com/rosewrightdev/oryx/core/evict"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/credentials/insecure"
 )
