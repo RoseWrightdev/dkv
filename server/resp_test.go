@@ -45,7 +45,7 @@ func TestRESPServer_GetSetDeletePing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial RESP server: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	tests := []struct {
 		cmd  string
@@ -196,7 +196,7 @@ func BenchmarkRESPServer_Get(b *testing.B) {
 	if err != nil {
 		b.Fatalf("dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	cmd := []byte("*2\r\n$3\r\nGET\r\n$8\r\nbenchkey\r\n")
 	buf := make([]byte, 256)
@@ -244,7 +244,7 @@ func BenchmarkRESPServer_Set(b *testing.B) {
 	if err != nil {
 		b.Fatalf("dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	cmd := []byte("*3\r\n$3\r\nSET\r\n$8\r\nbenchkey\r\n$10\r\nbenchvalue\r\n")
 	buf := make([]byte, 256)
@@ -299,7 +299,7 @@ func BenchmarkRESPServer_Get_Parallel(b *testing.B) {
 		if err != nil {
 			b.Fatalf("dial: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		buf := make([]byte, 256)
 
 		for pb.Next() {
@@ -349,7 +349,7 @@ func BenchmarkRESPServer_Set_Parallel(b *testing.B) {
 		if err != nil {
 			b.Fatalf("dial: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		buf := make([]byte, 256)
 
 		for pb.Next() {
