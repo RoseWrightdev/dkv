@@ -55,16 +55,17 @@ type Config struct {
 }
 
 type engine struct {
-	clock     clock.Clocker
-	wal       wal.Waler
-	evt       evict.Evictor
-	hm        *hashmap.ShardedMap
-	snp       *snap.Snapshotter
-	sw        *writer.StorageWriter
-	pools     *pools
-	nodeID    kv.NodeID
-	startOnce sync.Once
-	stopOnce  sync.Once
+	clock           clock.Clocker
+	wal             wal.Waler
+	evt             evict.Evictor
+	hm              *hashmap.ShardedMap
+	snp             *snap.Snapshotter
+	sw              *writer.StorageWriter
+	pools           *pools
+	nodeID          kv.NodeID
+	disableSnapshot bool
+	startOnce       sync.Once
+	stopOnce        sync.Once
 }
 
 type pools struct {
@@ -101,12 +102,13 @@ func NewEngine(config Config) (Engine, error) {
 	}
 
 	eng := &engine{
-		hm:     hashmap.NewShardedMap(),
-		wal:    w,
-		clock:  config.Clock,
-		evt:    config.Evt,
-		nodeID: config.NodeID,
-		pools:  newPools(),
+		hm:              hashmap.NewShardedMap(),
+		wal:             w,
+		clock:           config.Clock,
+		evt:             config.Evt,
+		nodeID:          config.NodeID,
+		pools:           newPools(),
+		disableSnapshot: config.DisableSnapshot,
 	}
 
 	if !config.DisableSnapshot && config.SnpPath != "" {
@@ -159,7 +161,7 @@ func NewEngine(config Config) (Engine, error) {
 
 func (eng *engine) Start() {
 	eng.startOnce.Do(func() {
-		if eng.snp != nil {
+		if eng.snp != nil && !eng.disableSnapshot {
 			eng.snp.Start()
 		}
 		if eng.wal != nil {
@@ -173,7 +175,7 @@ func (eng *engine) Start() {
 
 func (eng *engine) Stop() {
 	eng.stopOnce.Do(func() {
-		if eng.snp != nil {
+		if eng.snp != nil && !eng.disableSnapshot {
 			eng.snp.Stop()
 		}
 		if eng.wal != nil {

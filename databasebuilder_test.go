@@ -1,6 +1,7 @@
 package oryx
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/rosewrightdev/oryx/core/evict"
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // todo: add more invarient testing
@@ -120,4 +122,45 @@ func TestEngineBuilder_ProxyMethods(t *testing.T) {
 	assert.Equal(t, "1.2.3.4", cfg.AdvertiseAddr)
 	assert.Equal(t, []string{"seed:1"}, cfg.SeedNodes)
 	assert.Equal(t, 8080, cfg.GrpcPort)
+}
+
+func TestEngineBuilder_VolatileMode(t *testing.T) {
+	eb := NewDatabaseBuilder().Default().VolatileMode().SetClock(clock.NewClock()).SetInsecure()
+	assert.True(t, eb.disableWal)
+	assert.True(t, eb.disableSnapshot)
+	assert.Equal(t, "nop", eb.walPath)
+	assert.Equal(t, "nop", eb.snpPath)
+
+	db, err := eb.Build()
+	require.NoError(t, err)
+
+	db.Start()
+	defer db.Stop()
+
+	// Operations work in volatile mode
+	err = db.Set("vol-builder-key", []byte("vol-builder-val"))
+	assert.NoError(t, err)
+
+	val, ok := db.Get(kv.Key("vol-builder-key"))
+	assert.True(t, ok)
+	assert.Equal(t, []byte("vol-builder-val"), val)
+
+	// Verify no files on disk
+	_, err = os.Stat("nop")
+	assert.True(t, os.IsNotExist(err), "nop file/dir should not exist")
+	_, err = os.Stat("nop.tmp")
+	assert.True(t, os.IsNotExist(err), "nop.tmp file/dir should not exist")
+}
+
+func TestEngineBuilder_DisableWalAndDisableSnapshot(t *testing.T) {
+	eb := NewDatabaseBuilder()
+	eb.DisableWal(true)
+	assert.True(t, eb.disableWal)
+	eb.DisableWal(false)
+	assert.False(t, eb.disableWal)
+
+	eb.DisableSnapshot(true)
+	assert.True(t, eb.disableSnapshot)
+	eb.DisableSnapshot(false)
+	assert.False(t, eb.disableSnapshot)
 }
