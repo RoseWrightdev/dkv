@@ -157,6 +157,63 @@ func TestWal_ClearWithOffsets(t *testing.T) {
 	}
 }
 
+// TestWal_ClearLeavesOriginalIntactOnFailure pins #62: a failure partway
+// through Clear's trailing-data path must never leave the segment file
+// truncated. Forcing the temp-file create to fail (by pre-occupying its path
+// with a directory) simulates a crash before the atomic rename.
+func TestWal_ClearLeavesOriginalIntactOnFailure(t *testing.T) {
+	defer cleanupWal(t)
+
+	wal, err := NewWal(mockWalPath, mockWalInterval, mockWalBufferSize, 1)
+	require.NoError(t, err)
+
+	for i := range 5 {
+		key := strconv.Itoa(i)
+		req := pb.SetRequest{Key: key, Value: []byte{byte(i)}, Timestamp: int64(i)}
+		require.NoError(t, wal.Publish(key, security.HashFunc(key), &req))
+	}
+
+	offsets, err := wal.PrepareSnapshot()
+	require.NoError(t, err)
+
+	postKeys := []string{"post-a", "post-b"}
+	for _, k := range postKeys {
+		req := pb.SetRequest{Key: k, Value: []byte("post-snapshot"), Timestamp: 999}
+		require.NoError(t, wal.Publish(k, security.HashFunc(k), &req))
+	}
+
+	segPath := mockWalPath + "/seg_00.log"
+	// PrepareSnapshot flushes the buffered writer without mutating data,
+	// matching the flush Clear itself performs before the injected failure.
+	_, err = wal.PrepareSnapshot()
+	require.NoError(t, err)
+	before, err := os.ReadFile(segPath)
+	require.NoError(t, err)
+	require.NotEmpty(t, before)
+
+	// Occupy the temp path with a directory so OpenFile fails before any
+	// write to the original file happens.
+	require.NoError(t, os.Mkdir(segPath+".clear.tmp", 0750))
+
+	err = wal.Clear(offsets)
+	assert.Error(t, err)
+
+	after, err := os.ReadFile(segPath)
+	require.NoError(t, err)
+	assert.Equal(t, before, after, "segment must be byte-for-byte unchanged when Clear fails")
+
+	require.NoError(t, os.Remove(segPath+".clear.tmp"))
+
+	// A subsequent successful Clear still works after the failed attempt.
+	require.NoError(t, wal.Clear(offsets))
+	replay, err := wal.Replay()
+	require.NoError(t, err)
+	for _, k := range postKeys {
+		_, ok := replay[kv.Key(k)]
+		assert.True(t, ok, "post-snapshot key %q should survive after a retried Clear", k)
+	}
+}
+
 func TestWal_ClearNilOffsets(t *testing.T) {
 	defer cleanupWal(t)
 

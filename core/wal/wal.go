@@ -362,69 +362,100 @@ func (w *Wal) PrepareSnapshot() ([]int64, error) {
 	return offsets, nil
 }
 
+// clearCopyChunkSize bounds Clear's peak memory for the trailing-data path
+// regardless of how much was written during a long snapshot (#97).
+const clearCopyChunkSize = 1 << 20
+
 // Clear truncates log segment files up to specified offsets to free disk space.
 func (w *Wal) Clear(offsets []int64) error {
 	for i, seg := range w.segments {
-		seg.mu.Lock()
-
 		var offset int64
 		if offsets != nil && i < len(offsets) {
 			offset = offsets[i]
 		}
-
-		if err := seg.wrt.Flush(); err != nil {
-			seg.mu.Unlock()
+		if err := w.clearSegment(seg, offset); err != nil {
 			return err
 		}
-
-		currSize, err := seg.file.Seek(0, io.SeekEnd)
-		if err != nil {
-			seg.mu.Unlock()
-			return err
-		}
-
-		if offset <= 0 || currSize <= offset {
-			if err := seg.file.Truncate(0); err != nil {
-				seg.mu.Unlock()
-				return err
-			}
-			if _, err := seg.file.Seek(0, 0); err != nil {
-				seg.mu.Unlock()
-				return err
-			}
-			seg.wrt.Reset(seg.file)
-		} else {
-			if _, err := seg.file.Seek(offset, io.SeekStart); err != nil {
-				seg.mu.Unlock()
-				return err
-			}
-			data := make([]byte, currSize-offset)
-			if _, err := io.ReadFull(seg.file, data); err != nil {
-				seg.mu.Unlock()
-				return err
-			}
-
-			if err := seg.file.Truncate(0); err != nil {
-				seg.mu.Unlock()
-				return err
-			}
-			if _, err := seg.file.Seek(0, io.SeekStart); err != nil {
-				seg.mu.Unlock()
-				return err
-			}
-			if _, err := seg.file.Write(data); err != nil {
-				seg.mu.Unlock()
-				return err
-			}
-			if _, err := seg.file.Seek(0, io.SeekEnd); err != nil {
-				seg.mu.Unlock()
-				return err
-			}
-			seg.wrt.Reset(seg.file)
-		}
-
-		seg.mu.Unlock()
 	}
+	return nil
+}
+
+// clearSegment drops everything in seg up to offset. Trailing bytes (writes
+// committed while a snapshot was in flight) are preserved by copying them to
+// a new file and renaming it over the original, an atomic swap on POSIX
+// filesystems: a crash or failure at any point up to the rename leaves the
+// original segment fully intact, never truncated with its trailing writes
+// lost (#62).
+func (w *Wal) clearSegment(seg *walSegment, offset int64) error {
+	seg.mu.Lock()
+	defer seg.mu.Unlock()
+
+	if err := seg.wrt.Flush(); err != nil {
+		return err
+	}
+
+	currSize, err := seg.file.Seek(0, io.SeekEnd)
+	if err != nil {
+		return err
+	}
+
+	if offset <= 0 || currSize <= offset {
+		if err := seg.file.Truncate(0); err != nil {
+			return err
+		}
+		if _, err := seg.file.Seek(0, 0); err != nil {
+			return err
+		}
+		seg.wrt.Reset(seg.file)
+		return nil
+	}
+
+	if _, err := seg.file.Seek(offset, io.SeekStart); err != nil {
+		return err
+	}
+
+	tmpPath := seg.path + ".clear.tmp"
+	// #nosec G304
+	tmp, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.CopyBuffer(tmp, seg.file, make([]byte, clearCopyChunkSize)); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Rename(tmpPath, seg.path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+
+	// The old fd now refers to an unlinked inode; reopen to pick up the
+	// renamed file.
+	if err := seg.file.Close(); err != nil {
+		return err
+	}
+	// #nosec G304
+	newFile, err := os.OpenFile(seg.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0600)
+	if err != nil {
+		return err
+	}
+	if _, err := newFile.Seek(0, io.SeekEnd); err != nil {
+		_ = newFile.Close()
+		return err
+	}
+
+	seg.file = newFile
+	seg.wrt.Reset(seg.file)
 	return nil
 }
 
@@ -436,7 +467,7 @@ func NewNopWal() Waler { return &NopWal{} }
 
 func (n *NopWal) Publish(_ kv.Key, _ kv.HashKey, _ proto.Message) error { return nil }
 func (n *NopWal) Replay() (map[kv.Key]kv.Value, error)                  { return make(map[kv.Key]kv.Value), nil }
-func (n *NopWal) Clear(_ []int64) error                                  { return nil }
+func (n *NopWal) Clear(_ []int64) error                                 { return nil }
 func (n *NopWal) PrepareSnapshot() ([]int64, error)                     { return nil, nil }
-func (n *NopWal) Start()                                                 {}
-func (n *NopWal) Stop()                                                  {}
+func (n *NopWal) Start()                                                {}
+func (n *NopWal) Stop()                                                 {}
