@@ -13,13 +13,27 @@ import (
 	"google.golang.org/grpc/credentials"
 )
 
+// existenceChecker is optionally implemented by a writer.StateWriter that can
+// report whether a key currently holds a live value in local storage. It lets
+// the gateway answer DEL with an accurate "did it exist" result without paying
+// for a remote round trip when this node is one of the key's owners.
+type existenceChecker interface {
+	Exists(key kv.Key) bool
+}
+
 // Gateway wraps a client cache and consistent hashing routing to proxy
 // requests to the appropriate peer nodes.
 type Gateway struct {
-	cc             *ClientCache
-	mesh           mesh.Mesher
-	meshConfig     *mesh.Config
-	sw             writer.StateWriter // Set during engine initialization
+	cc         *ClientCache
+	mesh       mesh.Mesher
+	meshConfig *mesh.Config
+
+	// swMu guards sw, which is installed after construction once the engine
+	// finishes bootstrapping. Requests can arrive on the RESP/gRPC listeners
+	// before that happens, so every read goes through stateWriter().
+	swMu sync.RWMutex
+	sw   writer.StateWriter
+
 	setRequests    sync.Pool
 	deleteRequests sync.Pool
 }
@@ -41,7 +55,23 @@ func NewGateway(meshObj mesh.Mesher, meshConfig *mesh.Config, creds credentials.
 
 // SetStateWriter registers the local state writer for processing local replicas.
 func (g *Gateway) SetStateWriter(sw writer.StateWriter) {
+	g.swMu.Lock()
 	g.sw = sw
+	g.swMu.Unlock()
+}
+
+// stateWriter returns the registered local state writer, or an error if the
+// engine has not finished bootstrapping yet. Callers must not dereference the
+// result without checking the error: before SetStateWriter runs, sw is nil and
+// calling through it would panic.
+func (g *Gateway) stateWriter() (writer.StateWriter, error) {
+	g.swMu.RLock()
+	sw := g.sw
+	g.swMu.RUnlock()
+	if sw == nil {
+		return nil, fmt.Errorf("local state writer not registered yet")
+	}
+	return sw, nil
 }
 
 // Get queries the consistent hash ring for owner nodes and routes
@@ -118,6 +148,10 @@ func (g *Gateway) Set(key kv.Key, value []byte, ts int64) error {
 }
 
 // Delete queries the hash ring for owners and executes parallel deletes to replicas.
+//
+// The returned bool reports whether the key held a live value before the
+// tombstone was written, so callers can honor the Redis DEL contract of
+// returning 0 for a key that was not there.
 func (g *Gateway) Delete(key kv.Key, ts int64) (bool, error) {
 	rf := g.getReplicationFactor()
 	owners := g.mesh.GetOwners(key, rf)
@@ -127,14 +161,18 @@ func (g *Gateway) Delete(key kv.Key, ts int64) (bool, error) {
 		return false, fmt.Errorf("no replica owners found for key: %s", key)
 	}
 
+	// Probe before writing the tombstone; afterwards every replica reports the
+	// key as absent regardless of whether it was ever there.
+	existed := g.exists(key, owners)
+
 	if len(owners) == 1 {
 		owner := owners[0]
 		if owner == g.meshConfig.NodeID {
 			err := g.applyDeleteLocal(key, ts)
-			return true, err
+			return existed, err
 		}
 		err := g.applyDeleteRemote(owner, key, ts)
-		return true, err
+		return existed, err
 	}
 
 	var wg sync.WaitGroup
@@ -170,8 +208,39 @@ func (g *Gateway) Delete(key kv.Key, ts int64) (bool, error) {
 		}
 	default:
 		return false, fmt.Errorf("unknown meshConfig.ReplicationFailureMode: %v", g.meshConfig.ReplicationFailureMode)
-	}	
-	return true, nil
+	}
+	return existed, nil
+}
+
+// exists reports whether any owning replica currently holds a live value for
+// key. The local replica is consulted first so that a hit on this node costs no
+// network round trips; remote owners are probed only if the local answer is no.
+func (g *Gateway) exists(key kv.Key, owners []kv.NodeID) bool {
+	localOwner := false
+	for _, owner := range owners {
+		if owner == g.meshConfig.NodeID {
+			localOwner = true
+			break
+		}
+	}
+
+	if localOwner {
+		if sw, err := g.stateWriter(); err == nil {
+			if ec, ok := sw.(existenceChecker); ok && ec.Exists(key) {
+				return true
+			}
+		}
+	}
+
+	for _, owner := range owners {
+		if owner == g.meshConfig.NodeID {
+			continue
+		}
+		if _, ok, err := g.proxyGetRemote(owner, key); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 // Close gracefully closes all cached gRPC connections.
@@ -208,6 +277,11 @@ func (g *Gateway) proxyGetRemote(node kv.NodeID, key kv.Key) ([]byte, bool, erro
 }
 
 func (g *Gateway) applySetLocal(key kv.Key, value []byte, ts int64) error {
+	sw, err := g.stateWriter()
+	if err != nil {
+		return err
+	}
+
 	req := g.setRequests.Get().(*pb.SetRequest)
 	defer g.setRequests.Put(req)
 	req.Key = key
@@ -215,7 +289,7 @@ func (g *Gateway) applySetLocal(key kv.Key, value []byte, ts int64) error {
 	req.Timestamp = ts
 	req.NodeId = string(g.meshConfig.NodeID)
 
-	err := g.sw.ApplySet(req)
+	err = sw.ApplySet(req)
 	req.Reset()
 	return err
 }
@@ -250,13 +324,18 @@ func (g *Gateway) applySetRemote(node kv.NodeID, key kv.Key, value []byte, ts in
 }
 
 func (g *Gateway) applyDeleteLocal(key kv.Key, ts int64) error {
+	sw, err := g.stateWriter()
+	if err != nil {
+		return err
+	}
+
 	req := g.deleteRequests.Get().(*pb.DeleteRequest)
 	defer g.deleteRequests.Put(req)
 	req.Key = key
 	req.Timestamp = ts
 	req.NodeId = string(g.meshConfig.NodeID)
 
-	err := g.sw.ApplyDelete(req)
+	err = sw.ApplyDelete(req)
 	req.Reset()
 	return err
 }
