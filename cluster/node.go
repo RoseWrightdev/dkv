@@ -3,6 +3,7 @@ package cluster
 
 import (
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -120,20 +121,40 @@ func (n *Node) Stop() {
 func (n *Node) Get(key kv.Key) ([]byte, bool) {
 	hash := kv.HashKey(security.HashFunc(key))
 	if n.meshConfig.SingleNode {
-		return n.core.HM().LoadData(key, hash)
-	}
-	iv, ok := n.core.HM().Load(key, hash)
-	if ok && !iv.Tombstone {
-		if n.core.Evt() != nil {
+		data, ok := n.core.HM().LoadData(key, hash)
+		if ok && n.core.Evt() != nil {
 			n.core.Evt().Publish(key, hash)
 		}
-		return iv.Data, true
-	} else if ok && iv.Tombstone {
-		// Local tombstone exists; key is known to be deleted
-		return nil, false
+		return data, ok
+	}
+
+	// Only trust local storage while still a current owner: a stale local
+	// copy from before a rebalance must not shadow the real owners (#61).
+	if n.isOwner(key) {
+		iv, ok := n.core.HM().Load(key, hash)
+		if ok && !iv.Tombstone {
+			if n.core.Evt() != nil {
+				n.core.Evt().Publish(key, hash)
+			}
+			return iv.Data, true
+		} else if ok && iv.Tombstone {
+			// Local tombstone exists; key is known to be deleted
+			return nil, false
+		}
 	}
 
 	return n.gw.Get(key)
+}
+
+// isOwner reports whether this node is currently a replica owner for key.
+func (n *Node) isOwner(key kv.Key) bool {
+	rf := n.meshConfig.ReplicationFactor
+	if rf <= 0 {
+		rf = 1
+	}
+	owners := n.mesh.GetOwners(key, rf)
+	defer n.mesh.PutOwners(owners)
+	return slices.Contains(owners, n.meshConfig.NodeID)
 }
 
 // Set writes a key-value pair locally or forwards through the gateway to replica nodes.
