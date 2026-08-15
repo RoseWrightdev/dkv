@@ -234,8 +234,17 @@ func (lru *LeastRecentlyUsed) getShardByHash(hash kv.HashKey) *lruShard {
 
 func (s *lruShard) run() {
 	defer s.wg.Done()
-	ticker := time.NewTicker(s.ttl / 10)
-	defer ticker.Stop()
+
+	// When TTL is zero the caller has disabled time-based expiry.
+	// time.NewTicker panics on a zero or negative duration, so we
+	// only create the ticker when TTL is configured.
+	var ticker *time.Ticker
+	var tickerC <-chan time.Time
+	if s.ttl > 0 {
+		ticker = time.NewTicker(s.ttl / 10)
+		defer ticker.Stop()
+		tickerC = ticker.C
+	}
 
 	for {
 		select {
@@ -249,7 +258,7 @@ func (s *lruShard) run() {
 			if s.onEvict != nil {
 				_ = s.onEvict(msg.key, msg.reason)
 			}
-		case <-ticker.C:
+		case <-tickerC:
 			s.evictExpired()
 		}
 	}
