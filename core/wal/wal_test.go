@@ -157,10 +157,8 @@ func TestWal_ClearWithOffsets(t *testing.T) {
 	}
 }
 
-// TestWal_ClearLeavesOriginalIntactOnFailure pins #62: a failure partway
-// through Clear's trailing-data path must never leave the segment file
-// truncated. Forcing the temp-file create to fail (by pre-occupying its path
-// with a directory) simulates a crash before the atomic rename.
+// TestWal_ClearLeavesOriginalIntactOnFailure pins #62: forcing the temp-file
+// create to fail must never leave the segment file truncated.
 func TestWal_ClearLeavesOriginalIntactOnFailure(t *testing.T) {
 	defer cleanupWal(t)
 

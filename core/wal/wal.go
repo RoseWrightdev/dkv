@@ -380,12 +380,8 @@ func (w *Wal) Clear(offsets []int64) error {
 	return nil
 }
 
-// clearSegment drops everything in seg up to offset. Trailing bytes (writes
-// committed while a snapshot was in flight) are preserved by copying them to
-// a new file and renaming it over the original, an atomic swap on POSIX
-// filesystems: a crash or failure at any point up to the rename leaves the
-// original segment fully intact, never truncated with its trailing writes
-// lost (#62).
+// clearSegment drops everything in seg up to offset. Trailing bytes survive
+// via copy-then-atomic-rename, so a crash never leaves it truncated (#62).
 func (w *Wal) clearSegment(seg *walSegment, offset int64) error {
 	seg.mu.Lock()
 	defer seg.mu.Unlock()
