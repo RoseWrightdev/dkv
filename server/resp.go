@@ -28,6 +28,9 @@ var (
 	respErrArgs       = []byte("-ERR wrong number of arguments\r\n")
 	respErrBadRequest = []byte("-ERR bad request\r\n")
 	crlfBytes         = []byte("\r\n")
+
+	_ = respErrBadRequest
+	_ = newGnetServer
 )
 
 type connState struct {
@@ -42,6 +45,7 @@ type RESPServer struct {
 	stopOnce sync.Once
 	mu       sync.Mutex
 	bound    string
+	gnetEng  *gnet.Engine
 }
 
 func NewRESPServer(eng oryx.Database, addr string) *RESPServer {
@@ -68,6 +72,7 @@ func (s *RESPServer) OnBoot(eng gnet.Engine) gnet.Action {
 	runtime.LockOSThread()
 	s.mu.Lock()
 	s.bound = s.addr
+	s.gnetEng = &eng
 	s.mu.Unlock()
 	return gnet.None
 }
@@ -306,7 +311,11 @@ func (s *RESPServer) Run() error {
 
 func (s *RESPServer) Stop() {
 	s.stopOnce.Do(func() {
-		protoAddr := "tcp://" + s.addr
-		_ = gnet.Stop(context.Background(), protoAddr)
+		s.mu.Lock()
+		eng := s.gnetEng
+		s.mu.Unlock()
+		if eng != nil {
+			_ = eng.Stop(context.Background())
+		}
 	})
 }

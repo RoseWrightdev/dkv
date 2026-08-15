@@ -41,7 +41,7 @@ func BenchmarkComparative_Get_Parallel(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to open NutsDB: %v", err)
 	}
-	defer nutsDB.Close()
+	defer func() { _ = nutsDB.Close() }()
 
 	_ = nutsDB.Update(func(tx *nutsdb.Tx) error {
 		return tx.NewBucket(nutsdb.DataStructureBTree, "bucket")
@@ -64,7 +64,7 @@ func BenchmarkComparative_Get_Parallel(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to open Pebble: %v", err)
 	}
-	defer pebbleDB.Close()
+	defer func() { _ = pebbleDB.Close() }()
 
 	batch := pebbleDB.NewBatch()
 	for i := range keys {

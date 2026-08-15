@@ -275,7 +275,9 @@ func (w *Wal) replaySegment(seg *walSegment, results map[kv.Key]kv.Value, result
 		if _, err := io.ReadFull(reader, payload); err != nil {
 			return err
 		}
-		w.setResults(payload, results, resultsMu)
+		if err := w.setResults(payload, results, resultsMu); err != nil {
+			return err
+		}
 	}
 
 	_, err = seg.file.Seek(0, io.SeekEnd)
