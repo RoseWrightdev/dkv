@@ -29,6 +29,7 @@ type Syncer struct {
 	hm         *hashmap.ShardedMap
 	pools      *pools
 	stopChan   chan struct{}
+	stopOnce   sync.Once
 	cc         *gateway.ClientCache
 	nodeID     kv.NodeID
 	interval   time.Duration
@@ -117,13 +118,11 @@ func (s *Syncer) Start() {
 }
 
 // Stop gracefully terminates the background reconciliation loop.
+// It is safe to call Stop concurrently or multiple times.
 func (s *Syncer) Stop() {
-	select {
-	case <-s.stopChan:
-		return // Already stopped
-	default:
+	s.stopOnce.Do(func() {
 		close(s.stopChan)
-	}
+	})
 }
 
 func (s *Syncer) run() {
@@ -235,7 +234,9 @@ func calculateMismatchMask(hasBuckets bool, remoteBucketHashes, localBucketHashe
 	var mismatchMask uint64
 	for i := range hashmap.SubBucketCount {
 		if localBucketHashes[i] != remoteBucketHashes[i] {
-			mismatchMask |= (1 << i)
+			// Use uint64(1) to avoid untyped-int shift overflow on 32-bit
+			// platforms when i >= 32 (#90).
+			mismatchMask |= uint64(1) << i
 		}
 	}
 	return mismatchMask
