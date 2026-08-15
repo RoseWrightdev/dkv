@@ -44,13 +44,74 @@ func TestShardedMap_Digests(t *testing.T) {
 	assert.Len(t, digests, int(ShardCount))
 	assert.NotEqual(t, digests[0], digests[1])
 
-	// Check empty shard
+	// An empty shard's sub-hashes are a fixed non-zero fingerprint
+	// (mixCount(0) in every slot), not literally zero: see #85.
 	emptyDigest := make([]Digest, SubBucketCount)
-	assert.Equal(t, emptyDigest, digests[2], "Empty shard should have empty sub-hashes")
+	for i := range emptyDigest {
+		emptyDigest[i] = mixCount(0)
+	}
+	assert.Equal(t, emptyDigest, digests[2], "empty shard's sub-hashes should be the empty-bucket fingerprint")
 
 	// Verify sub-bucket indexing for shard 0
 	// hash 0 maps to shard 0, subIndex 0
 	assert.NotEqual(t, uint64(0), digests[0][0])
+}
+
+// TestShardedMap_EmptyBucketDistinctFromCancelledNonEmpty pins #85: a
+// cancelled-to-zero bucket must not read as identical to a genuinely empty one.
+func TestShardedMap_EmptyBucketDistinctFromCancelledNonEmpty(t *testing.T) {
+	sm := NewShardedMap()
+
+	emptyDigests := make(map[ShardID]ShardDigest)
+	for i := range ShardCount {
+		emptyDigests[ShardID(i)] = make([]Digest, SubBucketCount)
+	}
+	sm.FillDigests(emptyDigests)
+	emptyFingerprint := emptyDigests[0][0]
+
+	// Simulate 3 items whose hashes happen to XOR to zero, same as an empty bucket.
+	sm[0].mu.Lock()
+	sm[0].subDigests[0] = 0
+	sm[0].subCounts[0] = 3
+	sm[0].mu.Unlock()
+
+	cancelled := make(map[ShardID]ShardDigest)
+	for i := range ShardCount {
+		cancelled[ShardID(i)] = make([]Digest, SubBucketCount)
+	}
+	sm.FillDigests(cancelled)
+
+	assert.NotEqual(t, emptyFingerprint, cancelled[0][0],
+		"a non-empty bucket whose hashes cancel to zero must not read as empty")
+}
+
+// TestShardedMap_CountTrackingReturnsToEmpty checks count bookkeeping across
+// insert, in-place update, and delete converges back to the empty fingerprint.
+func TestShardedMap_CountTrackingReturnsToEmpty(t *testing.T) {
+	sm := NewShardedMap()
+	key, hash := kv.Key("count-key"), kv.HashKey(0)
+
+	digests := make(map[ShardID]ShardDigest)
+	for i := range ShardCount {
+		digests[ShardID(i)] = make([]Digest, SubBucketCount)
+	}
+	sm.FillDigests(digests)
+	emptyFingerprint := digests[0][0]
+
+	sm.Store(key, hash, kv.Value{Data: []byte("v1"), Timestamp: 1})
+	sm.FillDigests(digests)
+	afterInsert := digests[0][0]
+	assert.NotEqual(t, emptyFingerprint, afterInsert)
+
+	// An in-place update (same key, still present) must not change the count.
+	sm.Store(key, hash, kv.Value{Data: []byte("v2"), Timestamp: 2})
+	sm.FillDigests(digests)
+	assert.NotEqual(t, afterInsert, digests[0][0], "digest should change with the value")
+	assert.NotEqual(t, emptyFingerprint, digests[0][0], "count-derived component must be unchanged by an update")
+
+	sm.Delete(key, hash)
+	sm.FillDigests(digests)
+	assert.Equal(t, emptyFingerprint, digests[0][0], "deleting the only key must return to the empty fingerprint")
 }
 
 func TestShardedMap_Concurrency(t *testing.T) {

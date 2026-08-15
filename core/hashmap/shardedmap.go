@@ -47,7 +47,9 @@ type shard struct {
 	buckets     [SubBucketCount]*iradix.Tree
 	readBuckets [SubBucketCount]atomic.Pointer[iradix.Tree]
 	subDigests  [SubBucketCount]Digest
+	subCounts   [SubBucketCount]uint32
 	shardDigest Digest
+	shardCount  uint32
 	mu          sync.RWMutex
 }
 
@@ -134,6 +136,15 @@ func getItemHash(hash kv.HashKey, val kv.Value) uint64 {
 	return h
 }
 
+// mixCount folds an item count into a digest so an empty bucket can never
+// collide with a non-empty one whose raw XOR happens to land on 0 (#85).
+func mixCount(count uint32) uint64 {
+	x := uint64(count) + 1
+	x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9
+	x = (x ^ (x >> 27)) * 0x94d049bb133111eb
+	return x ^ (x >> 31)
+}
+
 // lwwWins reports whether incoming should replace existing under last-write-wins.
 //
 // Ordering is the tuple (Timestamp, NodeID, ItemHash). The first two are the
@@ -204,6 +215,8 @@ func (sm *ShardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
 	newTree, _, _ := tree.Insert([]byte(key), wrapper)
 	shard.buckets[subIndex] = newTree
 	shard.readBuckets[subIndex].Store(newTree)
+	shard.subCounts[subIndex]++
+	shard.shardCount++
 }
 
 // StoreLWW updates the value in the correct shard using LWW conflict resolution under a single write lock.
@@ -260,6 +273,8 @@ func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 	newTree, _, _ := tree.Insert([]byte(key), wrapper)
 	shard.buckets[subIndex] = newTree
 	shard.readBuckets[subIndex].Store(newTree)
+	shard.subCounts[subIndex]++
+	shard.shardCount++
 	return true
 }
 
@@ -284,6 +299,8 @@ func (sm *ShardedMap) Delete(key kv.Key, hash kv.HashKey) {
 		newTree, _, _ := tree.Delete([]byte(key))
 		shard.buckets[subIndex] = newTree
 		shard.readBuckets[subIndex].Store(newTree)
+		shard.subCounts[subIndex]--
+		shard.shardCount--
 	}
 }
 
@@ -292,7 +309,7 @@ func (sm *ShardedMap) FillShardDigests(dst map[ShardID]Digest) {
 	for i := range ShardCount {
 		shard := sm[i]
 		shard.mu.RLock()
-		dst[ShardID(i)] = shard.shardDigest
+		dst[ShardID(i)] = shard.shardDigest ^ mixCount(shard.shardCount)
 		shard.mu.RUnlock()
 	}
 }
@@ -303,7 +320,7 @@ func (sm *ShardedMap) RootDigest() RootDigest {
 	for i := range ShardCount {
 		shard := sm[i]
 		shard.mu.RLock()
-		root ^= shard.shardDigest
+		root ^= shard.shardDigest ^ mixCount(shard.shardCount)
 		shard.mu.RUnlock()
 	}
 	return root
@@ -328,7 +345,9 @@ func (sm *ShardedMap) FillDigests(dst map[ShardID]ShardDigest) {
 
 		shard := sm[i]
 		shard.mu.RLock()
-		copy(buf, shard.subDigests[:])
+		for b := range SubBucketCount {
+			buf[b] = shard.subDigests[b] ^ mixCount(shard.subCounts[b])
+		}
 		shard.mu.RUnlock()
 	}
 }

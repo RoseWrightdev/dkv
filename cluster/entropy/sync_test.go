@@ -13,6 +13,7 @@ import (
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/rosewrightdev/oryx/security"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSync_PreparePullRequestDataRace(_ *testing.T) {
@@ -222,6 +223,35 @@ func (m *MockMesher) Stop() error {
 }
 
 func (m *MockMesher) UpdateLocalWeight(_ int) {}
+
+// TestSyncer_PullResultsAreIndependent guards against reintroducing pooling
+// for Pull's results: they're gRPC response payload nothing ever Puts back (#66).
+func TestSyncer_PullResultsAreIndependent(t *testing.T) {
+	hm := hashmap.NewShardedMap()
+	hm.StoreLWW("key-a", security.HashFunc("key-a"), kv.Value{Data: []byte("val-a"), Timestamp: 1})
+	hm.StoreLWW("key-b", security.HashFunc("key-b"), kv.Value{Data: []byte("val-b"), Timestamp: 1})
+
+	syn := NewSyncer(&SyncerConfig{
+		Mesh:       &MockMesher{Owners: []kv.NodeID{"node-1"}},
+		Cc:         gateway.NewClientCache(nil),
+		Hm:         hm,
+		MeshConfig: &mesh.Config{NodeID: "node-1", ReplicationFactor: 1},
+	})
+
+	sets, _, err := syn.Pull(&PullConfig{
+		Shards:      make(map[hashmap.ShardID]hashmap.Digest),
+		Buckets:     make(map[hashmap.ShardID]hashmap.ShardDigest),
+		RequesterID: "node-1",
+		Root:        0, // force mismatch
+	})
+	require.NoError(t, err)
+	require.Len(t, sets, 2)
+	assert.NotSame(t, sets[0], sets[1])
+
+	original := sets[1].Key
+	sets[0].Key = "mutated"
+	assert.Equal(t, original, sets[1].Key, "mutating one result must not affect another")
+}
 
 // TestExcludeSelf pins that performSync never picks itself as a sync target,
 // which would always no-op and waste the attempt.

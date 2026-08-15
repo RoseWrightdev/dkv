@@ -48,12 +48,10 @@ type SyncerConfig struct {
 }
 
 type pools struct {
-	shardDigests   sync.Pool
-	shardMaps      sync.Pool
-	bucketMaps     sync.Pool
-	setRequests    sync.Pool
-	deleteRequests sync.Pool
-	pullRequests   sync.Pool
+	shardDigests sync.Pool
+	shardMaps    sync.Pool
+	bucketMaps   sync.Pool
+	pullRequests sync.Pool
 }
 
 // NewSyncer initializes a new Syncer instance.
@@ -90,12 +88,6 @@ func NewSyncer(config *SyncerConfig) *Syncer {
 					}
 					return m
 				},
-			},
-			setRequests: sync.Pool{
-				New: func() any { return &pb.SetRequest{} },
-			},
-			deleteRequests: sync.Pool{
-				New: func() any { return &pb.DeleteRequest{} },
 			},
 			pullRequests: sync.Pool{
 				New: func() any {
@@ -263,23 +255,24 @@ func (s *Syncer) isRequesterResponsible(key string, requesterID kv.NodeID) bool 
 	return isResponsible
 }
 
-// buildSetRequest leases a protobuf SetRequest from the sync pools and populates it.
+// buildSetRequest builds a Pull response entry. Not pool-leased: it's
+// returned straight to gRPC and nothing ever calls Put on it (#66).
 func (s *Syncer) buildSetRequest(key string, val kv.Value) *pb.SetRequest {
-	req := s.pools.setRequests.Get().(*pb.SetRequest)
-	req.Key = key
-	req.Value = val.Data
-	req.Timestamp = val.Timestamp
-	req.NodeId = val.NodeID
-	return req
+	return &pb.SetRequest{
+		Key:       key,
+		Value:     val.Data,
+		Timestamp: val.Timestamp,
+		NodeId:    val.NodeID,
+	}
 }
 
-// buildDeleteRequest leases a protobuf DeleteRequest from the sync pools and populates it.
+// buildDeleteRequest is the delete-tombstone counterpart to buildSetRequest.
 func (s *Syncer) buildDeleteRequest(key string, val kv.Value) *pb.DeleteRequest {
-	req := s.pools.deleteRequests.Get().(*pb.DeleteRequest)
-	req.Key = key
-	req.Timestamp = val.Timestamp
-	req.NodeId = val.NodeID
-	return req
+	return &pb.DeleteRequest{
+		Key:       key,
+		Timestamp: val.Timestamp,
+		NodeId:    val.NodeID,
+	}
 }
 
 // excludeSelf removes self from members. Mesher.Members() includes the
