@@ -3,7 +3,6 @@ package gateway
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	pb "github.com/rosewrightdev/oryx/api"
@@ -34,8 +33,8 @@ func NewClient(addr string, timeout time.Duration, creds credentials.TransportCr
 }
 
 // NewInsecureClient initializes a new Client using insecure credentials.
+// Callers opt in explicitly by using this constructor; no additional warning is emitted.
 func NewInsecureClient(addr string, timeout time.Duration) (*Client, error) {
-	slog.Warn("Using `insecure.NewCredentials()`. See google.golang.org/grpc/credentials/insecure")
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
@@ -71,12 +70,16 @@ func (c *Client) Set(key string, value []byte) error {
 }
 
 // Delete removes a key from the store.
-func (c *Client) Delete(key string) error {
+// Returns true if the key existed and was deleted, false if the key was not found.
+func (c *Client) Delete(key string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	_, err := c.API.Delete(ctx, &pb.DeleteRequest{Key: key})
-	return err
+	resp, err := c.API.Delete(ctx, &pb.DeleteRequest{Key: key})
+	if err != nil {
+		return false, err
+	}
+	return resp.Existed, nil
 }
 
 // Close closes the underlying gRPC connection.

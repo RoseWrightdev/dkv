@@ -1,4 +1,4 @@
-package core_test
+package benchmarks_test
 
 import (
 	"fmt"
