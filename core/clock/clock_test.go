@@ -1,6 +1,7 @@
 package clock
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -61,4 +62,39 @@ func TestClock_PoisoningProtection(t *testing.T) {
 	tsNeg := hlc.Now()
 	assert.GreaterOrEqual(t, tsNeg, tsFuture)
 	assert.InDelta(t, float64(initialTS), float64(tsNeg), float64(500<<logicalBits))
+}
+
+// TestClock_SaturationDoesNotHangOrOverflow pins #104: a state already at the
+// ceiling must make Now/Update return promptly, not spin forever (#104).
+func TestClock_SaturationDoesNotHangOrOverflow(t *testing.T) {
+	hlc := NewClock()
+	// Physical at the ceiling, logical exhausted: pre-fix, this spins forever
+	// in the overflow-retry loop since physical time can't advance further.
+	hlc.state.Store((maxPhysical << logicalBits) | logicalMask)
+
+	done := make(chan int64, 1)
+	go func() { done <- hlc.Now() }()
+
+	select {
+	case ts := <-done:
+		assert.Equal(t, int64(math.MaxInt64), ts)
+	case <-time.After(2 * time.Second):
+		t.Fatal("Now() did not return; likely spinning forever on a saturated clock")
+	}
+
+	// The state itself must stay pinned at the ceiling, not grow past it.
+	assert.LessOrEqual(t, hlc.state.Load(), uint64(math.MaxInt64))
+
+	// Update must also return promptly rather than hang.
+	updateDone := make(chan struct{})
+	go func() {
+		hlc.Update(time.Now().UnixMilli() << logicalBits)
+		close(updateDone)
+	}()
+	select {
+	case <-updateDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Update() did not return on a saturated clock")
+	}
+	assert.LessOrEqual(t, hlc.state.Load(), uint64(math.MaxInt64))
 }

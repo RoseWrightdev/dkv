@@ -2,6 +2,7 @@
 package clock
 
 import (
+	"log/slog"
 	"math"
 	"sync/atomic"
 	"time"
@@ -21,11 +22,22 @@ const (
 	logicalBits = 16
 	// logicalMask is used to extract the logical counter from a 64-bit timestamp.
 	logicalMask = (1 << logicalBits) - 1
+	// maxPhysical bounds the physical component so a corrupted system clock
+	// saturates instead of overflowing c.state past math.MaxInt64 (#104).
+	maxPhysical = uint64(math.MaxInt64) >> logicalBits
 )
 
 // Clock implements a Hybrid Logical Clock.
 type Clock struct {
-	state atomic.Uint64
+	state            atomic.Uint64
+	saturationLogged atomic.Bool
+}
+
+func clampPhysical(p uint64) uint64 {
+	if p > maxPhysical {
+		return maxPhysical
+	}
+	return p
 }
 
 // NewClock initializes a new Hybrid Logical Clock.
@@ -37,18 +49,27 @@ func NewClock() *Clock {
 func (c *Clock) Now() int64 {
 	// Sample physical time once before the CAS loop. Retries reuse this value
 	// so we avoid a time.Now() syscall on every failed CAS iteration.
-	now := uint64(max(time.Now().UnixMilli(), 0))
+	now := clampPhysical(uint64(max(time.Now().UnixMilli(), 0)))
 
 	for {
 		old := c.state.Load()
 		oldPhysical := old >> logicalBits
 		oldLogical := old & logicalMask
 
+		// Already at the ceiling: physical time can never catch up, so
+		// ratcheting further would spin forever. Report once and return (#104).
+		if oldPhysical >= maxPhysical {
+			if c.saturationLogged.CompareAndSwap(false, true) {
+				slog.Error("HLC clock saturated at the maximum representable value; check the system clock", "state", old)
+			}
+			return math.MaxInt64
+		}
+
 		// Overflow: logical counter exhausted and physical time hasn't advanced.
 		// Sleep 1ms to let the wall clock tick, then re-sample.
 		if now <= oldPhysical && oldLogical >= logicalMask {
 			time.Sleep(1 * time.Millisecond)
-			now = uint64(max(time.Now().UnixMilli(), 0))
+			now = clampPhysical(uint64(max(time.Now().UnixMilli(), 0)))
 			continue
 		}
 
@@ -63,15 +84,12 @@ func (c *Clock) Now() int64 {
 
 		newVal := (newPhysical << logicalBits) | (newLogical & logicalMask)
 		if c.state.CompareAndSwap(old, newVal) {
-			if newVal <= math.MaxInt64 {
-				return int64(newVal)
-			}
-			return math.MaxInt64
+			return int64(newVal)
 		}
 		// CAS lost the race — re-sample time and retry. Physical time may have
 		// advanced since our initial sample, keeping timestamps accurate under
 		// high contention without paying a syscall on every iteration.
-		now = uint64(max(time.Now().UnixMilli(), 0))
+		now = clampPhysical(uint64(max(time.Now().UnixMilli(), 0)))
 	}
 }
 
@@ -87,9 +105,8 @@ func (c *Clock) Update(remote int64) {
 	remotePhysical := remoteU >> logicalBits
 	remoteLogical := remoteU & logicalMask
 
-	// Sample once for the drift guard and as the initial loop value.
-	// Re-sample only after overflow sleep or a failed CAS.
-	now := uint64(max(time.Now().UnixMilli(), 0))
+	// remotePhysical can never exceed maxPhysical since remote is non-negative.
+	now := clampPhysical(uint64(max(time.Now().UnixMilli(), 0)))
 	if remotePhysical > now+5000 {
 		return // Ignore excessively drifted remote timestamps to prevent clock poisoning
 	}
@@ -99,31 +116,40 @@ func (c *Clock) Update(remote int64) {
 		oldPhysical := old >> logicalBits
 		oldLogical := old & logicalMask
 
-		maxPhysical := max(oldPhysical, max(remotePhysical, now))
+		// See Now(): once already at the ceiling, physical time can never
+		// catch up further, so stop instead of spinning forever (#104).
+		if oldPhysical >= maxPhysical {
+			if c.saturationLogged.CompareAndSwap(false, true) {
+				slog.Error("HLC clock saturated at the maximum representable value; check the system clock", "state", old)
+			}
+			return
+		}
+
+		chosenPhysical := max(oldPhysical, max(remotePhysical, now))
 
 		// Overflow: logical counter would exceed mask — sleep and re-sample.
-		if maxPhysical == oldPhysical {
+		if chosenPhysical == oldPhysical {
 			var expectedLogical uint64
-			if maxPhysical == remotePhysical {
+			if chosenPhysical == remotePhysical {
 				expectedLogical = max(oldLogical, remoteLogical) + 1
 			} else {
 				expectedLogical = oldLogical + 1
 			}
 			if expectedLogical > logicalMask {
 				time.Sleep(1 * time.Millisecond)
-				now = uint64(max(time.Now().UnixMilli(), 0))
+				now = clampPhysical(uint64(max(time.Now().UnixMilli(), 0)))
 				continue
 			}
-		} else if maxPhysical == remotePhysical && remoteLogical+1 > logicalMask {
+		} else if chosenPhysical == remotePhysical && remoteLogical+1 > logicalMask {
 			time.Sleep(1 * time.Millisecond)
-			now = uint64(max(time.Now().UnixMilli(), 0))
+			now = clampPhysical(uint64(max(time.Now().UnixMilli(), 0)))
 			continue
 		}
 
 		var newPhysical, newLogical uint64
-		switch maxPhysical {
+		switch chosenPhysical {
 		case oldPhysical:
-			if maxPhysical == remotePhysical {
+			if chosenPhysical == remotePhysical {
 				newPhysical = oldPhysical
 				newLogical = max(oldLogical, remoteLogical) + 1
 			} else {
@@ -134,7 +160,7 @@ func (c *Clock) Update(remote int64) {
 			newPhysical = remotePhysical
 			newLogical = remoteLogical + 1
 		default:
-			newPhysical = maxPhysical
+			newPhysical = chosenPhysical
 			newLogical = 0
 		}
 
@@ -143,6 +169,6 @@ func (c *Clock) Update(remote int64) {
 			return
 		}
 		// CAS failed — re-sample time and retry.
-		now = uint64(max(time.Now().UnixMilli(), 0))
+		now = clampPhysical(uint64(max(time.Now().UnixMilli(), 0)))
 	}
 }
