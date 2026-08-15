@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/kv"
 )
 
 // HashFunc implements the extremely fast xxhash algorithm for strings.

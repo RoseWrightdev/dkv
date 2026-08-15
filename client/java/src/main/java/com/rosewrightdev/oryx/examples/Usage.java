@@ -1,12 +1,12 @@
-package com.rosewrightdev.dkv.examples;
+package com.rosewrightdev.oryx.examples;
 
-import com.rosewrightdev.dkv.DKVClient;
+import com.rosewrightdev.oryx.OryxClient;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 /**
- * Example program demonstrating the usage of the DKV Java Client.
+ * Example program demonstrating the usage of the Oryx Java Client.
  */
 public class Usage {
     public static void main(String[] args) {
@@ -15,10 +15,10 @@ public class Usage {
             address = args[0];
         }
 
-        System.out.println("Connecting to DKV node at " + address + "...");
-        try (DKVClient client = DKVClient.connectInsecure(address)) {
+        System.out.println("Connecting to Oryx node at " + address + "...");
+        try (OryxClient client = OryxClient.connectInsecure(address)) {
             String key = "greeting";
-            String value = "Hello from the DKV Java Client!";
+            String value = "Hello from the Oryx Java Client!";
 
             System.out.println("Storing pair: " + key + " => " + value);
             client.set(key, value.getBytes(StandardCharsets.UTF_8));

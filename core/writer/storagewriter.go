@@ -4,12 +4,12 @@ package writer
 import (
 	"fmt"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/core/clock"
-	"github.com/rosewrightdev/dkv/core/hashmap"
-	"github.com/rosewrightdev/dkv/core/wal"
-	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/security"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/core/clock"
+	"github.com/rosewrightdev/oryx/core/hashmap"
+	"github.com/rosewrightdev/oryx/core/wal"
+	"github.com/rosewrightdev/oryx/kv"
+	"github.com/rosewrightdev/oryx/security"
 )
 
 // StateWriter defines the interface for applying sets and deletes to the state.

@@ -9,11 +9,11 @@ import (
 	"log/slog"
 	"sync"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/core/hashmap"
-	"github.com/rosewrightdev/dkv/core/snap"
-	"github.com/rosewrightdev/dkv/core/writer"
-	"github.com/rosewrightdev/dkv/kv"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/core/hashmap"
+	"github.com/rosewrightdev/oryx/core/snap"
+	"github.com/rosewrightdev/oryx/core/writer"
+	"github.com/rosewrightdev/oryx/kv"
 )
 
 // StateTransfer coordinates the exchange of local and remote database state.

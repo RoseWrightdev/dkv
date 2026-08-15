@@ -1,22 +1,22 @@
-// Package dkv provides a highly-concurrent, partitioned key-value database engine.
-package dkv
+// Package oryx provides a highly-concurrent, partitioned key-value database engine.
+package oryx
 
 import (
 	"fmt"
 	"time"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/cluster"
-	"github.com/rosewrightdev/dkv/cluster/entropy"
-	"github.com/rosewrightdev/dkv/cluster/mesh"
-	"github.com/rosewrightdev/dkv/core"
-	"github.com/rosewrightdev/dkv/core/clock"
-	"github.com/rosewrightdev/dkv/core/evict"
-	"github.com/rosewrightdev/dkv/kv"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/cluster"
+	"github.com/rosewrightdev/oryx/cluster/entropy"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/core"
+	"github.com/rosewrightdev/oryx/core/clock"
+	"github.com/rosewrightdev/oryx/core/evict"
+	"github.com/rosewrightdev/oryx/kv"
 	"google.golang.org/grpc/credentials"
 )
 
-// Database defines the core storage and replication database interface of the dkv node.
+// Database defines the core storage and replication database interface of the oryx node.
 type Database interface {
 	Get(key kv.Key) ([]byte, bool)
 	Set(key kv.Key, value []byte) error
@@ -32,7 +32,7 @@ type Database interface {
 	Mesh() mesh.Mesher
 }
 
-// DatabaseConfig specifies the parameters required to initialize and run a dkv Database.
+// DatabaseConfig specifies the parameters required to initialize and run a oryx Database.
 type DatabaseConfig struct {
 	evt            evict.Evictor
 	clock          clock.Clocker
@@ -113,14 +113,14 @@ func (s *singleNodeAdapter) SyncPush(_ []*pb.SetRequest, _ []*pb.DeleteRequest) 
 
 func (s *singleNodeAdapter) Addr() string {
 	if s.config.BindAddr == "" {
-		panic("dkv: bind address not configured")
+		panic("oryx: bind address not configured")
 	}
 	return fmt.Sprintf("%s:%d", s.config.BindAddr, s.config.GrpcPort)
 }
 
 func (s *singleNodeAdapter) GossipAddr() string {
 	if s.config.BindAddr == "" {
-		panic("dkv: bind address not configured")
+		panic("oryx: bind address not configured")
 	}
 	return fmt.Sprintf("%s:%d", s.config.BindAddr, s.config.BindPort)
 }

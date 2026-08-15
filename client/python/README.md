@@ -1,6 +1,6 @@
-# dkv Python Client
+# oryx Python Client
 
-A modern, high-performance Python client wrapper for dkv supporting both synchronous and asynchronous (`asyncio`) interfaces.
+A modern, high-performance Python client wrapper for oryx supporting both synchronous and asynchronous (`asyncio`) interfaces.
 
 ## Development Setup
 
@@ -19,10 +19,10 @@ uv pip install -e ".[dev]"
 
 ## Compilation of Protocol Buffers
 
-To compile the `dkv.proto` definition into python files:
+To compile the `oryx.proto` definition into python files:
 
 ```bash
-uv run python -m grpc_tools.protoc -I../../api --python_out=./dkv --grpc_python_out=./dkv ../../api/dkv.proto
+uv run python -m grpc_tools.protoc -I../../api --python_out=./oryx --grpc_python_out=./oryx ../../api/oryx.proto
 ```
 
 ## Running Examples

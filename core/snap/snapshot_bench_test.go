@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/kv"
 )
 
 func BenchmarkSnapshot(b *testing.B) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-bench-snap-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-bench-snap-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()

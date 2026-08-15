@@ -7,15 +7,15 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/security"
+	"github.com/rosewrightdev/oryx/kv"
+	"github.com/rosewrightdev/oryx/security"
 )
 
 const (
 	defaultVnodes = 128
 )
 
-// HashRing implements consistent hashing for data partitioning across dkv nodes.
+// HashRing implements consistent hashing for data partitioning across oryx nodes.
 type HashRing struct {
 	nodes    map[kv.NodeID]uint32
 	weights  map[kv.NodeID]int

@@ -1,4 +1,4 @@
-// Package main provides a simple example of a client interacting with the dkv service.
+// Package main provides a simple example of a client interacting with the oryx service.
 package main
 
 import (
@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/rosewrightdev/dkv/cluster/gateway"
+	"github.com/rosewrightdev/oryx/cluster/gateway"
 )
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 func run(addr string) error {
 	// 1. Initialize an insecure client (for demonstration)
 	// In production, you'd use NewClient with proper TLS credentials.
-	fmt.Printf("Connecting to dkv server at %s...\n", addr)
+	fmt.Printf("Connecting to oryx server at %s...\n", addr)
 	client, err := gateway.NewInsecureClient(addr, 2*time.Second)
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)
@@ -32,11 +32,11 @@ func run(addr string) error {
 		_ = client.Close()
 	}()
 
-	fmt.Println("Connected to dkv server...")
+	fmt.Println("Connected to oryx server...")
 
 	// 2. Set a key-value pair
 	key := "greeting"
-	value := []byte("Hello, dkv!")
+	value := []byte("Hello, oryx!")
 	fmt.Printf("Setting key '%s' to '%s'...\n", key, string(value))
 	if err := client.Set(key, value); err != nil {
 		return fmt.Errorf("failed to set key: %w", err)

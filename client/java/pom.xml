@@ -5,12 +5,12 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.rosewrightdev</groupId>
-    <artifactId>dkv-jvm</artifactId>
+    <artifactId>oryx-jvm</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>dkv-jvm</name>
-    <description>jvm client for dkv</description>
+    <name>oryx-jvm</name>
+    <description>jvm client for oryx</description>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -147,7 +147,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.1</version>
                 <configuration>
-                    <mainClass>com.rosewrightdev.dkv.examples.Usage</mainClass>
+                    <mainClass>com.rosewrightdev.oryx.examples.Usage</mainClass>
                 </configuration>
             </plugin>
         </plugins>

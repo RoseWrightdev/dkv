@@ -6,16 +6,16 @@ import (
 	"log/slog"
 	"time"
 
-	pb "github.com/rosewrightdev/dkv/api"
+	pb "github.com/rosewrightdev/oryx/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// Client represents a gRPC client to interact with the dkv service.
+// Client represents a gRPC client to interact with the oryx service.
 type Client struct {
 	conn    *grpc.ClientConn
-	API     pb.DkvServiceClient
+	API     pb.OryxServiceClient
 	timeout time.Duration
 }
 
@@ -28,7 +28,7 @@ func NewClient(addr string, timeout time.Duration, creds credentials.TransportCr
 
 	return &Client{
 		conn:    conn,
-		API:     pb.NewDkvServiceClient(conn),
+		API:     pb.NewOryxServiceClient(conn),
 		timeout: timeout,
 	}, nil
 }
@@ -43,7 +43,7 @@ func NewInsecureClient(addr string, timeout time.Duration) (*Client, error) {
 
 	return &Client{
 		conn:    conn,
-		API:     pb.NewDkvServiceClient(conn),
+		API:     pb.NewOryxServiceClient(conn),
 		timeout: timeout,
 	}, nil
 }

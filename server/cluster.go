@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/kv"
 	"google.golang.org/grpc/credentials"
 )
 
@@ -46,9 +46,9 @@ func findAvailableBasePort(startPort int, nodeCount int) int {
 	return startPort
 }
 
-// Cluster represents a group of dkv databases and servers.
+// Cluster represents a group of oryx databases and servers.
 type Cluster struct {
-	Databases []dkv.Database
+	Databases []oryx.Database
 	Servers   []*Grpc
 }
 
@@ -82,7 +82,7 @@ func newCluster(nodeCount int, dataDir string, creds credentials.TransportCreden
 	for i := range nodeCount {
 		name := fmt.Sprintf("node-%d", i+1)
 
-		dbBuilder := dkv.NewDatabaseBuilder().
+		dbBuilder := oryx.NewDatabaseBuilder().
 			Default()
 
 		if fastTest {
@@ -127,7 +127,7 @@ func (c *Cluster) Start() error {
 	for i, database := range c.Databases {
 		server := c.Servers[i]
 
-		go func(d dkv.Database, s *Grpc) {
+		go func(d oryx.Database, s *Grpc) {
 			d.Start()
 			err := s.Run()
 			if err != nil {
@@ -159,7 +159,7 @@ func (c *Cluster) stopDatabase(id kv.NodeID) {
 func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds credentials.TransportCredentials, fastTest bool) error {
 	basePort := getNextBasePort(1)
 
-	dbBuilder := dkv.NewDatabaseBuilder().
+	dbBuilder := oryx.NewDatabaseBuilder().
 		Default()
 
 	if fastTest {

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 )

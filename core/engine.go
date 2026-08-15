@@ -10,15 +10,15 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/core/clock"
-	"github.com/rosewrightdev/dkv/core/evict"
-	"github.com/rosewrightdev/dkv/core/hashmap"
-	"github.com/rosewrightdev/dkv/core/snap"
-	"github.com/rosewrightdev/dkv/core/wal"
-	"github.com/rosewrightdev/dkv/core/writer"
-	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/security"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/core/clock"
+	"github.com/rosewrightdev/oryx/core/evict"
+	"github.com/rosewrightdev/oryx/core/hashmap"
+	"github.com/rosewrightdev/oryx/core/snap"
+	"github.com/rosewrightdev/oryx/core/wal"
+	"github.com/rosewrightdev/oryx/core/writer"
+	"github.com/rosewrightdev/oryx/kv"
+	"github.com/rosewrightdev/oryx/security"
 )
 
 // Engine defines the standalone storage engine interface.

@@ -1,4 +1,4 @@
-// Package main is the entry point for the dkv server.
+// Package main is the entry point for the oryx server.
 package main
 
 import (
@@ -10,17 +10,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/server"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/kv"
+	"github.com/rosewrightdev/oryx/server"
 	"google.golang.org/grpc/credentials"
 )
 
 func main() {
-	builder := dkv.NewDatabaseBuilder().Default()
+	builder := oryx.NewDatabaseBuilder().Default()
 
-	certFile := os.Getenv("DKV_TLS_CERT_FILE")
-	keyFile := os.Getenv("DKV_TLS_KEY_FILE")
+	certFile := os.Getenv("ORYX_TLS_CERT_FILE")
+	keyFile := os.Getenv("ORYX_TLS_KEY_FILE")
 	switch {
 	case certFile != "" && keyFile != "":
 		creds, err := credentials.NewServerTLSFromFile(certFile, keyFile)
@@ -29,101 +29,101 @@ func main() {
 			os.Exit(1)
 		}
 		builder.SetCreds(creds)
-	case os.Getenv("DKV_INSECURE") == "true":
+	case os.Getenv("ORYX_INSECURE") == "true":
 		builder.SetInsecure()
 	default:
-		slog.Error("TLS credentials are required (DKV_TLS_CERT_FILE, DKV_TLS_KEY_FILE). Use DKV_INSECURE=true for development.")
+		slog.Error("TLS credentials are required (ORYX_TLS_CERT_FILE, ORYX_TLS_KEY_FILE). Use ORYX_INSECURE=true for development.")
 		os.Exit(1)
 	}
 
-	if id := os.Getenv("DKV_NODE_ID"); id != "" {
+	if id := os.Getenv("ORYX_NODE_ID"); id != "" {
 		builder.SetNodeID(kv.NodeID(id))
 	}
 
-	if addr := os.Getenv("DKV_BIND_ADDR"); addr != "" {
+	if addr := os.Getenv("ORYX_BIND_ADDR"); addr != "" {
 		builder.SetBindAddr(addr)
 	}
 
-	if portStr := os.Getenv("DKV_BIND_PORT"); portStr != "" {
+	if portStr := os.Getenv("ORYX_BIND_PORT"); portStr != "" {
 		if port, err := strconv.Atoi(portStr); err == nil {
 			builder.SetBindPort(port)
 		}
 	}
 
-	if portStr := os.Getenv("DKV_GRPC_PORT"); portStr != "" {
+	if portStr := os.Getenv("ORYX_GRPC_PORT"); portStr != "" {
 		if port, err := strconv.Atoi(portStr); err == nil {
 			builder.SetGrpcPort(port)
 		}
 	}
 
-	if addr := os.Getenv("DKV_ADVERTISE_ADDR"); addr != "" {
+	if addr := os.Getenv("ORYX_ADVERTISE_ADDR"); addr != "" {
 		builder.SetAdvertiseAddr(addr)
 	}
 
-	if seeds := os.Getenv("DKV_SEED_NODES"); seeds != "" {
+	if seeds := os.Getenv("ORYX_SEED_NODES"); seeds != "" {
 		builder.SetSeedNodes(strings.Split(seeds, ","))
 	}
 
-	if path := os.Getenv("DKV_WAL_PATH"); path != "" {
+	if path := os.Getenv("ORYX_WAL_PATH"); path != "" {
 		builder.SetWalPath(path)
 	}
 
-	if path := os.Getenv("DKV_SNP_PATH"); path != "" {
+	if path := os.Getenv("ORYX_SNP_PATH"); path != "" {
 		builder.SetSnpPath(path)
 	}
 
-	if rfStr := os.Getenv("DKV_REPLICATION_FACTOR"); rfStr != "" {
+	if rfStr := os.Getenv("ORYX_REPLICATION_FACTOR"); rfStr != "" {
 		if rf, err := strconv.Atoi(rfStr); err == nil {
 			builder.SetReplicationFactor(rf)
 		}
 	}
 
-	if snpStr := os.Getenv("DKV_SNP_INTERVAL"); snpStr != "" {
+	if snpStr := os.Getenv("ORYX_SNP_INTERVAL"); snpStr != "" {
 		if d, err := time.ParseDuration(snpStr); err == nil {
 			builder.SetSnpInterval(d)
 		} else {
-			slog.Error("invalid DKV_SNP_INTERVAL", "error", err)
+			slog.Error("invalid ORYX_SNP_INTERVAL", "error", err)
 			os.Exit(1)
 		}
 	}
 
-	if walStr := os.Getenv("DKV_WAL_INTERVAL"); walStr != "" {
+	if walStr := os.Getenv("ORYX_WAL_INTERVAL"); walStr != "" {
 		if d, err := time.ParseDuration(walStr); err == nil {
 			builder.SetWalInterval(d)
 		} else {
-			slog.Error("invalid DKV_WAL_INTERVAL", "error", err)
+			slog.Error("invalid ORYX_WAL_INTERVAL", "error", err)
 			os.Exit(1)
 		}
 	}
 
-	if walBufStr := os.Getenv("DKV_WAL_BUFFER_SIZE"); walBufStr != "" {
+	if walBufStr := os.Getenv("ORYX_WAL_BUFFER_SIZE"); walBufStr != "" {
 		if size, err := strconv.ParseUint(walBufStr, 10, 32); err == nil {
 			builder.SetWalBufferSize(uint32(size))
 		} else {
-			slog.Error("invalid DKV_WAL_BUFFER_SIZE", "error", err)
+			slog.Error("invalid ORYX_WAL_BUFFER_SIZE", "error", err)
 			os.Exit(1)
 		}
 	}
 
-	if walSegStr := os.Getenv("DKV_WAL_SEGMENTS"); walSegStr != "" {
+	if walSegStr := os.Getenv("ORYX_WAL_SEGMENTS"); walSegStr != "" {
 		if segs, err := strconv.Atoi(walSegStr); err == nil {
 			builder.SetWalSegments(segs)
 		} else {
-			slog.Error("invalid DKV_WAL_SEGMENTS", "error", err)
+			slog.Error("invalid ORYX_WAL_SEGMENTS", "error", err)
 			os.Exit(1)
 		}
 	}
 
-	if gossipStr := os.Getenv("DKV_GOSSIP_INTERVAL"); gossipStr != "" {
+	if gossipStr := os.Getenv("ORYX_GOSSIP_INTERVAL"); gossipStr != "" {
 		if d, err := time.ParseDuration(gossipStr); err == nil {
 			builder.SetGossipInterval(d)
 		} else {
-			slog.Error("invalid DKV_GOSSIP_INTERVAL", "error", err)
+			slog.Error("invalid ORYX_GOSSIP_INTERVAL", "error", err)
 			os.Exit(1)
 		}
 	}
 
-	if os.Getenv("DKV_SINGLE_NODE") == "true" {
+	if os.Getenv("ORYX_SINGLE_NODE") == "true" {
 		builder.SingleNode()
 	}
 
@@ -137,7 +137,7 @@ func main() {
 	s := server.NewServer(eng)
 
 	go func() {
-		slog.Info("Starting DKV server", "addr", eng.Addr())
+		slog.Info("Starting ORYX server", "addr", eng.Addr())
 		if err := s.Run(); err != nil {
 			slog.Error("server failed", "error", err)
 			os.Exit(1)

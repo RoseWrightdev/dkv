@@ -1,12 +1,12 @@
 package mesh
 
 import (
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/kv"
 )
 
 // ConfigBuilder provides an abstraction to configure Config
 
-// ConfigBuilder provides a fluent API for configuring dkv's distribution layer.
+// ConfigBuilder provides a fluent API for configuring oryx's distribution layer.
 type ConfigBuilder struct {
 	config Config
 }
@@ -64,7 +64,7 @@ func (mb *ConfigBuilder) SetSeedNodes(seeds []string) *ConfigBuilder {
 	return mb
 }
 
-// SetGrpcPort sets the port of the dkv gRPC API.
+// SetGrpcPort sets the port of the oryx gRPC API.
 func (mb *ConfigBuilder) SetGrpcPort(port int) *ConfigBuilder {
 	mb.config.GrpcPort = port
 	return mb

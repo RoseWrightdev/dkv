@@ -3,7 +3,7 @@
  * server.ts — convenience re-export of the gRPC server utilities.
  *
  * This file is a thin shim so that consumers who only need to talk to a
- * DKV cluster don't have to import from @grpc/grpc-js directly for the
+ * ORYX cluster don't have to import from @grpc/grpc-js directly for the
  * common credential variants.
  */
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
@@ -50,6 +50,9 @@ const grpc = __importStar(require("@grpc/grpc-js"));
 function insecureCredentials() {
     return grpc.credentials.createInsecure();
 }
+// See:
+// https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail
+// https://pkg.go.dev/google.golang.org/grpc/credentials
 /**
  * Creates TLS channel credentials using the system CA bundle.
  * Pass PEM buffers for mutual TLS or custom CA configurations.

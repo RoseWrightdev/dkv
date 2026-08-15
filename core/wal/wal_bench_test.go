@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/security"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/security"
 )
 
 func BenchmarkWAL_Publish(b *testing.B) {
-	tmpDir, err := os.MkdirTemp("", "dkv-bench-wal-*")
+	tmpDir, err := os.MkdirTemp("", "oryx-bench-wal-*")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func BenchmarkWAL_Publish(b *testing.B) {
 }
 
 func BenchmarkWAL_Replay(b *testing.B) {
-	tmpDir, err := os.MkdirTemp("", "dkv-bench-wal-replay-*")
+	tmpDir, err := os.MkdirTemp("", "oryx-bench-wal-replay-*")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func BenchmarkWAL_Replay(b *testing.B) {
 }
 
 func BenchmarkWAL_Clear(b *testing.B) {
-	tmpDir, err := os.MkdirTemp("", "dkv-bench-wal-clear-*")
+	tmpDir, err := os.MkdirTemp("", "oryx-bench-wal-clear-*")
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -6,17 +6,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/cluster/gateway"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/cluster/gateway"
 )
 
-func setupBenchmarkDatabase(b *testing.B, distributed bool) (dkv.Database, func()) {
-	tmpDir, err := os.MkdirTemp("", "dkv-bench-*")
+func setupBenchmarkDatabase(b *testing.B, distributed bool) (oryx.Database, func()) {
+	tmpDir, err := os.MkdirTemp("", "oryx-bench-*")
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	builder := dkv.NewDatabaseBuilder().
+	builder := oryx.NewDatabaseBuilder().
 		Default().
 		SetWalPath(tmpDir).
 		SetSnpPath(tmpDir + "/snp.bin").

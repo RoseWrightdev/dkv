@@ -2,7 +2,7 @@
  * server.ts — convenience re-export of the gRPC server utilities.
  *
  * This file is a thin shim so that consumers who only need to talk to a
- * DKV cluster don't have to import from @grpc/grpc-js directly for the
+ * ORYX cluster don't have to import from @grpc/grpc-js directly for the
  * common credential variants.
  */
 

@@ -1,12 +1,12 @@
 syntax = "proto3";
 
-package dkv;
+package oryx;
 
 option go_package = "./";
 option java_multiple_files = true;
-option java_package = "com.rosewrightdev.dkv.proto";
+option java_package = "com.rosewrightdev.oryx.proto";
 
-service DkvService {
+service OryxService {
   rpc Get(GetRequest) returns (GetResponse) {}
   rpc Set(SetRequest) returns (SetResponse) {}
   rpc Delete(DeleteRequest) returns (DeleteResponse) {}

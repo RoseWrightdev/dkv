@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/cluster/mesh"
-	"github.com/rosewrightdev/dkv/kv"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -72,9 +72,9 @@ func (m *MockMesher) Stop() error {
 
 func (m *MockMesher) UpdateLocalWeight(_ int) {}
 
-// MockGrpcServer implements pb.DkvServiceServer
+// MockGrpcServer implements pb.OryxServiceServer
 type MockGrpcServer struct {
-	pb.UnimplementedDkvServiceServer
+	pb.UnimplementedOryxServiceServer
 	GetFunc  func(req *pb.GetRequest) (*pb.GetResponse, error)
 	PushFunc func(req *pb.PushRequest) (*pb.PushResponse, error)
 }
@@ -101,7 +101,7 @@ func TestGateway_AllBranches(t *testing.T) {
 
 	grpcServer := grpc.NewServer()
 	mockSrv := &MockGrpcServer{}
-	pb.RegisterDkvServiceServer(grpcServer, mockSrv)
+	pb.RegisterOryxServiceServer(grpcServer, mockSrv)
 
 	go func() {
 		_ = grpcServer.Serve(lis)

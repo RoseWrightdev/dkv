@@ -1,13 +1,13 @@
-package dkv
+package oryx
 
 import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/core"
-	"github.com/rosewrightdev/dkv/core/clock"
-	"github.com/rosewrightdev/dkv/core/evict"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/core"
+	"github.com/rosewrightdev/oryx/core/clock"
+	"github.com/rosewrightdev/oryx/core/evict"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 )
 

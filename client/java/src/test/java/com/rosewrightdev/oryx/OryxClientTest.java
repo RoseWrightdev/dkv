@@ -1,4 +1,4 @@
-package com.rosewrightdev.dkv;
+package com.rosewrightdev.oryx;
 
 import io.grpc.ChannelCredentials;
 import org.junit.jupiter.api.Test;
@@ -10,23 +10,23 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests validating DKVClient.
+ * Unit tests validating OryxClient.
  */
-public class DKVClientTest {
+public class OryxClientTest {
 
     @Test
     public void testClientInstantiation() {
         // Verify that the helper builder exists and produces the class correctly
         assertThrows(IllegalArgumentException.class, () ->
             // Should fail due to invalid port / format
-            DKVClient.connect("invalid_address_format:abc:xyz", DKVClient.insecureCredentials()));
+            OryxClient.connect("invalid_address_format:abc:xyz", OryxClient.insecureCredentials()));
     }
 
     @Test
     public void testConnectInsecure() {
         assertDoesNotThrow(() -> {
             // Instantiating the channel should not throw immediate errors as gRPC is lazy
-            try (DKVClient client = DKVClient.connectInsecure("localhost:50051")) {
+            try (OryxClient client = OryxClient.connectInsecure("localhost:50051")) {
                 assertNotNull(client.getChannel());
                 assertNotNull(client.getBlockingStub());
                 assertNotNull(client.getFutureStub());
@@ -37,7 +37,7 @@ public class DKVClientTest {
     @Test
     public void testAsyncAPISignatures() {
         assertDoesNotThrow(() -> {
-            try (DKVClient client = DKVClient.connectInsecure("localhost:50051")) {
+            try (OryxClient client = OryxClient.connectInsecure("localhost:50051")) {
                 // Check that the returned futures are not null and compile correctly
                 CompletableFuture<Optional<byte[]>> getFuture = client.getAsync("test");
                 CompletableFuture<Void> setFuture = client.setAsync("test", new byte[0]);
@@ -53,7 +53,7 @@ public class DKVClientTest {
     @Test
     public void testBlockingAPISignatures() {
         assertDoesNotThrow(() -> {
-            try (DKVClient client = DKVClient.connectInsecure("localhost:50051")) {
+            try (OryxClient client = OryxClient.connectInsecure("localhost:50051")) {
                 // Since no server is running, the blocking stubs should throw StatusRuntimeException
                 assertThrows(io.grpc.StatusRuntimeException.class, () -> client.get("test"));
                 assertThrows(io.grpc.StatusRuntimeException.class, () -> client.set("test", new byte[0]));
@@ -65,10 +65,10 @@ public class DKVClientTest {
     @Test
     public void testCredentialsHelpers() {
         assertDoesNotThrow(() -> {
-            ChannelCredentials insecure = DKVClient.insecureCredentials();
+            ChannelCredentials insecure = OryxClient.insecureCredentials();
             assertNotNull(insecure);
 
-            ChannelCredentials tls = DKVClient.tlsCredentials();
+            ChannelCredentials tls = OryxClient.tlsCredentials();
             assertNotNull(tls);
         });
     }
@@ -81,9 +81,9 @@ public class DKVClientTest {
         File certChain = new File("non_existent_chain.pem");
 
         assertThrows(java.io.IOException.class, () ->
-            DKVClient.tlsCredentials(rootCert));
+            OryxClient.tlsCredentials(rootCert));
 
         assertThrows(java.io.IOException.class, () ->
-            DKVClient.tlsCredentials(rootCert, privateKey, certChain));
+            OryxClient.tlsCredentials(rootCert, privateKey, certChain));
     }
 }

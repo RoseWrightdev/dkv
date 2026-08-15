@@ -1,4 +1,4 @@
-// Package main provides a minimal example of launching a 10-node distributed dkv cluster.
+// Package main provides a minimal example of launching a 10-node distributed oryx cluster.
 package main
 
 import (
@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/rosewrightdev/dkv/server"
+	"github.com/rosewrightdev/oryx/server"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -20,7 +20,7 @@ func main() {
 	dataDir := filepath.Join("examples", "replicated", "data")
 	_ = os.RemoveAll(dataDir)
 
-	fmt.Printf("Starting %d-node dkv cluster...\n", numNodes)
+	fmt.Printf("Starting %d-node oryx cluster...\n", numNodes)
 
 	cluster, err := server.NewCluster(numNodes, dataDir, insecure.NewCredentials())
 	if err != nil {

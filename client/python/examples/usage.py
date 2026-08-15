@@ -1,14 +1,14 @@
 import sys
-from dkv import DKVClient, insecure_credentials
+from oryx import OryxClient, insecure_credentials
 
 
 def main():
-    print("Connecting to DKV server...")
-    client = DKVClient.connect("127.0.0.1:50051", insecure_credentials())
+    print("Connecting to ORYX server...")
+    client = OryxClient.connect("127.0.0.1:50051", insecure_credentials())
 
 
     key = "python-example-key"
-    val = b"Hello DKV from Python!"
+    val = b"Hello ORYX from Python!"
 
     try:
         print("Storing value under key...")

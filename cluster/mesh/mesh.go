@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/kv"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/kv"
 	"google.golang.org/protobuf/proto"
 )
 
-// PeerAddress represents the network address (IP:Port) of a dkv node.
+// PeerAddress represents the network address (IP:Port) of a oryx node.
 type PeerAddress string
 
 // Gossiper defines the interface for handling incoming gossip messages.

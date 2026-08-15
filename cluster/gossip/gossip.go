@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"sync"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/core/writer"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/core/writer"
 	"google.golang.org/protobuf/proto"
 )
 

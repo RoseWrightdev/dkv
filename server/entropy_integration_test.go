@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestSync(t *testing.T) {
-	tmpDir, _ := os.MkdirTemp("", "dkv-syncer-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-syncer-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
@@ -22,7 +22,7 @@ func TestSync(t *testing.T) {
 	n1Dir := filepath.Join(tmpDir, "node1")
 	require.NoError(t, os.MkdirAll(n1Dir, 0750))
 
-	e1, err := dkv.NewDatabaseBuilder().
+	e1, err := oryx.NewDatabaseBuilder().
 		Default().
 		SetWalPath(filepath.Join(n1Dir, "wal")).
 		SetSnpPath(filepath.Join(n1Dir, "snp.gob")).
@@ -44,7 +44,7 @@ func TestSync(t *testing.T) {
 	// Setup Node 2 and join Node 1
 	n2Dir := filepath.Join(tmpDir, "node2")
 	require.NoError(t, os.MkdirAll(n2Dir, 0750))
-	e2, err := dkv.NewDatabaseBuilder().
+	e2, err := oryx.NewDatabaseBuilder().
 		Default().
 		SetWalPath(filepath.Join(n2Dir, "wal")).
 		SetSnpPath(filepath.Join(n2Dir, "snp.gob")).

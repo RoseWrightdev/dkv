@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rosewrightdev/dkv/cluster/gateway"
-	"github.com/rosewrightdev/dkv/cluster/mesh"
-	"github.com/rosewrightdev/dkv/kv"
+	"github.com/rosewrightdev/oryx/cluster/gateway"
+	"github.com/rosewrightdev/oryx/cluster/mesh"
+	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,7 +32,7 @@ func TestClusterScaleAndDurability(t *testing.T) {
 		t.Skip("skipping extreme scale test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-cluster-durability-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-cluster-durability-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
@@ -101,7 +101,7 @@ func TestClusterFullRestartDurability(t *testing.T) {
 		t.Skip("skipping heavy durability test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-heavy-durability-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-heavy-durability-*")
 	defer func() {
 		_ = os.RemoveAll(tmpDir)
 	}()
@@ -213,7 +213,7 @@ func TestClusterChaosDurability(t *testing.T) {
 		t.Skip("skipping chaos  in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-chaos-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-chaos-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	numNodes := 7
@@ -315,7 +315,7 @@ func TestClusterDataRebalancing(t *testing.T) {
 		t.Skip("skipping rebalancing test in short mode")
 	}
 
-	tmpDir, _ := os.MkdirTemp("", "dkv-rebalance-*")
+	tmpDir, _ := os.MkdirTemp("", "oryx-rebalance-*")
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Start a 3-node cluster

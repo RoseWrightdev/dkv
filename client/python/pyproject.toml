@@ -3,9 +3,9 @@ requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dkv-py"
+name = "oryx-py"
 version = "0.1.0"
-description = "Python client for the dkv distributed key-value store"
+description = "Python client for the oryx distributed key-value store"
 readme = "README.md"
 requires-python = ">=3.12"
 classifiers = [

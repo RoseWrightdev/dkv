@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "dkv.fullname" . }}
+  name: {{ include "oryx.fullname" . }}
   labels:
-    app: {{ include "dkv.fullname" . }}
+    app: {{ include "oryx.fullname" . }}
 spec:
-  serviceName: {{ include "dkv.fullname" . }}-headless
+  serviceName: {{ include "oryx.fullname" . }}-headless
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "dkv.fullname" . }}
+      app: {{ include "oryx.fullname" . }}
   template:
     metadata:
       labels:
-        app: {{ include "dkv.fullname" . }}
+        app: {{ include "oryx.fullname" . }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
@@ -30,47 +30,47 @@ spec:
               containerPort: {{ .Values.gossip.port }}
               protocol: UDP
           env:
-            - name: DKV_INSECURE
+            - name: ORYX_INSECURE
               value: "{{ not .Values.engine.tls.enabled | ternary "true" "false" }}"
             {{- if .Values.engine.tls.enabled }}
-            - name: DKV_TLS_CERT_FILE
+            - name: ORYX_TLS_CERT_FILE
               value: "{{ .Values.engine.tls.certFile }}"
-            - name: DKV_TLS_KEY_FILE
+            - name: ORYX_TLS_KEY_FILE
               value: "{{ .Values.engine.tls.keyFile }}"
             {{- end }}
-            - name: DKV_NODE_ID
+            - name: ORYX_NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            - name: DKV_BIND_ADDR
+            - name: ORYX_BIND_ADDR
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: DKV_ADVERTISE_ADDR
-              value: "$(DKV_BIND_ADDR)"
-            - name: DKV_BIND_PORT
+            - name: ORYX_ADVERTISE_ADDR
+              value: "$(ORYX_BIND_ADDR)"
+            - name: ORYX_BIND_PORT
               value: "{{ .Values.gossip.port }}"
-            - name: DKV_GRPC_PORT
+            - name: ORYX_GRPC_PORT
               value: "{{ .Values.service.port }}"
-            - name: DKV_REPLICATION_FACTOR
+            - name: ORYX_REPLICATION_FACTOR
               value: "{{ .Values.engine.replicationFactor }}"
-            - name: DKV_SEED_NODES
-              value: '{{- $replicaCount := int .Values.replicaCount }}{{- $fullName := include "dkv.fullname" . }}{{- $namespace := .Release.Namespace }}{{- $seeds := list }}{{- range $i := until $replicaCount }}{{- $seeds = append $seeds (printf "%s-%d.%s-headless.%s.svc.cluster.local:%d" $fullName $i $fullName $namespace (int $.Values.gossip.port)) }}{{- end }}{{- join "," $seeds }}'
-            - name: DKV_WAL_PATH
+            - name: ORYX_SEED_NODES
+              value: '{{- $replicaCount := int .Values.replicaCount }}{{- $fullName := include "oryx.fullname" . }}{{- $namespace := .Release.Namespace }}{{- $seeds := list }}{{- range $i := until $replicaCount }}{{- $seeds = append $seeds (printf "%s-%d.%s-headless.%s.svc.cluster.local:%d" $fullName $i $fullName $namespace (int $.Values.gossip.port)) }}{{- end }}{{- join "," $seeds }}'
+            - name: ORYX_WAL_PATH
               value: "{{ .Values.engine.wal.path }}"
-            - name: DKV_SNP_PATH
+            - name: ORYX_SNP_PATH
               value: "{{ .Values.engine.snapshot.path }}"
-            - name: DKV_WAL_INTERVAL
+            - name: ORYX_WAL_INTERVAL
               value: "{{ .Values.engine.wal.interval }}"
-            - name: DKV_WAL_BUFFER_SIZE
+            - name: ORYX_WAL_BUFFER_SIZE
               value: "{{ .Values.engine.wal.bufferSize }}"
-            - name: DKV_WAL_SEGMENTS
+            - name: ORYX_WAL_SEGMENTS
               value: "{{ .Values.engine.wal.segments }}"
-            - name: DKV_SNP_INTERVAL
+            - name: ORYX_SNP_INTERVAL
               value: "{{ .Values.engine.snapshot.interval }}"
-            - name: DKV_GOSSIP_INTERVAL
+            - name: ORYX_GOSSIP_INTERVAL
               value: "{{ .Values.engine.gossip.interval }}"
-            - name: DKV_SINGLE_NODE
+            - name: ORYX_SINGLE_NODE
               value: "{{ .Values.engine.singleNode | ternary "true" "false" }}"
           volumeMounts:
             - name: data

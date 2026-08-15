@@ -1,4 +1,4 @@
-// Package main provides a simple command-line interface to interact with a dkv server using vanilla Go.
+// Package main provides a simple command-line interface to interact with a oryx server using vanilla Go.
 package main
 
 import (
@@ -8,21 +8,21 @@ import (
 	"os"
 	"time"
 
-	"github.com/rosewrightdev/dkv/cluster/gateway"
+	"github.com/rosewrightdev/oryx/cluster/gateway"
 )
 
 func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  go run examples/cli/main.go [flags] <command> [arguments]")
 	fmt.Println("\nFlags:")
-	fmt.Println("  --addr, -a    dkv server gRPC address (default: \"localhost:50051\")")
+	fmt.Println("  --addr, -a    oryx server gRPC address (default: \"localhost:50051\")")
 	fmt.Println("\nCommands:")
 	fmt.Println("  get <key>            Retrieve a value by key")
 	fmt.Println("  set <key> <value>    Store a key-value pair")
 	fmt.Println("  delete <key>         Remove a key from the store")
 	fmt.Println("\nExamples:")
 	fmt.Println("  go run examples/cli/main.go get greeting")
-	fmt.Println("  go run examples/cli/main.go --addr localhost:50055 set greeting \"Hello, dkv!\"")
+	fmt.Println("  go run examples/cli/main.go --addr localhost:50055 set greeting \"Hello, oryx!\"")
 	fmt.Println("  go run examples/cli/main.go delete greeting")
 }
 

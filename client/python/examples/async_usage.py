@@ -1,12 +1,12 @@
 import asyncio
 import sys
 
-from dkv import DKVAsyncClient, insecure_credentials
+from oryx import OryxAsyncClient, insecure_credentials
 
 
 async def main():
-    print("Connecting to DKV server asynchronously...")
-    client = DKVAsyncClient.connect("127.0.0.1:50051", insecure_credentials())
+    print("Connecting to ORYX server asynchronously...")
+    client = OryxAsyncClient.connect("127.0.0.1:50051", insecure_credentials())
 
     key = "python-async-example-key"
     val = b"Hello async Python!"

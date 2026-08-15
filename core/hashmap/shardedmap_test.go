@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/rosewrightdev/dkv/kv"
-	"github.com/rosewrightdev/dkv/security"
+	"github.com/rosewrightdev/oryx/kv"
+	"github.com/rosewrightdev/oryx/security"
 	"github.com/stretchr/testify/assert"
 )
 
