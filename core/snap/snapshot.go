@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rosewrightdev/oryx/core/wal"
@@ -23,6 +24,7 @@ type Snapshotter struct {
 	path        string
 	wg          sync.WaitGroup
 	startOnce   sync.Once
+	inProgress  atomic.Bool
 	Interval    time.Duration
 }
 
@@ -93,16 +95,23 @@ func (snp *Snapshotter) consumer(ctx context.Context) {
 			if !ok {
 				return
 			}
+			snp.inProgress.Store(true)
 			if err := snp.Create(); err != nil {
 				slog.Error("Failed to create snapshot", "error", err)
 			} else {
 				slog.Info("Database snapshot created.")
 			}
+			snp.inProgress.Store(false)
 		}
 	}
 }
 
+// queueSnapShot skips enqueueing while a snapshot is already running, so a
+// slow Create doesn't get followed by a back-to-back one (#70).
 func (snp *Snapshotter) queueSnapShot() {
+	if snp.inProgress.Load() {
+		return
+	}
 	select {
 	case snp.ch <- struct{}{}:
 	default:
