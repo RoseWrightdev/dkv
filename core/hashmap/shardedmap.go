@@ -1,11 +1,13 @@
-// Package hashmap provides a concurrent-safe sharded map implementation with incremental digest generation.
+// Package hashmap provides a concurrent-safe sharded map implementation using a persistent radix tree.
 package hashmap
 
 import (
 	"math/bits"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
+	iradix "github.com/hashicorp/go-immutable-radix"
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/rosewrightdev/oryx/security"
 )
@@ -28,10 +30,22 @@ const SubBucketCount = 64
 // ShardCount defines the total number of shards in the map.
 const ShardCount = 128
 
+// stringToBytes performs a zero-allocation conversion from string to []byte.
+// WARNING: The returned slice is read-only and must not be modified or retained.
+func stringToBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
+// valWrapper wraps an atomic pointer to kv.Value, enabling atomic swap on updates
+// without modifying the persistent radix tree structure.
+type valWrapper struct {
+	ptr atomic.Pointer[kv.Value]
+}
+
 // shard is a single thread-safe bucket within the ShardedMap.
 type shard struct {
-	buckets     [SubBucketCount]map[kv.Key]kv.Value
-	readBuckets [SubBucketCount]atomic.Pointer[map[kv.Key]kv.Value]
+	buckets     [SubBucketCount]*iradix.Tree
+	readBuckets [SubBucketCount]atomic.Pointer[iradix.Tree]
 	subDigests  [SubBucketCount]Digest
 	shardDigest Digest
 	mu          sync.RWMutex
@@ -46,9 +60,9 @@ func NewShardedMap() *ShardedMap {
 	for i := range ShardCount {
 		s := &shard{}
 		for b := range SubBucketCount {
-			m := make(map[kv.Key]kv.Value)
-			s.buckets[b] = m
-			s.readBuckets[b].Store(&m)
+			t := iradix.New()
+			s.buckets[b] = t
+			s.readBuckets[b].Store(t)
 		}
 		sm[i] = s
 	}
@@ -63,25 +77,39 @@ func (sm *ShardedMap) getShardByHash(hash kv.HashKey) *shard {
 func (sm *ShardedMap) Load(key kv.Key, hash kv.HashKey) (kv.Value, bool) {
 	shard := sm.getShardByHash(hash)
 	subIndex := (hash >> 16) % SubBucketCount
-	mPtr := shard.readBuckets[subIndex].Load()
-	if mPtr == nil {
+	treePtr := shard.readBuckets[subIndex].Load()
+	if treePtr == nil {
 		return kv.Value{}, false
 	}
-	val, ok := (*mPtr)[key]
-	val.ItemHash = 0 // Clear internal-only ItemHash to preserve DeepEqual assertions in tests
-	return val, ok
+	rawVal, ok := treePtr.Get(stringToBytes(key))
+	if !ok {
+		return kv.Value{}, false
+	}
+	wrapper := rawVal.(*valWrapper)
+	val := wrapper.ptr.Load()
+	if val == nil {
+		return kv.Value{}, false
+	}
+	v := *val
+	v.ItemHash = 0 // Clear internal-only ItemHash to preserve DeepEqual assertions in tests
+	return v, true
 }
 
 // LoadData retrieves just the raw byte payload from the shard in a 100% lock-free read path.
 func (sm *ShardedMap) LoadData(key kv.Key, hash kv.HashKey) ([]byte, bool) {
 	shard := sm.getShardByHash(hash)
 	subIndex := (hash >> 16) % SubBucketCount
-	mPtr := shard.readBuckets[subIndex].Load()
-	if mPtr == nil {
+	treePtr := shard.readBuckets[subIndex].Load()
+	if treePtr == nil {
 		return nil, false
 	}
-	val, ok := (*mPtr)[key]
-	if !ok || val.Tombstone {
+	rawVal, ok := treePtr.Get(stringToBytes(key))
+	if !ok {
+		return nil, false
+	}
+	wrapper := rawVal.(*valWrapper)
+	val := wrapper.ptr.Load()
+	if val == nil || val.Tombstone {
 		return nil, false
 	}
 	return val.Data, true
@@ -106,34 +134,44 @@ func getItemHash(hash kv.HashKey, val kv.Value) uint64 {
 	return h
 }
 
-func (s *shard) publishReadBucket(subIndex kv.HashKey) {
-	src := s.buckets[subIndex]
-	cp := make(map[kv.Key]kv.Value, len(src))
-	for k, v := range src {
-		cp[k] = v
-	}
-	s.readBuckets[subIndex].Store(&cp)
-}
-
 // Store updates the value in the correct shard and maintains the rolling digest.
 func (sm *ShardedMap) Store(key kv.Key, hash kv.HashKey, val kv.Value) {
 	shard := sm.getShardByHash(hash)
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 
-	// Update sub-bucket and shard digests incrementally
 	subIndex := (hash >> 16) % SubBucketCount
-	if existing, ok := shard.buckets[subIndex][key]; ok {
-		oldItemHash := existing.ItemHash
-		shard.subDigests[subIndex] ^= oldItemHash
-		shard.shardDigest ^= oldItemHash
+	tree := shard.buckets[subIndex]
+
+	rawVal, ok := tree.Get(stringToBytes(key))
+	if ok {
+		wrapper := rawVal.(*valWrapper)
+		existing := wrapper.ptr.Load()
+		if existing != nil {
+			oldItemHash := existing.ItemHash
+			shard.subDigests[subIndex] ^= oldItemHash
+			shard.shardDigest ^= oldItemHash
+		}
+		val.ItemHash = getItemHash(hash, val)
+		shard.subDigests[subIndex] ^= val.ItemHash
+		shard.shardDigest ^= val.ItemHash
+
+		// In-place atomic pointer swap (no tree nodes allocated or path copied!)
+		wrapper.ptr.Store(&val)
+		return
 	}
 
+	// New key insertion
 	val.ItemHash = getItemHash(hash, val)
 	shard.subDigests[subIndex] ^= val.ItemHash
 	shard.shardDigest ^= val.ItemHash
-	shard.buckets[subIndex][key] = val
-	shard.publishReadBucket(subIndex)
+
+	wrapper := &valWrapper{}
+	wrapper.ptr.Store(&val)
+
+	newTree, _, _ := tree.Insert([]byte(key), wrapper)
+	shard.buckets[subIndex] = newTree
+	shard.readBuckets[subIndex].Store(newTree)
 }
 
 // StoreLWW updates the value in the correct shard using LWW conflict resolution under a single write lock.
@@ -144,24 +182,44 @@ func (sm *ShardedMap) StoreLWW(key kv.Key, hash kv.HashKey, val kv.Value) bool {
 	defer shard.mu.Unlock()
 
 	subIndex := (hash >> 16) % SubBucketCount
-	existing, ok := shard.buckets[subIndex][key]
+	tree := shard.buckets[subIndex]
+
+	rawVal, ok := tree.Get(stringToBytes(key))
 	if ok {
-		if existing.Timestamp > val.Timestamp {
-			return false
+		wrapper := rawVal.(*valWrapper)
+		existing := wrapper.ptr.Load()
+		if existing != nil {
+			if existing.Timestamp > val.Timestamp {
+				return false
+			}
+			if existing.Timestamp == val.Timestamp && existing.NodeID >= val.NodeID {
+				return false
+			}
+			oldItemHash := existing.ItemHash
+			shard.subDigests[subIndex] ^= oldItemHash
+			shard.shardDigest ^= oldItemHash
 		}
-		if existing.Timestamp == val.Timestamp && existing.NodeID >= val.NodeID {
-			return false
-		}
-		oldItemHash := existing.ItemHash
-		shard.subDigests[subIndex] ^= oldItemHash
-		shard.shardDigest ^= oldItemHash
+
+		val.ItemHash = getItemHash(hash, val)
+		shard.subDigests[subIndex] ^= val.ItemHash
+		shard.shardDigest ^= val.ItemHash
+
+		// In-place atomic pointer swap (no tree nodes allocated or path copied!)
+		wrapper.ptr.Store(&val)
+		return true
 	}
 
+	// New key insertion
 	val.ItemHash = getItemHash(hash, val)
 	shard.subDigests[subIndex] ^= val.ItemHash
 	shard.shardDigest ^= val.ItemHash
-	shard.buckets[subIndex][key] = val
-	shard.publishReadBucket(subIndex)
+
+	wrapper := &valWrapper{}
+	wrapper.ptr.Store(&val)
+
+	newTree, _, _ := tree.Insert([]byte(key), wrapper)
+	shard.buckets[subIndex] = newTree
+	shard.readBuckets[subIndex].Store(newTree)
 	return true
 }
 
@@ -172,12 +230,20 @@ func (sm *ShardedMap) Delete(key kv.Key, hash kv.HashKey) {
 	defer shard.mu.Unlock()
 
 	subIndex := (hash >> 16) % SubBucketCount
-	if existing, ok := shard.buckets[subIndex][key]; ok {
-		itemHash := existing.ItemHash
-		shard.subDigests[subIndex] ^= itemHash
-		shard.shardDigest ^= itemHash
-		delete(shard.buckets[subIndex], key)
-		shard.publishReadBucket(subIndex)
+	tree := shard.buckets[subIndex]
+
+	rawVal, ok := tree.Get(stringToBytes(key))
+	if ok {
+		wrapper := rawVal.(*valWrapper)
+		existing := wrapper.ptr.Load()
+		if existing != nil {
+			itemHash := existing.ItemHash
+			shard.subDigests[subIndex] ^= itemHash
+			shard.shardDigest ^= itemHash
+		}
+		newTree, _, _ := tree.Delete([]byte(key))
+		shard.buckets[subIndex] = newTree
+		shard.readBuckets[subIndex].Store(newTree)
 	}
 }
 
@@ -220,10 +286,16 @@ func (sm *ShardedMap) Range(callback func(key kv.Key, val kv.Value) bool) {
 		shard := sm[i]
 		shard.mu.RLock()
 		for b := range SubBucketCount {
-			for k, v := range shard.buckets[b] {
-				if !callback(k, v) {
-					shard.mu.RUnlock()
-					return
+			tree := shard.buckets[b]
+			it := tree.Root().Iterator()
+			for k, v, ok := it.Next(); ok; k, v, ok = it.Next() {
+				wrapper := v.(*valWrapper)
+				val := wrapper.ptr.Load()
+				if val != nil {
+					if !callback(kv.Key(k), *val) {
+						shard.mu.RUnlock()
+						return
+					}
 				}
 			}
 		}
@@ -241,8 +313,14 @@ func (sm *ShardedMap) RangeShard(shardID ShardID, mismatchMask uint64, callback 
 	defer shard.mu.RUnlock()
 	for b := range SubBucketCount {
 		if (mismatchMask & (1 << b)) != 0 {
-			for k, v := range shard.buckets[b] {
-				callback(k, v)
+			tree := shard.buckets[b]
+			it := tree.Root().Iterator()
+			for k, v, ok := it.Next(); ok; k, v, ok = it.Next() {
+				wrapper := v.(*valWrapper)
+				val := wrapper.ptr.Load()
+				if val != nil {
+					callback(kv.Key(k), *val)
+				}
 			}
 		}
 	}

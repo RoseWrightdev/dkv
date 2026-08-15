@@ -24,13 +24,20 @@ All benchmarks conducted locally on an Apple M4 Max (14 cores, 64GB RAM, Go 1.26
 cd benchmarks && go test -bench=BenchmarkComparative_Get_Parallel -benchmem ./...
 ```
 
-| Database Engine | Storage Architecture | Throughput (RPS) | Latency (ns/op) | Memory/op | Allocs/op |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| oryx | Lock-Free Atomic Core + WAL | 192,609,751 ops/s | 7.15 ns | 0 B | 0 allocs |
-| CockroachDB Pebble | Production Go LSM-Tree | 7,579,868 ops/s | 155.60 ns | 8 B | 1 allocs |
-| NutsDB | In-Memory B-Tree + WAL | 3,774,739 ops/s | 316.10 ns | 272 B | 7 allocs |
-| BadgerDB (Dgraph) | Pure-Go LSM-Tree + Value Log | 1,757,354 ops/s | 681.20 ns | 360 B | 7 allocs |
-| bbolt (etcd / Kubernetes) | B+Tree Memory-Mapped Store | 1,000,000 ops/s | 1,016.00 ns | 480 B | 8 allocs |
+| Database Engine | Throughput (Reads/sec) | Latency (ns/op) | Memory/op | Allocs/op |
+| :--- | :--- | :--- | :--- | :--- |
+| sync.Map (Go Stdlib Baseline) | 940,274,300 reads/s | 1.43 ns | 0 B | 0 allocs |
+| oryx (Lock-Free Sharded Core) | 152,446,930 reads/s | 6.65 ns | 0 B | 0 allocs |
+| concurrent-map (Orcaman) | 55,551,589 reads/s | 21.30 ns | 0 B | 0 allocs |
+| BuntDB (In-Memory + AOF) | 7,394,725 reads/s | 161.20 ns | 72 B | 2 allocs |
+| CockroachDB Pebble | 6,973,873 reads/s | 171.60 ns | 8 B | 1 allocs |
+| NutsDB | 3,759,220 reads/s | 313.80 ns | 272 B | 7 allocs |
+| BadgerDB (Dgraph) | 1,677,006 reads/s | 747.30 ns | 360 B | 7 allocs |
+| bbolt (etcd / Kubernetes) | 1,000,000 reads/s | 1,044.00 ns | 480 B | 8 allocs |
+
+
+
+
 
 ### 2. Storage Engine Micro-benchmarks
 Micro-benchmarks measuring direct storage interaction with the 128-sharded memory core + WAL (`go test -bench=. -benchmem`):
@@ -39,8 +46,8 @@ Micro-benchmarks measuring direct storage interaction with the 128-sharded memor
 | :--- | :--- | :--- | :--- | :--- |
 | Get (Parallel) | Concurrent Point Reads | ~160,276,000 ops/s | 7.10 ns/op | 0 B/op (0 allocs) |
 | Get (Single-thread) | Sequential Point Read | ~25,265,000 ops/s | 52.07 ns/op | 0 B/op (0 allocs) |
-| Set (Parallel + WAL) | Concurrent Writes + WAL | ~1,727,000 ops/s | 686.90 ns/op | 776 B/op (3 allocs) |
-| Set (Single-thread + WAL) | Sequential Write + WAL | ~1,863,000 ops/s | 618.00 ns/op | 760 B/op (3 allocs) |
+| Set (Parallel + WAL) | Concurrent Writes + WAL | ~1,332,000 ops/s | 798.20 ns/op | 136 B/op (2 allocs) |
+| Set (Single-thread + WAL) | Sequential Write + WAL | ~2,962,000 ops/s | 407.50 ns/op | 64 B/op (1 allocs) |
 | Delete (Parallel + WAL) | Concurrent Tombstones + WAL | ~766,960,000 ops/s | 1.53 ns/op | 0 B/op (0 allocs) |
 | Delete (Single-thread + WAL) | Sequential Tombstone + WAL | ~89,730,000 ops/s | 13.52 ns/op | 0 B/op (0 allocs) |
 

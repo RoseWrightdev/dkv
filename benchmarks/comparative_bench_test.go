@@ -9,8 +9,10 @@ import (
 	pebble "github.com/cockroachdb/pebble"
 	badger "github.com/dgraph-io/badger/v4"
 	nutsdb "github.com/nutsdb/nutsdb"
+	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/rosewrightdev/oryx"
 	"github.com/rosewrightdev/oryx/kv"
+	buntdb "github.com/tidwall/buntdb"
 	bbolt "go.etcd.io/bbolt"
 )
 
@@ -128,6 +130,31 @@ func BenchmarkComparative_Get_Parallel(b *testing.B) {
 		syncMap.Store(string(keys[i]), []byte(fmt.Sprintf("val_%d", i)))
 	}
 
+	// 7. Setup BuntDB (In-Memory + AOF)
+	buntDB, err := buntdb.Open(b.TempDir() + "/bunt.db")
+	if err != nil {
+		b.Fatalf("failed to open BuntDB: %v", err)
+	}
+	defer func() { _ = buntDB.Close() }()
+	err = buntDB.Update(func(tx *buntdb.Tx) error {
+		for i := range keys {
+			_, _, err := tx.Set(string(keys[i]), fmt.Sprintf("val_%d", i), nil)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		b.Fatalf("failed to populate BuntDB: %v", err)
+	}
+
+	// 8. Setup orcaman/concurrent-map baseline
+	concurrentMap := cmap.New[[]byte]()
+	for i := range keys {
+		concurrentMap.Set(string(keys[i]), []byte(fmt.Sprintf("val_%d", i)))
+	}
+
 	// Benchmark Oryx
 	b.Run("Oryx_Database", func(b *testing.B) {
 		b.ResetTimer()
@@ -215,6 +242,35 @@ func BenchmarkComparative_Get_Parallel(b *testing.B) {
 					_, err := tx.Get("bucket", k)
 					return err
 				})
+				idx++
+			}
+		})
+	})
+
+	// Benchmark BuntDB
+	b.Run("BuntDB_InMem_AOF", func(b *testing.B) {
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			idx := rand.Intn(1000)
+			for pb.Next() {
+				k := string(keys[idx%1000])
+				_ = buntDB.View(func(tx *buntdb.Tx) error {
+					_, _ = tx.Get(k)
+					return nil
+				})
+				idx++
+			}
+		})
+	})
+
+	// Benchmark ConcurrentMap
+	b.Run("ConcurrentMap_Baseline", func(b *testing.B) {
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			idx := rand.Intn(1000)
+			for pb.Next() {
+				k := string(keys[idx%1000])
+				_, _ = concurrentMap.Get(k)
 				idx++
 			}
 		})
