@@ -286,7 +286,10 @@ func (s *lruShard) seen(key string, hkey kv.HashKey) {
 	}
 
 	e := s.pool.Get().(*entry)
-	e.key = key
+	// Clone the key string before storing it in the LRU entry. The caller
+	// may pass an unsafe string aliasing a socket read buffer (#79); storing
+	// a direct alias would corrupt the eviction key when the buffer is recycled.
+	e.key = string([]byte(key))
 	e.hash = hkey
 	e.expiry = expiry
 	s.cache[hkey] = e
@@ -301,10 +304,10 @@ func (s *lruShard) evictOldest() {
 	s.remove(e)
 	delete(s.cache, e.hash)
 
-	select {
-	case s.evictCh <- evictMsg{key: e.key, reason: ReasonCapacity}:
-	default:
-	}
+	// Block until the eviction callback goroutine consumes the message.
+	// A dropped eviction notification means the engine never receives the
+	// callback, so the key leaks in storage memory forever (#65).
+	s.evictCh <- evictMsg{key: e.key, reason: ReasonCapacity}
 
 	e.key = ""
 	s.pool.Put(e)
