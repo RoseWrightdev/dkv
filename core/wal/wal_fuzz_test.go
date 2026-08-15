@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/rosewrightdev/dkv/api"
-	"github.com/rosewrightdev/dkv/kv"
+	pb "github.com/rosewrightdev/oryx/api"
+	"github.com/rosewrightdev/oryx/kv"
 	"google.golang.org/protobuf/proto"
 )
 
