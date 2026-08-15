@@ -1,8 +1,8 @@
 package mesh
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -94,7 +94,10 @@ func NewMesh(gossip Gossiper, exchanger StateExchanger, config Config) (*Mesh, e
 		mlConfig.ProbeInterval = 100 * time.Millisecond
 		mlConfig.SuspicionMult = 2
 	}
-	mlConfig.LogOutput = io.Discard
+	// Route memberlist diagnostic logs through slog instead of discarding
+	// them. Discarding memberlist logs hides critical network partition,
+	// node failure, and probe failure diagnostics (#109).
+	mlConfig.LogOutput = &memberlistLogWriter{}
 	mlConfig.Delegate = m
 	mlConfig.Events = m
 
@@ -351,4 +354,15 @@ func (b *broadcast) Invalidates(_ memberlist.Broadcast) bool { return false }
 func (b *broadcast) Message() []byte                         { return b.msg }
 func (b *broadcast) Finished() {
 	_ = b
+}
+
+// memberlistLogWriter bridges memberlist's stdlib log output to slog,
+// surfacing network partition, probe failure, and node failure diagnostics
+// that would otherwise be discarded (#109).
+type memberlistLogWriter struct{}
+
+func (w *memberlistLogWriter) Write(p []byte) (n int, err error) {
+	msg := string(bytes.TrimRight(p, "\n"))
+	slog.Debug("memberlist", "msg", msg)
+	return len(p), nil
 }

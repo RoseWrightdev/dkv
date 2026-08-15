@@ -225,7 +225,12 @@ func runServe(_ *cobra.Command, _ []string) error {
 	go func() {
 		slog.Info("Starting oryx RESP server", "addr", respAddr)
 		if err := respSrv.Run(); err != nil {
+			// A failed RESP server means the node is partially dead — it
+			// still handles gRPC cluster traffic but drops all Redis client
+			// connections. Exiting cleanly allows the process supervisor or
+			// Kubernetes to restart the node in a known-good state (#80).
 			slog.Error("RESP server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
