@@ -197,3 +197,83 @@ func TestHashRing_ExtraEdgeCases(t *testing.T) {
 	node := ring.GetNode(kv.Key(wrapKey))
 	assert.Equal(t, kv.NodeID("node-dup"), node)
 }
+
+// TestHashRing_GetOwnersFewerNodesThanReplicationFactor covers the common
+// startup case where the cluster has not yet reached its replication factor.
+// The walk must stop once every physical node has been collected rather than
+// scanning the entire vnode ring looking for owners that cannot exist.
+func TestHashRing_GetOwnersFewerNodesThanReplicationFactor(t *testing.T) {
+	ring := NewHashRing()
+	ring.AddNodes([]kv.NodeID{"node1", "node2"})
+
+	owners := ring.GetOwners("some-key", 3)
+	assert.Len(t, owners, 2)
+	assert.ElementsMatch(t, []kv.NodeID{"node1", "node2"}, owners)
+
+	// A single-node cluster with a high replication factor behaves the same way.
+	solo := NewHashRing()
+	solo.AddNode("only")
+	assert.Equal(t, []kv.NodeID{"only"}, solo.GetOwners("some-key", 8))
+
+	// A non-positive replication factor asks for nothing and must not panic on
+	// the owners slice allocation.
+	assert.Empty(t, ring.GetOwners("some-key", 0))
+	assert.Empty(t, ring.GetOwners("some-key", -1))
+}
+
+// TestHashRing_RebuildKeepsLiveRingOutOfPool exercises repeated growth and
+// shrinkage of the ring. Recycling the live vnode array would let a later
+// rebuild sort and overwrite the array readers are routing against, so after
+// every membership change the ring must still be sorted and every lookup must
+// resolve to a current member.
+func TestHashRing_RebuildKeepsLiveRingOutOfPool(t *testing.T) {
+	ring := NewHashRing()
+
+	assertRingIntact := func(t *testing.T, step string) {
+		t.Helper()
+		members := ring.GetNodes()
+
+		ring.mu.RLock()
+		defer ring.mu.RUnlock()
+
+		total := 0
+		for _, id := range ring.nodeList {
+			total += ring.weights[id]
+		}
+		assert.Equal(t, total, len(ring.vnodes), "vnode count after %s", step)
+
+		for i := 1; i < len(ring.vnodes); i++ {
+			assert.LessOrEqual(t, ring.vnodes[i-1].hash, ring.vnodes[i].hash,
+				"vnodes unsorted at %d after %s", i, step)
+		}
+		for _, vn := range ring.vnodes {
+			assert.Less(t, int(vn.nodeIdx), len(ring.nodeList),
+				"vnode points past nodeList after %s", step)
+			assert.Contains(t, members, ring.nodeList[vn.nodeIdx],
+				"vnode resolves to a non-member after %s", step)
+		}
+	}
+
+	// Grow past the pool's initial 1024-vnode capacity so undersized leases and
+	// oversized rebuilds both get exercised.
+	for i := range 12 {
+		ring.AddNode(kv.NodeID(fmt.Sprintf("node-%d", i)))
+		assertRingIntact(t, fmt.Sprintf("add node-%d", i))
+	}
+
+	// Reweighting rebuilds without changing membership.
+	ring.UpdateNodeWeight("node-3", 512)
+	assertRingIntact(t, "reweight node-3")
+
+	// Shrinking retires a large array; the next rebuild must not reuse the live one.
+	for i := range 8 {
+		ring.RemoveNode(kv.NodeID(fmt.Sprintf("node-%d", i)))
+		assertRingIntact(t, fmt.Sprintf("remove node-%d", i))
+	}
+
+	// Routing still works end to end after all that churn.
+	remaining := ring.GetNodes()
+	for i := range 200 {
+		assert.Contains(t, remaining, ring.GetNode(kv.Key(fmt.Sprintf("key-%d", i))))
+	}
+}

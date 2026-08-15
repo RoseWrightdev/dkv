@@ -48,3 +48,23 @@ func BenchmarkHashRing_GetNode(b *testing.B) {
 		_ = ring.GetNode(key)
 	}
 }
+
+// BenchmarkHashRing_GetOwnersUndersizedCluster measures the path where the
+// cluster holds fewer physical nodes than the replication factor, which is the
+// normal state while a cluster is forming. Without the node-count cap on the
+// clockwise walk, every call scans the full vnode ring instead of stopping once
+// all available nodes are collected.
+func BenchmarkHashRing_GetOwnersUndersizedCluster(b *testing.B) {
+	for _, nodes := range []int{2, 3, 8} {
+		b.Run(fmt.Sprintf("nodes=%d/rf=16", nodes), func(b *testing.B) {
+			ring := NewHashRing()
+			for i := range nodes {
+				ring.AddNode(kv.NodeID(fmt.Sprintf("node-%d", i)))
+			}
+			b.ResetTimer()
+			for b.Loop() {
+				_ = ring.GetOwners("some-very-long-key-to-hash", 16)
+			}
+		})
+	}
+}
