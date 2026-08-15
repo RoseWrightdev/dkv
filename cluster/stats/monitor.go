@@ -4,6 +4,7 @@ package stats
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,8 @@ type Monitor struct {
 	occupancy func() float64
 	setWeight func(int)
 	weight    int
+	startOnce sync.Once
+	wg        sync.WaitGroup
 }
 
 // NewMonitor initializes a new load Monitor.
@@ -28,20 +31,27 @@ func NewMonitor(occupancy func() float64, setWeight func(int)) *Monitor {
 }
 
 // Start spawns the background resource monitoring loop.
+// It is idempotent: subsequent calls after the first are no-ops.
 func (m *Monitor) Start() {
-	m.ctx, m.cancel = context.WithCancel(context.Background())
-	m.ticker = time.NewTicker(3 * time.Second)
-	go m.run()
+	m.startOnce.Do(func() {
+		m.ctx, m.cancel = context.WithCancel(context.Background())
+		m.ticker = time.NewTicker(3 * time.Second)
+		m.wg.Add(1)
+		go m.run()
+	})
 }
 
-// Stop gracefully cancels the background monitoring loop.
+// Stop gracefully cancels the background monitoring loop and waits for it
+// to exit before returning. Safe to call concurrently with database teardown.
 func (m *Monitor) Stop() {
 	if m.cancel != nil {
 		m.cancel()
+		m.wg.Wait()
 	}
 }
 
 func (m *Monitor) run() {
+	defer m.wg.Done()
 	defer m.ticker.Stop()
 	for {
 		select {
