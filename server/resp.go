@@ -55,7 +55,6 @@ type RESPServer struct {
 	bound        string
 	resolvedAddr string
 	gnetEng      *gnet.Engine
-	ioUring      *ioUringServer
 }
 
 func NewRESPServer(eng oryx.Database, addr string) *RESPServer {
@@ -72,11 +71,6 @@ func newGnetServer(eng oryx.Database, addr string) *RESPServer {
 func (s *RESPServer) Addr() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.ioUring != nil {
-		if a := s.ioUring.Addr(); a != "" {
-			return a
-		}
-	}
 	if s.bound != "" {
 		return s.bound
 	}
@@ -159,88 +153,80 @@ func (s *RESPServer) dispatchToBuffer(args [][]byte, out []byte) []byte {
 	cmd := args[0]
 	switch len(cmd) {
 	case 3:
-		return s.dispatchLen3(cmd, args, out)
-	case 4:
-		return s.dispatchLen4(cmd, args, out)
-	case 6:
-		return s.dispatchLen6(cmd, args, out)
-	default:
-		return append(out, respErrCmd...)
-	}
-}
-
-func (s *RESPServer) dispatchLen3(cmd []byte, args [][]byte, out []byte) []byte {
-	if bytes.EqualFold(cmd, []byte("GET")) {
-		if len(args) != 2 {
-			return append(out, respErrArgs...)
+		if bytes.EqualFold(cmd, []byte("GET")) {
+			if len(args) != 2 {
+				return append(out, respErrArgs...)
+			}
+			val, ok := s.eng.Get(kv.Key(stringFromBytes(args[1])))
+			if !ok {
+				return append(out, respNil...)
+			}
+			return appendBulkBytes(out, val)
 		}
-		val, ok := s.eng.Get(kv.Key(stringFromBytes(args[1])))
-		if !ok {
-			return append(out, respNil...)
-		}
-		return appendBulkBytes(out, val)
-	}
-	if bytes.EqualFold(cmd, []byte("SET")) {
-		if len(args) != 3 {
-			return append(out, respErrArgs...)
-		}
-		key := string(args[1]) // safe heap copy
-		val := make([]byte, len(args[2]))
-		copy(val, args[2])
-		if err := s.eng.Set(kv.Key(key), val); err != nil {
-			return append(out, fmt.Sprintf("-ERR %v\r\n", err)...)
-		}
-		return append(out, respOK...)
-	}
-	if bytes.EqualFold(cmd, []byte("DEL")) {
-		if len(args) < 2 {
-			return append(out, respErrArgs...)
-		}
-		count := 0
-		for _, keyBytes := range args[1:] {
-			existed, err := s.eng.Delete(kv.Key(string(keyBytes)))
-			if err != nil {
+		if bytes.EqualFold(cmd, []byte("SET")) {
+			if len(args) != 3 {
+				return append(out, respErrArgs...)
+			}
+			// Clone both the key and value out of the gnet socket buffer before
+			// storing them. The buffer is reused by the event loop for new packets,
+			// which would silently corrupt any stored slices/strings that alias it.
+			key := string(args[1]) // safe heap copy
+			val := make([]byte, len(args[2]))
+			copy(val, args[2])
+			if err := s.eng.Set(kv.Key(key), val); err != nil {
 				return append(out, fmt.Sprintf("-ERR %v\r\n", err)...)
 			}
-			if existed {
-				count++
-			}
+			return append(out, respOK...)
 		}
-		return appendInt(out, count)
-	}
-	return append(out, respErrCmd...)
-}
+		if bytes.EqualFold(cmd, []byte("DEL")) {
+			if len(args) < 2 {
+				return append(out, respErrArgs...)
+			}
+			count := 0
+			for _, keyBytes := range args[1:] {
+				// Use string(keyBytes) for a safe heap-allocated copy so the
+				// key is not aliasing the volatile gnet socket buffer.
+				existed, err := s.eng.Delete(kv.Key(string(keyBytes)))
+				if err != nil {
+					return append(out, fmt.Sprintf("-ERR %v\r\n", err)...)
+				}
+				if existed {
+					count++
+				}
+			}
+			return appendInt(out, count)
+		}
 
-func (s *RESPServer) dispatchLen4(cmd []byte, args [][]byte, out []byte) []byte {
-	if bytes.EqualFold(cmd, []byte("PING")) {
-		if len(args) > 1 {
+	case 4:
+		if bytes.EqualFold(cmd, []byte("PING")) {
+			if len(args) > 1 {
+				return appendBulkBytes(out, args[1])
+			}
+			return append(out, respPONG...)
+		}
+		if bytes.EqualFold(cmd, []byte("ECHO")) {
+			if len(args) < 2 {
+				return append(out, respNil...)
+			}
 			return appendBulkBytes(out, args[1])
 		}
-		return append(out, respPONG...)
-	}
-	if bytes.EqualFold(cmd, []byte("ECHO")) {
-		if len(args) < 2 {
-			return append(out, respNil...)
+		if bytes.EqualFold(cmd, []byte("QUIT")) {
+			return append(out, respOK...)
 		}
-		return appendBulkBytes(out, args[1])
-	}
-	if bytes.EqualFold(cmd, []byte("QUIT")) {
-		return append(out, respOK...)
-	}
-	return append(out, respErrCmd...)
-}
 
-func (s *RESPServer) dispatchLen6(cmd []byte, args [][]byte, out []byte) []byte {
-	if bytes.EqualFold(cmd, []byte("EXISTS")) {
-		if len(args) != 2 {
-			return append(out, respErrArgs...)
+	case 6:
+		if bytes.EqualFold(cmd, []byte("EXISTS")) {
+			if len(args) != 2 {
+				return append(out, respErrArgs...)
+			}
+			_, ok := s.eng.Get(kv.Key(args[1]))
+			if ok {
+				return append(out, respOneInt...)
+			}
+			return append(out, respZeroInt...)
 		}
-		_, ok := s.eng.Get(kv.Key(args[1]))
-		if ok {
-			return append(out, respOneInt...)
-		}
-		return append(out, respZeroInt...)
 	}
+
 	return append(out, respErrCmd...)
 }
 
@@ -363,13 +349,9 @@ func (s *RESPServer) Stop() {
 	s.stopOnce.Do(func() {
 		s.mu.Lock()
 		eng := s.gnetEng
-		iou := s.ioUring
 		s.mu.Unlock()
 		if eng != nil {
 			_ = eng.Stop(context.Background())
-		}
-		if iou != nil {
-			iou.Stop()
 		}
 	})
 }
