@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -30,20 +29,18 @@ func runDelete(_ *cobra.Command, args []string) error {
 
 	client, err := dialClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: delete %q: %v\n", key, err)
-		os.Exit(2)
+		return &exitError{code: 2, err: fmt.Errorf("error: delete %q: %v", key, err)}
 	}
 	defer func() { _ = client.Close() }()
 
 	existed, err := client.Delete(key)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: delete %q: %v\n", key, err)
-		os.Exit(2)
+		return &exitError{code: 2, err: fmt.Errorf("error: delete %q: %v", key, err)}
 	}
 
 	if !existed {
 		fmt.Println("nil")
-		os.Exit(1)
+		return &exitError{code: 1}
 	}
 
 	fmt.Println("OK")

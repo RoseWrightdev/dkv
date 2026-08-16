@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -23,8 +22,8 @@ Exit codes:
 Example:
   oryx get mykey
   oryx --host 10.0.0.1 --grpc-port 50055 --insecure get mykey`,
-	Args:    cobra.ExactArgs(1),
-	RunE:    runGet,
+	Args: cobra.ExactArgs(1),
+	RunE: runGet,
 }
 
 func runGet(_ *cobra.Command, args []string) error {
@@ -32,20 +31,18 @@ func runGet(_ *cobra.Command, args []string) error {
 
 	client, err := dialClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: get %q: %v\n", key, err)
-		os.Exit(2)
+		return &exitError{code: 2, err: fmt.Errorf("error: get %q: %v", key, err)}
 	}
 	defer func() { _ = client.Close() }()
 
 	val, exists, err := client.Get(key)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: get %q: %v\n", key, err)
-		os.Exit(2)
+		return &exitError{code: 2, err: fmt.Errorf("error: get %q: %v", key, err)}
 	}
 
 	if !exists {
 		fmt.Println("nil")
-		os.Exit(1)
+		return &exitError{code: 1}
 	}
 
 	fmt.Printf("%s\n", val)

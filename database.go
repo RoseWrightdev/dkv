@@ -30,6 +30,7 @@ type Database interface {
 	Addr() string
 	GossipAddr() string
 	Mesh() mesh.Mesher
+	Creds() credentials.TransportCredentials
 }
 
 // DatabaseConfig specifies the parameters required to initialize and run a oryx Database.
@@ -73,6 +74,7 @@ func newDatabase(config DatabaseConfig) (Database, error) {
 		return &singleNodeAdapter{
 			Engine: coreEng,
 			config: config.meshConfig,
+			creds:  config.creds,
 		}, nil
 	}
 
@@ -93,6 +95,7 @@ func newDatabase(config DatabaseConfig) (Database, error) {
 type singleNodeAdapter struct {
 	core.Engine
 	config mesh.Config
+	creds  credentials.TransportCredentials
 }
 
 func (s *singleNodeAdapter) Core() core.Engine {
@@ -131,4 +134,8 @@ func (s *singleNodeAdapter) GossipAddr() string {
 
 func (s *singleNodeAdapter) Mesh() mesh.Mesher {
 	return &mesh.NopMesh{}
+}
+
+func (s *singleNodeAdapter) Creds() credentials.TransportCredentials {
+	return s.creds
 }

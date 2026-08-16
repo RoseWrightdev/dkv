@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -29,14 +28,12 @@ func runSet(_ *cobra.Command, args []string) error {
 
 	client, err := dialClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: set %q: %v\n", key, err)
-		os.Exit(2)
+		return &exitError{code: 2, err: fmt.Errorf("error: set %q: %v", key, err)}
 	}
 	defer func() { _ = client.Close() }()
 
 	if err := client.Set(key, value); err != nil {
-		fmt.Fprintf(os.Stderr, "error: set %q: %v\n", key, err)
-		os.Exit(2)
+		return &exitError{code: 2, err: fmt.Errorf("error: set %q: %v", key, err)}
 	}
 
 	fmt.Println("OK")

@@ -126,7 +126,11 @@ type Grpc struct {
 
 // NewServer creates a new Grpc server instance around a oryx Database.
 func NewServer(eng oryx.Database) *Grpc {
-	s := grpc.NewServer()
+	var opts []grpc.ServerOption
+	if creds := eng.Creds(); creds != nil && creds.Info().SecurityProtocol != "insecure" {
+		opts = append(opts, grpc.Creds(creds))
+	}
+	s := grpc.NewServer(opts...)
 	h := &server{
 		eng:   eng,
 		pools: newServerPools(),

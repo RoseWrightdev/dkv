@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -19,6 +20,22 @@ var (
 	flagTimeout  int
 )
 
+type exitError struct {
+	code int
+	err  error
+}
+
+func (e *exitError) Error() string {
+	if e.err != nil {
+		return e.err.Error()
+	}
+	return fmt.Sprintf("exit code %d", e.code)
+}
+
+func (e *exitError) Unwrap() error {
+	return e.err
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "oryx",
 	Short: "oryx — command-line interface for the oryx key-value database",
@@ -27,12 +44,20 @@ with a running cluster over gRPC.
 
 Connection flags (--host, --grpc-port, --insecure, --tls-cert, --tls-key)
 are available on every subcommand.`,
-	SilenceUsage: true,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 // Execute is the library entry point called from main.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
+		var exitErr *exitError
+		if errors.As(err, &exitErr) {
+			if exitErr.err != nil {
+				fmt.Fprintln(os.Stderr, exitErr.err)
+			}
+			os.Exit(exitErr.code)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
