@@ -27,7 +27,7 @@ cd benchmarks && go test -bench=BenchmarkComparative_Get_Parallel -benchmem ./..
 | Database Engine | Throughput (Reads/sec) | Latency (ns/op) | Memory/op | Allocs/op |
 | :--- | :--- | :--- | :--- | :--- |
 | sync.Map (Go Stdlib Baseline) | 940,274,300 reads/s | 1.43 ns | 0 B | 0 allocs |
-| oryx (Lock-Free Sharded Core) | 152,446,930 reads/s | 6.65 ns | 0 B | 0 allocs |
+| oryx (Lock-Free Sharded Core) | 160,276,000 reads/s | 7.10 ns/op | 0 B | 0 allocs |
 | concurrent-map (Orcaman) | 55,551,589 reads/s | 21.30 ns | 0 B | 0 allocs |
 | BuntDB (In-Memory + AOF) | 7,394,725 reads/s | 161.20 ns | 72 B | 2 allocs |
 | CockroachDB Pebble | 6,973,873 reads/s | 171.60 ns | 8 B | 1 allocs |
