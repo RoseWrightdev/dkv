@@ -121,15 +121,19 @@ type ioUringRing struct {
 
 type clientConn struct {
 	fd       int32
-	inBuf    []byte
+	inBuf    []byte // fixed-size scratch buffer; the kernel writes each READV's bytes here
+	pending  []byte // accumulates bytes not yet consumed into a full RESP frame, across reads
 	outBuf   []byte
 	argBuf   [][]byte
 	inIovec  unix.Iovec
 	outIovec unix.Iovec
 }
 
-type ioUringServer struct {
-	eng      oryx.Database
+// ioUringShard is a single independent reactor: one ring, one eventfd, one
+// listening socket, driven from one goroutine pinned to one OS thread. A
+// server runs several of these concurrently (see ioUringServer below) to use
+// more than one core.
+type ioUringShard struct {
 	server   *RESPServer
 	addr     string
 	stopOnce sync.Once
@@ -141,6 +145,37 @@ type ioUringServer struct {
 	listenFd int32
 	wakeBuf  [8]byte
 	wakeIov  unix.Iovec
+}
+
+func newIOUringShard(server *RESPServer, addr string) *ioUringShard {
+	return &ioUringShard{server: server, addr: addr}
+}
+
+func (s *ioUringShard) Addr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.bound != "" {
+		return s.bound
+	}
+	return s.addr
+}
+
+// ioUringServer coordinates a pool of ioUringShards, all bound to the same
+// address via SO_REUSEPORT: the kernel spreads incoming connections across
+// them, and each shard's ring processing runs on its own core, giving the
+// reactor the multi-core fan-out gnet gets from running one epoll loop per
+// CPU. Once a connection lands on a shard it stays there for its lifetime —
+// shards share the underlying storage engine (safe for concurrent access)
+// but never share client state with each other.
+type ioUringServer struct {
+	eng    oryx.Database
+	server *RESPServer
+	addr   string
+
+	mu      sync.Mutex
+	bound   string
+	shards  []*ioUringShard
+	stopped atomic.Bool
 }
 
 func newIOUringServer(eng oryx.Database, addr string) *ioUringServer {
@@ -168,6 +203,86 @@ func (s *ioUringServer) Addr() string {
 		return s.bound
 	}
 	return s.addr
+}
+
+// ioUringShardCount picks how many independent rings to run. GOMAXPROCS
+// mirrors gnet's own default of one event loop per usable core.
+func ioUringShardCount() int {
+	if n := runtime.GOMAXPROCS(0); n > 1 {
+		return n
+	}
+	return 1
+}
+
+// Run binds the first shard (resolving an ephemeral port if one was
+// requested), then spins up the remaining shards on that same concrete
+// address before running all of them concurrently until Stop() is called.
+func (s *ioUringServer) Run() error {
+	first := newIOUringShard(s.server, s.addr)
+	if err := first.bind(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.bound = first.Addr()
+	s.shards = append(s.shards, first)
+	alreadyStopped := s.stopped.Load()
+	s.mu.Unlock()
+	if alreadyStopped {
+		first.Stop()
+	}
+
+	shardAddr := first.Addr()
+	for i, n := 1, ioUringShardCount(); i < n; i++ {
+		if s.stopped.Load() {
+			break
+		}
+		sh := newIOUringShard(s.server, shardAddr)
+		if err := sh.bind(); err != nil {
+			// A later shard failing to bind (e.g. transient resource
+			// pressure) shouldn't take down a server that's already
+			// serving traffic on the shards bound so far.
+			break
+		}
+		s.mu.Lock()
+		s.shards = append(s.shards, sh)
+		alreadyStopped = s.stopped.Load()
+		s.mu.Unlock()
+		if alreadyStopped {
+			sh.Stop()
+		}
+	}
+
+	s.mu.Lock()
+	shards := s.shards
+	s.mu.Unlock()
+
+	var wg sync.WaitGroup
+	errs := make([]error, len(shards))
+	for i, sh := range shards {
+		wg.Add(1)
+		go func(i int, sh *ioUringShard) {
+			defer wg.Done()
+			errs[i] = sh.run()
+		}(i, sh)
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *ioUringServer) Stop() {
+	s.stopped.Store(true)
+	s.mu.Lock()
+	shards := s.shards
+	s.mu.Unlock()
+	for _, sh := range shards {
+		sh.Stop()
+	}
 }
 
 func ioUringSetup(entries uint32, params *ioUringParams) (int, error) {
@@ -231,10 +346,12 @@ func decodeTag(val uint64) (uint32, int32) {
 	return uint32(val >> 32), int32(uint32(val))
 }
 
-func (s *ioUringServer) Run() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
+// bind performs the kernel handshake and socket setup for this shard only —
+// it does not enter the reactor loop. Splitting this out from run() lets the
+// pool coordinator learn this shard's concrete bound address (e.g. once an
+// ephemeral ":0" port is resolved) before creating the remaining shards, so
+// every shard ends up bound to the exact same port via SO_REUSEPORT.
+func (s *ioUringShard) bind() error {
 	ring, err := initRing(1024)
 	if err != nil {
 		return err
@@ -260,12 +377,20 @@ func (s *ioUringServer) Run() error {
 		s.mu.Unlock()
 	}
 
-	defer s.cleanup()
 	s.initInitialSQEs()
+	return nil
+}
+
+// run executes this shard's reactor loop until Stop() is called. bind() must
+// have already succeeded.
+func (s *ioUringShard) run() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	defer s.cleanup()
 
 	clients := make(map[int32]*clientConn)
 	for !s.stopped.Load() {
-		if _, err := ring.submit(1); err != nil {
+		if _, err := s.ring.submit(1); err != nil {
 			if errors.Is(err, unix.EINTR) {
 				continue
 			}
@@ -388,7 +513,7 @@ func initListener(addr string) (int32, string, error) {
 	return int32(listenFd), bound, nil
 }
 
-func (s *ioUringServer) initInitialSQEs() {
+func (s *ioUringShard) initInitialSQEs() {
 	s.wakeIov.Base = &s.wakeBuf[0]
 	s.wakeIov.Len = 8
 	if wakeSQE := s.ring.getSQE(); wakeSQE != nil {
@@ -405,7 +530,7 @@ func (s *ioUringServer) initInitialSQEs() {
 	}
 }
 
-func (s *ioUringServer) processCQEs(clients map[int32]*clientConn) {
+func (s *ioUringShard) processCQEs(clients map[int32]*clientConn) {
 	cqHead := atomic.LoadUint32(s.ring.cqHead)
 	cqTail := atomic.LoadUint32(s.ring.cqTail)
 	for cqHead != cqTail {
@@ -427,7 +552,7 @@ func (s *ioUringServer) processCQEs(clients map[int32]*clientConn) {
 	atomic.StoreUint32(s.ring.cqHead, cqHead)
 }
 
-func (s *ioUringServer) handleWakeup() {
+func (s *ioUringShard) handleWakeup() {
 	if s.stopped.Load() {
 		return
 	}
@@ -440,14 +565,15 @@ func (s *ioUringServer) handleWakeup() {
 	}
 }
 
-func (s *ioUringServer) handleAccept(cqe ioUringCQE, clients map[int32]*clientConn) {
+func (s *ioUringShard) handleAccept(cqe ioUringCQE, clients map[int32]*clientConn) {
 	if cqe.res >= 0 {
 		clientFd := cqe.res
 		c := &clientConn{
-			fd:     clientFd,
-			inBuf:  make([]byte, 65536),
-			outBuf: make([]byte, 0, 65536),
-			argBuf: make([][]byte, 0, 32),
+			fd:      clientFd,
+			inBuf:   make([]byte, 65536),
+			pending: make([]byte, 0, 65536),
+			outBuf:  make([]byte, 0, 65536),
+			argBuf:  make([][]byte, 0, 32),
 		}
 		c.inIovec.Base = &c.inBuf[0]
 		c.inIovec.Len = uint64(len(c.inBuf))
@@ -469,7 +595,7 @@ func (s *ioUringServer) handleAccept(cqe ioUringCQE, clients map[int32]*clientCo
 	}
 }
 
-func (s *ioUringServer) handleRead(cqe ioUringCQE, fd int32, clients map[int32]*clientConn) {
+func (s *ioUringShard) handleRead(cqe ioUringCQE, fd int32, clients map[int32]*clientConn) {
 	c, ok := clients[fd]
 	if !ok || cqe.res <= 0 {
 		delete(clients, fd)
@@ -477,15 +603,30 @@ func (s *ioUringServer) handleRead(cqe ioUringCQE, fd int32, clients map[int32]*
 		return
 	}
 
-	data := c.inBuf[:cqe.res]
+	// Append onto whatever incomplete frame remained from the previous read
+	// instead of overwriting it: a RESP command can legitimately straddle
+	// two separate READV completions (e.g. a large SET value split across
+	// TCP segments), and inBuf alone can't represent that since the kernel
+	// overwrites it wholesale on every read.
+	c.pending = append(c.pending, c.inBuf[:cqe.res]...)
+
+	data := c.pending
+	consumed := 0
 	c.outBuf = c.outBuf[:0]
 	for len(data) > 0 {
 		args, readBytes, ok := parseRESPFrame(data, c.argBuf)
 		if !ok {
-			break
+			break // incomplete frame — wait for more bytes on a future read
 		}
 		data = data[readBytes:]
+		consumed += readBytes
 		c.outBuf = s.server.dispatchToBuffer(args, c.outBuf)
+	}
+	if consumed > 0 {
+		// Keep only the unconsumed tail so pending doesn't grow without
+		// bound across a long-lived connection that keeps completing frames.
+		remaining := copy(c.pending, c.pending[consumed:])
+		c.pending = c.pending[:remaining]
 	}
 
 	if len(c.outBuf) > 0 {
@@ -511,7 +652,7 @@ func (s *ioUringServer) handleRead(cqe ioUringCQE, fd int32, clients map[int32]*
 	}
 }
 
-func (s *ioUringServer) handleWrite(cqe ioUringCQE, fd int32, clients map[int32]*clientConn) {
+func (s *ioUringShard) handleWrite(cqe ioUringCQE, fd int32, clients map[int32]*clientConn) {
 	c, ok := clients[fd]
 	if !ok || cqe.res < 0 {
 		delete(clients, fd)
@@ -529,7 +670,7 @@ func (s *ioUringServer) handleWrite(cqe ioUringCQE, fd int32, clients map[int32]
 	}
 }
 
-func (s *ioUringServer) cleanup() {
+func (s *ioUringShard) cleanup() {
 	s.stopOnce.Do(func() {
 		s.stopped.Store(true)
 		if s.eventFd > 0 {
@@ -555,7 +696,7 @@ func (s *ioUringServer) cleanup() {
 	})
 }
 
-func (s *ioUringServer) Stop() {
+func (s *ioUringShard) Stop() {
 	s.stopped.Store(true)
 	if s.eventFd > 0 {
 		var val uint64 = 1
