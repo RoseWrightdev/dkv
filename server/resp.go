@@ -55,6 +55,7 @@ type RESPServer struct {
 	bound        string
 	resolvedAddr string
 	gnetEng      *gnet.Engine
+	ioUring      *ioUringServer
 }
 
 func NewRESPServer(eng oryx.Database, addr string) *RESPServer {
@@ -71,6 +72,11 @@ func newGnetServer(eng oryx.Database, addr string) *RESPServer {
 func (s *RESPServer) Addr() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.ioUring != nil {
+		if a := s.ioUring.Addr(); a != "" {
+			return a
+		}
+	}
 	if s.bound != "" {
 		return s.bound
 	}
@@ -349,9 +355,13 @@ func (s *RESPServer) Stop() {
 	s.stopOnce.Do(func() {
 		s.mu.Lock()
 		eng := s.gnetEng
+		iou := s.ioUring
 		s.mu.Unlock()
 		if eng != nil {
 			_ = eng.Stop(context.Background())
+		}
+		if iou != nil {
+			iou.Stop()
 		}
 	})
 }

@@ -26,30 +26,36 @@ cd benchmarks && go test -bench=BenchmarkComparative_Get_Parallel -benchmem ./..
 
 | Database Engine | Throughput (Reads/sec) | Latency (ns/op) | Memory/op | Allocs/op |
 | :--- | :--- | :--- | :--- | :--- |
-| sync.Map (Go Stdlib Baseline) | 940,274,300 reads/s | 1.43 ns | 0 B | 0 allocs |
-| oryx (Lock-Free Sharded Core) | 152,446,930 reads/s | 6.65 ns | 0 B | 0 allocs |
-| concurrent-map (Orcaman) | 55,551,589 reads/s | 21.30 ns | 0 B | 0 allocs |
-| BuntDB (In-Memory + AOF) | 7,394,725 reads/s | 161.20 ns | 72 B | 2 allocs |
-| CockroachDB Pebble | 6,973,873 reads/s | 171.60 ns | 8 B | 1 allocs |
-| NutsDB | 3,759,220 reads/s | 313.80 ns | 272 B | 7 allocs |
-| BadgerDB (Dgraph) | 1,677,006 reads/s | 747.30 ns | 360 B | 7 allocs |
-| bbolt (etcd / Kubernetes) | 1,000,000 reads/s | 1,044.00 ns | 480 B | 8 allocs |
-
-
-
-
+| sync.Map (Go Stdlib Baseline) | 952,671,400 reads/s | 1.30 ns | 0 B | 0 allocs |
+| oryx (Lock-Free Sharded Core) | 127,437,200 reads/s | 7.85 ns | 0 B | 0 allocs |
+| concurrent-map (Orcaman) | 51,124,700 reads/s | 19.56 ns | 0 B | 0 allocs |
+| BuntDB (In-Memory + AOF) | 6,246,000 reads/s | 160.10 ns | 72 B | 2 allocs |
+| CockroachDB Pebble | 6,222,700 reads/s | 160.70 ns | 8 B | 1 allocs |
+| NutsDB | 3,552,300 reads/s | 281.50 ns | 272 B | 7 allocs |
+| BadgerDB (Dgraph) | 1,518,600 reads/s | 658.50 ns | 360 B | 7 allocs |
+| bbolt (etcd / Kubernetes) | 1,000,000 reads/s | 1,012.00 ns | 480 B | 8 allocs |
 
 ### 2. Storage Engine Micro-benchmarks
 Micro-benchmarks measuring direct storage interaction with the 128-sharded memory core + WAL (`go test -bench=. -benchmem`):
 
 | Benchmark | Workload / Operation | Throughput (ops/sec) | Latency | Memory / Allocations |
 | :--- | :--- | :--- | :--- | :--- |
-| Get (Parallel) | Concurrent Point Reads | ~160,276,000 ops/s | 7.10 ns/op | 0 B/op (0 allocs) |
-| Get (Single-thread) | Sequential Point Read | ~25,265,000 ops/s | 52.07 ns/op | 0 B/op (0 allocs) |
-| Set (Parallel + WAL) | Concurrent Writes + WAL | ~1,332,000 ops/s | 798.20 ns/op | 136 B/op (2 allocs) |
-| Set (Single-thread + WAL) | Sequential Write + WAL | ~2,962,000 ops/s | 407.50 ns/op | 64 B/op (1 allocs) |
-| Delete (Parallel + WAL) | Concurrent Tombstones + WAL | ~766,960,000 ops/s | 1.53 ns/op | 0 B/op (0 allocs) |
-| Delete (Single-thread + WAL) | Sequential Tombstone + WAL | ~89,730,000 ops/s | 13.52 ns/op | 0 B/op (0 allocs) |
+| Get (Parallel) | Concurrent Point Reads | ~119,542,000 ops/s | 9.28 ns/op | 0 B/op (0 allocs) |
+| Get (Single-thread) | Sequential Point Read | ~24,360,000 ops/s | 48.74 ns/op | 0 B/op (0 allocs) |
+| Set (Parallel + WAL) | Concurrent Writes + WAL | ~1,804,000 ops/s | 588.60 ns/op | 1,303 B/op (4 allocs) |
+| Set (Single-thread + WAL) | Sequential Write + WAL | ~2,362,000 ops/s | 472.80 ns/op | 193 B/op (3 allocs) |
+| Delete (Parallel + WAL) | Concurrent Tombstones + WAL | ~601,300,000 ops/s | 1.66 ns/op | 0 B/op (0 allocs) |
+| Delete (Single-thread + WAL) | Sequential Tombstone + WAL | ~95,644,000 ops/s | 12.55 ns/op | 0 B/op (0 allocs) |
+
+### 3. Server & Network Protocol Benchmarks
+Benchmarks measuring end-to-end TCP network throughput and latency across wire protocols (`server/`):
+
+| Protocol / Engine | Operation | Throughput (ops/sec) | Latency | Memory / Allocations |
+| :--- | :--- | :--- | :--- | :--- |
+| RESP Server (`gnet` event loop) | Get (Parallel TCP) | ~71,860 ops/s | 13.91 µs/op | 29 B/op (0 allocs) |
+| RESP Server (`gnet` event loop) | Set (Parallel TCP) | ~60,180 ops/s | 16.62 µs/op | 249 B/op (5 allocs) |
+| gRPC API Server | Get (Parallel RPC) | ~87,820 ops/s | 11.39 µs/op | 9.8 KB/op (166 allocs) |
+| gRPC API Server | Set (Parallel RPC) | ~86,680 ops/s | 11.54 µs/op | 10.1 KB/op (168 allocs) |
 
 
 ## Quick Start

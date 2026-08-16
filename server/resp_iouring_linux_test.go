@@ -90,3 +90,141 @@ func TestIOUringServer_GetSetDeletePing(t *testing.T) {
 		t.Fatalf("expected myvalue\\r\\n, got %q", val)
 	}
 }
+
+func BenchmarkIOUringServer_Get(b *testing.B) {
+	eng, err := oryx.NewDatabaseBuilder().Default().
+		SetWalPath(b.TempDir() + "/wal").
+		SetSnpPath(b.TempDir() + "/snapshot.bin").
+		SetInsecure().
+		SingleNode().
+		Build()
+	if err != nil {
+		b.Fatalf("build database: %v", err)
+	}
+	eng.Start()
+	defer eng.Stop()
+
+	_ = eng.Set("benchkey", []byte("benchvalue"))
+
+	port := 36000 + rand.Intn(10000)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	srv := NewRESPServer(eng, addr)
+	go func() {
+		_ = srv.RunIOUring()
+	}()
+	defer srv.Stop()
+
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		b.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	cmd := []byte("*2\r\n$3\r\nGET\r\n$8\r\nbenchkey\r\n")
+	buf := make([]byte, 256)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := conn.Write(cmd); err != nil {
+			b.Fatalf("write: %v", err)
+		}
+		if _, err := conn.Read(buf); err != nil {
+			b.Fatalf("read: %v", err)
+		}
+	}
+}
+
+func BenchmarkIOUringServer_Set(b *testing.B) {
+	eng, err := oryx.NewDatabaseBuilder().Default().
+		SetWalPath(b.TempDir() + "/wal").
+		SetSnpPath(b.TempDir() + "/snapshot.bin").
+		SetInsecure().
+		SingleNode().
+		Build()
+	if err != nil {
+		b.Fatalf("build database: %v", err)
+	}
+	eng.Start()
+	defer eng.Stop()
+
+	port := 37000 + rand.Intn(10000)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	srv := NewRESPServer(eng, addr)
+	go func() {
+		_ = srv.RunIOUring()
+	}()
+	defer srv.Stop()
+
+	time.Sleep(50 * time.Millisecond)
+
+	conn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		b.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	cmd := []byte("*3\r\n$3\r\nSET\r\n$8\r\nbenchkey\r\n$10\r\nbenchvalue\r\n")
+	buf := make([]byte, 256)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := conn.Write(cmd); err != nil {
+			b.Fatalf("write: %v", err)
+		}
+		if _, err := conn.Read(buf); err != nil {
+			b.Fatalf("read: %v", err)
+		}
+	}
+}
+
+func BenchmarkIOUringServer_Get_Parallel(b *testing.B) {
+	eng, err := oryx.NewDatabaseBuilder().Default().
+		SetWalPath(b.TempDir() + "/wal").
+		SetSnpPath(b.TempDir() + "/snapshot.bin").
+		SetInsecure().
+		SingleNode().
+		Build()
+	if err != nil {
+		b.Fatalf("build database: %v", err)
+	}
+	eng.Start()
+	defer eng.Stop()
+
+	_ = eng.Set("benchkey", []byte("benchvalue"))
+
+	port := 38000 + rand.Intn(10000)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	srv := NewRESPServer(eng, addr)
+	go func() {
+		_ = srv.RunIOUring()
+	}()
+	defer srv.Stop()
+
+	time.Sleep(50 * time.Millisecond)
+
+	cmd := []byte("*2\r\n$3\r\nGET\r\n$8\r\nbenchkey\r\n")
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		conn, err := net.Dial("tcp", srv.Addr())
+		if err != nil {
+			b.Fatalf("dial: %v", err)
+		}
+		defer conn.Close()
+		buf := make([]byte, 256)
+
+		for pb.Next() {
+			if _, err := conn.Write(cmd); err != nil {
+				return
+			}
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+		}
+	})
+}

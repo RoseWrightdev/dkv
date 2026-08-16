@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -25,10 +24,13 @@ const (
 	IORING_OFF_SQES    = 0x10000000
 
 	IORING_ENTER_GETEVENTS = 1 << 0
+	IORING_ENTER_SQ_WAKEUP = 1 << 1
 
+	IORING_SQ_NEED_WAKEUP = 1 << 0
+
+	IORING_OP_READV  = 1
+	IORING_OP_WRITEV = 2
 	IORING_OP_ACCEPT = 13
-	IORING_OP_READ   = 22
-	IORING_OP_WRITE  = 23
 
 	opTagAccept = 1
 	opTagRead   = 2
@@ -103,6 +105,7 @@ type ioUringRing struct {
 
 	sqHead     *uint32
 	sqTail     *uint32
+	sqFlags    *uint32
 	sqRingMask uint32
 	sqArray    []uint32
 	sqes       []ioUringSQE
@@ -111,13 +114,18 @@ type ioUringRing struct {
 	cqTail     *uint32
 	cqRingMask uint32
 	cqes       []ioUringCQE
+
+	unsubmittedTail uint32
+	sqpoll          bool
 }
 
 type clientConn struct {
-	fd     int32
-	inBuf  []byte
-	outBuf []byte
-	argBuf [][]byte
+	fd       int32
+	inBuf    []byte
+	outBuf   []byte
+	argBuf   [][]byte
+	inIovec  unix.Iovec
+	outIovec unix.Iovec
 }
 
 type ioUringServer struct {
@@ -131,6 +139,8 @@ type ioUringServer struct {
 	ring     *ioUringRing
 	eventFd  int
 	listenFd int32
+	wakeBuf  [8]byte
+	wakeIov  unix.Iovec
 }
 
 func newIOUringServer(eng oryx.Database, addr string) *ioUringServer {
@@ -143,7 +153,12 @@ func newIOUringServer(eng oryx.Database, addr string) *ioUringServer {
 
 // RunIOUring executes the native Linux io_uring reactor engine.
 func (s *RESPServer) RunIOUring() error {
-	return newIOUringServer(s.eng, s.addr).Run()
+	iou := newIOUringServer(s.eng, s.addr)
+	iou.server = s
+	s.mu.Lock()
+	s.ioUring = iou
+	s.mu.Unlock()
+	return iou.Run()
 }
 
 func (s *ioUringServer) Addr() string {
@@ -165,38 +180,47 @@ func ioUringSetup(entries uint32, params *ioUringParams) (int, error) {
 
 func (r *ioUringRing) getSQE() *ioUringSQE {
 	head := atomic.LoadUint32(r.sqHead)
-	tail := *r.sqTail
+	tail := r.unsubmittedTail
 	if tail-head >= uint32(len(r.sqes)) {
 		return nil
 	}
 	idx := tail & r.sqRingMask
 	r.sqArray[idx] = idx
-	*r.sqTail = tail + 1
 	sqe := &r.sqes[idx]
 	*sqe = ioUringSQE{}
+	r.unsubmittedTail = tail + 1
 	return sqe
 }
 
 func (r *ioUringRing) submit(minComplete uint32) (int, error) {
+	head := atomic.LoadUint32(r.sqHead)
+	tail := r.unsubmittedTail
+	toSubmit := tail - head
+	atomic.StoreUint32(r.sqTail, tail)
+
 	flags := uint32(0)
 	if minComplete > 0 {
 		flags |= IORING_ENTER_GETEVENTS
 	}
-	head := atomic.LoadUint32(r.sqHead)
-	tail := *r.sqTail
-	toSubmit := tail - head
-	r1, _, errno := unix.Syscall6(
-		unix.SYS_IO_URING_ENTER,
-		uintptr(r.ringFd),
-		uintptr(toSubmit),
-		uintptr(minComplete),
-		uintptr(flags),
-		0, 0,
-	)
-	if errno != 0 {
-		return int(r1), errno
+	if r.sqpoll && (atomic.LoadUint32(r.sqFlags)&IORING_SQ_NEED_WAKEUP != 0) {
+		flags |= IORING_ENTER_SQ_WAKEUP
 	}
-	return int(r1), nil
+
+	if !r.sqpoll || flags != 0 || toSubmit > 0 {
+		r1, _, errno := unix.Syscall6(
+			unix.SYS_IO_URING_ENTER,
+			uintptr(r.ringFd),
+			uintptr(toSubmit),
+			uintptr(minComplete),
+			uintptr(flags),
+			0, 0,
+		)
+		if errno != 0 {
+			return int(r1), errno
+		}
+		return int(r1), nil
+	}
+	return int(toSubmit), nil
 }
 
 func encodeTag(tag uint32, fd int32) uint64 {
@@ -252,19 +276,22 @@ func (s *ioUringServer) Run() error {
 	}
 
 	ring := &ioUringRing{
-		ringFd:     ringFd,
-		sqRingMmap: sqRingMmap,
-		cqRingMmap: cqRingMmap,
-		sqesMmap:   sqesMmap,
-		sqHead:     (*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.head])),
-		sqTail:     (*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.tail])),
-		sqRingMask: *(*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.ringMask])),
-		sqArray:    unsafe.Slice((*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.array])), params.sqEntries),
-		sqes:       unsafe.Slice((*ioUringSQE)(unsafe.Pointer(&sqesMmap[0])), params.sqEntries),
-		cqHead:     (*uint32)(unsafe.Pointer(&cqRingMmap[params.cqOff.head])),
-		cqTail:     (*uint32)(unsafe.Pointer(&cqRingMmap[params.cqOff.tail])),
-		cqRingMask: *(*uint32)(unsafe.Pointer(&cqRingMmap[params.cqOff.ringMask])),
-		cqes:       unsafe.Slice((*ioUringCQE)(unsafe.Pointer(&cqRingMmap[params.cqOff.cqes])), params.cqEntries),
+		ringFd:          ringFd,
+		sqRingMmap:      sqRingMmap,
+		cqRingMmap:      cqRingMmap,
+		sqesMmap:        sqesMmap,
+		sqHead:          (*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.head])),
+		sqTail:          (*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.tail])),
+		sqFlags:         (*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.flags])),
+		sqRingMask:      *(*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.ringMask])),
+		sqArray:         unsafe.Slice((*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.array])), params.sqEntries),
+		sqes:            unsafe.Slice((*ioUringSQE)(unsafe.Pointer(&sqesMmap[0])), params.sqEntries),
+		cqHead:          (*uint32)(unsafe.Pointer(&cqRingMmap[params.cqOff.head])),
+		cqTail:          (*uint32)(unsafe.Pointer(&cqRingMmap[params.cqOff.tail])),
+		cqRingMask:      *(*uint32)(unsafe.Pointer(&cqRingMmap[params.cqOff.ringMask])),
+		cqes:            unsafe.Slice((*ioUringCQE)(unsafe.Pointer(&cqRingMmap[params.cqOff.cqes])), params.cqEntries),
+		unsubmittedTail: *(*uint32)(unsafe.Pointer(&sqRingMmap[params.sqOff.tail])),
+		sqpoll:          (params.flags & IORING_SETUP_SQPOLL) != 0,
 	}
 	s.ring = ring
 
@@ -275,45 +302,60 @@ func (s *ioUringServer) Run() error {
 	}
 	s.eventFd = eventFd
 
-	addr := s.addr
-	l, err := net.Listen("tcp", addr)
+	listenFd, err := unix.Socket(unix.AF_INET, unix.SOCK_STREAM|unix.SOCK_CLOEXEC, 0)
 	if err != nil {
 		s.cleanup()
-		return err
+		return fmt.Errorf("socket: %w", err)
 	}
-	tcpLis, _ := l.(*net.TCPListener)
-	file, err := tcpLis.File()
-	if err != nil {
-		_ = l.Close()
-		s.cleanup()
-		return err
-	}
-	listenFd := int32(file.Fd())
-	s.listenFd = listenFd
-	_ = l.Close()
+	s.listenFd = int32(listenFd)
+	_ = unix.SetsockoptInt(listenFd, unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
+	_ = unix.SetsockoptInt(listenFd, unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
 
-	s.mu.Lock()
-	s.bound = file.Name()
-	if strings.Contains(s.bound, "@") || s.bound == "" {
-		s.bound = l.Addr().String()
+	tcpAddr, err := net.ResolveTCPAddr("tcp", s.addr)
+	if err != nil {
+		s.cleanup()
+		return fmt.Errorf("resolve addr: %w", err)
 	}
-	s.mu.Unlock()
+	sa := &unix.SockaddrInet4{Port: tcpAddr.Port}
+	if len(tcpAddr.IP) == 0 || tcpAddr.IP.IsUnspecified() {
+		sa.Addr = [4]byte{0, 0, 0, 0}
+	} else if ip4 := tcpAddr.IP.To4(); ip4 != nil {
+		copy(sa.Addr[:], ip4)
+	}
+	if err := unix.Bind(listenFd, sa); err != nil {
+		s.cleanup()
+		return fmt.Errorf("bind: %w", err)
+	}
+	if err := unix.Listen(listenFd, 1024); err != nil {
+		s.cleanup()
+		return fmt.Errorf("listen: %w", err)
+	}
+
+	boundSa, err := unix.Getsockname(listenFd)
+	if err == nil {
+		if bsa, ok := boundSa.(*unix.SockaddrInet4); ok {
+			s.mu.Lock()
+			s.bound = fmt.Sprintf("127.0.0.1:%d", bsa.Port)
+			s.mu.Unlock()
+		}
+	}
 
 	defer s.cleanup()
 
-	var wakeBuf [8]byte
+	s.wakeIov.Base = &s.wakeBuf[0]
+	s.wakeIov.Len = 8
 	if wakeSQE := ring.getSQE(); wakeSQE != nil {
-		wakeSQE.opcode = IORING_OP_READ
+		wakeSQE.opcode = IORING_OP_READV
 		wakeSQE.fd = int32(eventFd)
-		wakeSQE.addr = uint64(uintptr(unsafe.Pointer(&wakeBuf[0])))
-		wakeSQE.len = 8
+		wakeSQE.addr = uint64(uintptr(unsafe.Pointer(&s.wakeIov)))
+		wakeSQE.len = 1
 		wakeSQE.userData = encodeTag(opTagWakeup, int32(eventFd))
 	}
 
 	if acceptSQE := ring.getSQE(); acceptSQE != nil {
 		acceptSQE.opcode = IORING_OP_ACCEPT
-		acceptSQE.fd = listenFd
-		acceptSQE.userData = encodeTag(opTagAccept, listenFd)
+		acceptSQE.fd = int32(listenFd)
+		acceptSQE.userData = encodeTag(opTagAccept, int32(listenFd))
 	}
 
 	clients := make(map[int32]*clientConn)
@@ -342,10 +384,10 @@ func (s *ioUringServer) Run() error {
 					break
 				}
 				if nextWake := ring.getSQE(); nextWake != nil {
-					nextWake.opcode = IORING_OP_READ
+					nextWake.opcode = IORING_OP_READV
 					nextWake.fd = int32(eventFd)
-					nextWake.addr = uint64(uintptr(unsafe.Pointer(&wakeBuf[0])))
-					nextWake.len = 8
+					nextWake.addr = uint64(uintptr(unsafe.Pointer(&s.wakeIov)))
+					nextWake.len = 1
 					nextWake.userData = encodeTag(opTagWakeup, int32(eventFd))
 				}
 
@@ -358,20 +400,22 @@ func (s *ioUringServer) Run() error {
 						outBuf: make([]byte, 0, 65536),
 						argBuf: make([][]byte, 0, 32),
 					}
+					c.inIovec.Base = &c.inBuf[0]
+					c.inIovec.Len = uint64(len(c.inBuf))
 					clients[clientFd] = c
 					if readSQE := ring.getSQE(); readSQE != nil {
-						readSQE.opcode = IORING_OP_READ
+						readSQE.opcode = IORING_OP_READV
 						readSQE.fd = clientFd
-						readSQE.addr = uint64(uintptr(unsafe.Pointer(&c.inBuf[0])))
-						readSQE.len = uint32(len(c.inBuf))
+						readSQE.addr = uint64(uintptr(unsafe.Pointer(&c.inIovec)))
+						readSQE.len = 1
 						readSQE.userData = encodeTag(opTagRead, clientFd)
 					}
 				}
 				if !s.stopped.Load() {
 					if nextAccept := ring.getSQE(); nextAccept != nil {
 						nextAccept.opcode = IORING_OP_ACCEPT
-						nextAccept.fd = listenFd
-						nextAccept.userData = encodeTag(opTagAccept, listenFd)
+						nextAccept.fd = int32(listenFd)
+						nextAccept.userData = encodeTag(opTagAccept, int32(listenFd))
 					}
 				}
 
@@ -392,19 +436,23 @@ func (s *ioUringServer) Run() error {
 						c.outBuf = s.server.dispatchToBuffer(args, c.outBuf)
 					}
 					if len(c.outBuf) > 0 {
+						c.outIovec.Base = &c.outBuf[0]
+						c.outIovec.Len = uint64(len(c.outBuf))
 						if writeSQE := ring.getSQE(); writeSQE != nil {
-							writeSQE.opcode = IORING_OP_WRITE
+							writeSQE.opcode = IORING_OP_WRITEV
 							writeSQE.fd = fd
-							writeSQE.addr = uint64(uintptr(unsafe.Pointer(&c.outBuf[0])))
-							writeSQE.len = uint32(len(c.outBuf))
+							writeSQE.addr = uint64(uintptr(unsafe.Pointer(&c.outIovec)))
+							writeSQE.len = 1
 							writeSQE.userData = encodeTag(opTagWrite, fd)
 						}
 					} else {
+						c.inIovec.Base = &c.inBuf[0]
+						c.inIovec.Len = uint64(len(c.inBuf))
 						if nextRead := ring.getSQE(); nextRead != nil {
-							nextRead.opcode = IORING_OP_READ
+							nextRead.opcode = IORING_OP_READV
 							nextRead.fd = fd
-							nextRead.addr = uint64(uintptr(unsafe.Pointer(&c.inBuf[0])))
-							nextRead.len = uint32(len(c.inBuf))
+							nextRead.addr = uint64(uintptr(unsafe.Pointer(&c.inIovec)))
+							nextRead.len = 1
 							nextRead.userData = encodeTag(opTagRead, fd)
 						}
 					}
@@ -416,11 +464,13 @@ func (s *ioUringServer) Run() error {
 					delete(clients, fd)
 					_ = unix.Close(int(fd))
 				} else {
+					c.inIovec.Base = &c.inBuf[0]
+					c.inIovec.Len = uint64(len(c.inBuf))
 					if nextRead := ring.getSQE(); nextRead != nil {
-						nextRead.opcode = IORING_OP_READ
+						nextRead.opcode = IORING_OP_READV
 						nextRead.fd = fd
-						nextRead.addr = uint64(uintptr(unsafe.Pointer(&c.inBuf[0])))
-						nextRead.len = uint32(len(c.inBuf))
+						nextRead.addr = uint64(uintptr(unsafe.Pointer(&c.inIovec)))
+						nextRead.len = 1
 						nextRead.userData = encodeTag(opTagRead, fd)
 					}
 				}
