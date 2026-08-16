@@ -139,15 +139,29 @@ func NewServer(eng oryx.Database) *Grpc {
 	return &Grpc{inner: s, handlers: h, eng: eng}
 }
 
-// Run starts the gRPC server and serves requests on the address/port configured by the engine.
-func (s *Grpc) Run() error {
+// Listen creates and binds the TCP listener for the gRPC server.
+func (s *Grpc) Listen() (net.Listener, error) {
 	addr := s.eng.Addr()
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("oryx: failed to create listener on %s: %w", addr, err)
+		return nil, fmt.Errorf("oryx: failed to create listener on %s: %w", addr, err)
 	}
-	slog.Info("Grpc server running on " + listener.Addr().String())
-	return s.inner.Serve(listener)
+	return listener, nil
+}
+
+// Serve serves gRPC traffic on the provided listener.
+func (s *Grpc) Serve(l net.Listener) error {
+	slog.Info("Grpc server running on " + l.Addr().String())
+	return s.inner.Serve(l)
+}
+
+// Run starts the gRPC server and serves requests on the address/port configured by the engine.
+func (s *Grpc) Run() error {
+	l, err := s.Listen()
+	if err != nil {
+		return err
+	}
+	return s.Serve(l)
 }
 
 // Stop gracefully shuts down the gRPC server and stops the underlying engine.

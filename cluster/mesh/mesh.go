@@ -146,18 +146,11 @@ func (m *Mesh) Members() []PeerAddress {
 	if m.stopping.Load() || m.memberList == nil {
 		return nil
 	}
-	members := m.memberList.Members()
-	addrs := make([]PeerAddress, 0, len(members))
-	for _, member := range members {
-		if len(member.Meta) > 0 {
-			var meta pb.NodeMetadata
-			if err := proto.Unmarshal(member.Meta, &meta); err == nil {
-				if meta.GrpcPort > 0 {
-					addrs = append(addrs, PeerAddress(fmt.Sprintf("%s:%d", member.Addr.String(), meta.GrpcPort)))
-				}
-			}
-		}
-	}
+	var addrs []PeerAddress
+	m.nodeAddrs.Range(func(_, value any) bool {
+		addrs = append(addrs, value.(PeerAddress))
+		return true
+	})
 	return addrs
 }
 

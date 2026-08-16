@@ -133,14 +133,19 @@ func (c *Cluster) Start() error {
 	ch := make(chan error, len(c.Databases))
 	for i, database := range c.Databases {
 		server := c.Servers[i]
+		database.Start()
 
-		go func(d oryx.Database, s *Grpc) {
-			d.Start()
-			err := s.Run()
-			if err != nil {
+		lis, err := server.Listen()
+		if err != nil {
+			c.Stop()
+			return err
+		}
+
+		go func(s *Grpc, l net.Listener) {
+			if err := s.Serve(l); err != nil {
 				ch <- err
 			}
-		}(database, server)
+		}(server, lis)
 
 		select {
 		case err := <-ch:
@@ -195,10 +200,14 @@ func (c *Cluster) addNode(name string, seedAddr string, dataDir string, creds cr
 	c.Databases = append(c.Databases, database)
 	c.Servers = append(c.Servers, server)
 
-	// Start the newly added node
+	database.Start()
+	lis, err := server.Listen()
+	if err != nil {
+		return err
+	}
+
 	go func() {
-		database.Start()
-		_ = server.Run() // Run blocks
+		_ = server.Serve(lis)
 	}()
 
 	return nil
