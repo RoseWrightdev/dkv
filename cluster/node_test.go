@@ -54,6 +54,7 @@ func (f *fakeEngine) Clock() clock.Clocker                { return nil }
 func (f *fakeEngine) Writer() *writer.StorageWriter       { return nil }
 func (f *fakeEngine) Snp() *snap.Snapshotter              { return nil }
 func (f *fakeEngine) Evt() evict.Evictor                  { return f.evt }
+func (f *fakeEngine) Evict(kv.Key, evict.Reason) error    { return nil }
 func (f *fakeEngine) Occupancy() float64                  { return 0 }
 
 // nodeMockMesher is a minimal mesh.Mesher whose owner set is directly

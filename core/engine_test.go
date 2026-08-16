@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rosewrightdev/oryx/core/clock"
+	"github.com/rosewrightdev/oryx/core/evict"
 	"github.com/rosewrightdev/oryx/core/wal"
 	"github.com/rosewrightdev/oryx/kv"
 	"github.com/stretchr/testify/assert"
@@ -54,4 +55,45 @@ func TestEngine_VolatileMode(t *testing.T) {
 	assert.True(t, os.IsNotExist(err), "nop file/dir should not exist")
 	_, err = os.Stat("nop.tmp")
 	assert.True(t, os.IsNotExist(err), "nop.tmp file/dir should not exist")
+}
+
+func TestEngine_CapacityEviction_NoResurrectionOnRestart(t *testing.T) {
+	dir := t.TempDir()
+	walPath := dir + "/wal"
+	snpPath := dir + "/snapshot.bin"
+
+	lru := evict.NewLRU(evict.LRUConfig{Capacity: 1, TTL: 24 * time.Hour, ShardCount: 1})
+	cfg := Config{
+		WalPath:       walPath,
+		SnpPath:       snpPath,
+		WalInterval:   50 * time.Millisecond,
+		SnpInterval:   time.Hour,
+		WalBufferSize: 4096,
+		WalSegments:   4,
+		Clock:         clock.NewClock(),
+		Evt:           lru,
+	}
+
+	eng, err := NewEngine(cfg)
+	require.NoError(t, err)
+	eng.Start()
+
+	require.NoError(t, eng.Set(kv.Key("evicted-key"), []byte("value1")))
+	time.Sleep(100 * time.Millisecond)
+
+	require.NoError(t, eng.Evict(kv.Key("evicted-key"), evict.ReasonCapacity))
+	time.Sleep(100 * time.Millisecond)
+
+	_, exists := eng.Get(kv.Key("evicted-key"))
+	assert.False(t, exists)
+
+	eng.Stop()
+
+	eng2, err := NewEngine(cfg)
+	require.NoError(t, err)
+	eng2.Start()
+	defer eng2.Stop()
+
+	_, exists = eng2.Get(kv.Key("evicted-key"))
+	assert.False(t, exists, "capacity-evicted key must not be resurrected after WAL replay")
 }

@@ -36,6 +36,7 @@ type Engine interface {
 	Writer() *writer.StorageWriter
 	Snp() *snap.Snapshotter
 	Evt() evict.Evictor
+	Evict(key kv.Key, reason evict.Reason) error
 	Occupancy() float64
 }
 
@@ -246,22 +247,22 @@ func (eng *engine) Delete(key kv.Key) (bool, error) {
 
 func (eng *engine) Evict(key kv.Key, reason evict.Reason) error {
 	hash := security.HashFunc(key)
+	ts := eng.clock.Now()
 	if reason == evict.ReasonCapacity {
 		eng.hm.Delete(key, hash)
-		return nil
+	} else {
+		eng.hm.Store(key, hash, kv.Value{
+			Timestamp: ts,
+			NodeID:    string(eng.nodeID),
+			Tombstone: true,
+		})
 	}
 
-	ts := eng.clock.Now()
 	req := eng.pools.deleteRequests.Get().(*pb.DeleteRequest)
 	req.Key = key
 	req.Timestamp = ts
 	req.NodeId = string(eng.nodeID)
 
-	eng.hm.Store(key, hash, kv.Value{
-		Timestamp: ts,
-		NodeID:    string(eng.nodeID),
-		Tombstone: true,
-	})
 	err := eng.wal.Publish(key, hash, req)
 	req.Reset()
 	eng.pools.deleteRequests.Put(req)

@@ -80,9 +80,15 @@ type LRUConfig struct {
 
 // NewLRU creates and initializes a new LeastRecentlyUsed eviction service.
 func NewLRU(config LRUConfig) *LeastRecentlyUsed {
+	if config.Capacity == 0 {
+		panic("oryx: LRU Capacity must be greater than 0")
+	}
 	shardCount := config.ShardCount
 	if shardCount <= 0 {
 		panic("oryx: LRU ShardCount must be greater than 0")
+	}
+	if shardCount > int(config.Capacity) {
+		shardCount = int(config.Capacity)
 	}
 	shards := make([]*lruShard, shardCount)
 
@@ -91,9 +97,6 @@ func NewLRU(config LRUConfig) *LeastRecentlyUsed {
 
 	// Distribute capacity across shards
 	shardCap := config.Capacity / shardCountU
-	if shardCap == 0 {
-		panic("oryx: LRU Capacity must be at least equal to ShardCount")
-	}
 
 	pool := &sync.Pool{
 		New: func() any {

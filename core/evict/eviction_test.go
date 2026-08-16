@@ -72,3 +72,22 @@ func TestSlidingExpiration(t *testing.T) {
 	count = atomic.LoadInt32(&evictCount)
 	assert.Equal(t, int32(1), count, "Key should have been evicted by now")
 }
+
+func TestNewLRU_SmallCapacity(t *testing.T) {
+	// Capacity smaller than ShardCount (10 < 16) should not panic and should clamp shards
+	lru := NewLRU(LRUConfig{Capacity: 10, TTL: time.Hour, ShardCount: 16})
+	assert.NotNil(t, lru)
+	assert.Equal(t, 10, lru.count)
+	for _, shard := range lru.shards {
+		assert.GreaterOrEqual(t, shard.capacity, uint32(1))
+	}
+}
+
+func TestNewLRU_ZeroCapacityPanics(t *testing.T) {
+	assert.Panics(t, func() {
+		NewLRU(LRUConfig{Capacity: 0, TTL: time.Hour, ShardCount: 16})
+	})
+	assert.Panics(t, func() {
+		NewLRU(LRUConfig{Capacity: 10, TTL: time.Hour, ShardCount: 0})
+	})
+}
